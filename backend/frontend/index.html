@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Training Coach</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>AI Training Coach</h1>
+    <div id="user-actions" class="hidden">
+      <span id="user-email"></span>
+      <button id="logout-btn" class="btn-link">Log out</button>
+    </div>
+  </header>
+
+  <main id="auth-view">
+    <div class="auth-card">
+      <div class="tabs">
+        <button id="tab-login" class="tab active">Log in</button>
+        <button id="tab-signup" class="tab">Sign up</button>
+      </div>
+      <form id="auth-form">
+        <label>Email</label>
+        <input type="email" id="auth-email" required />
+        <label>Password</label>
+        <input type="password" id="auth-password" required minlength="8" />
+        <button type="submit" id="auth-submit">Log in</button>
+        <p id="auth-error" class="error hidden"></p>
+      </form>
+    </div>
+  </main>
+
+  <main id="app-view" class="hidden">
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Calendar</h2>
+        <button id="sync-btn">Sync with Garmin</button>
+      </div>
+      <p id="sync-status" class="status hidden"></p>
+      <div id="calendar-grid" class="calendar-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Objectives</h2>
+      <textarea id="objectives-text" rows="3" placeholder="e.g. Half marathon in spring. 3 runs + 2 swims/week."></textarea>
+      <button id="objectives-save">Save objectives</button>
+      <p id="objectives-status" class="status hidden"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Coach chat</h2>
+      <div id="chat-log" class="chat-log"></div>
+      <form id="chat-form" class="chat-form">
+        <input type="text" id="chat-input" placeholder="How are you feeling after today's run?" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <div id="garmin-modal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Connect your Garmin account</h3>
+      <p>Your Garmin email/password are sent once to log in and are never stored; only an encrypted session token is kept.</p>
+      <label>Garmin email</label>
+      <input type="email" id="garmin-email" />
+      <label>Garmin password</label>
+      <input type="password" id="garmin-password" />
+      <p id="garmin-error" class="error hidden"></p>
+      <div class="modal-actions">
+        <button id="garmin-cancel" class="btn-link">Cancel</button>
+        <button id="garmin-connect">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

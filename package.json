@@ -1,0 +1,10 @@
+{
+  "name": "ai-trainer-with-garmin-data",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AI Training Coach — FastAPI backend with a Garmin-synced calendar and Claude-powered coaching chat.",
+  "scripts": {
+    "start": "bash scripts/dev.sh",
+    "dev": "bash scripts/dev.sh"
+  }
+}
