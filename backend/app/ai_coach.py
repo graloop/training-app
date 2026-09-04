@@ -218,6 +218,8 @@ def handle_chat_message(db: Session, user: models.User, message_text: str) -> tu
 
         if response.stop_reason != "tool_use":
             reply_text = "".join(block.text for block in response.content if block.type == "text")
+            if not reply_text.strip():
+                reply_text = "Done — I've updated your plan." if plan_changes else "Got it."
             assistant_msg = models.ChatMessage(user_id=user.id, role="assistant", content=reply_text)
             db.add(assistant_msg)
             db.commit()
