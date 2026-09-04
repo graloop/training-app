@@ -29,7 +29,7 @@ services:
       GARMIN_SYNC_LOOKBACK_DAYS: ${GARMIN_SYNC_LOOKBACK_DAYS:-30}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-*}
     ports:
-      - "8000:8000"
+      - "8010:8000"
 
 volumes:
   trainer_pgdata:
