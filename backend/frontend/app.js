@@ -105,6 +105,49 @@ function fmtDuration(seconds) {
   return `${mins} min`;
 }
 
+const ACTIVITY_ICONS = [
+  ["swim", "🏊"],
+  ["run", "🏃"],
+  ["walk", "🚶"],
+  ["hik", "🥾"],
+  ["bik", "🚴"],
+  ["cycl", "🚴"],
+  ["strength", "🏋️"],
+  ["yoga", "🧘"],
+  ["row", "🚣"],
+  ["ski", "⛷️"],
+  ["snowboard", "🏂"],
+  ["padd", "🛶"],
+  ["elliptical", "🌀"],
+  ["rest", "😴"],
+];
+
+function activityIcon(type) {
+  const key = (type || "").toLowerCase();
+  for (const [needle, icon] of ACTIVITY_ICONS) {
+    if (key.includes(needle)) return icon;
+  }
+  return "🏅";
+}
+
+function makeEntry(className, type, detail) {
+  const entry = document.createElement("div");
+  entry.className = `entry ${className}`;
+  entry.title = type;
+
+  const icon = document.createElement("span");
+  icon.className = "entry-icon";
+  icon.textContent = activityIcon(type);
+  entry.appendChild(icon);
+
+  const detailEl = document.createElement("span");
+  detailEl.className = "entry-detail";
+  detailEl.textContent = detail;
+  entry.appendChild(detailEl);
+
+  return entry;
+}
+
 function renderCalendar(data) {
   const grid = document.getElementById("calendar-grid");
   grid.innerHTML = "";
@@ -120,19 +163,14 @@ function renderCalendar(data) {
     cell.appendChild(dateEl);
 
     for (const a of day.activities) {
-      const entry = document.createElement("div");
-      entry.className = "entry done";
-      const effect = a.aerobic_training_effect ? ` · TE ${a.aerobic_training_effect}` : "";
-      entry.textContent = `${a.activity_type} ${fmtDuration(a.duration_seconds)}${effect}`;
-      cell.appendChild(entry);
+      const parts = [fmtDuration(a.duration_seconds)];
+      if (a.aerobic_training_effect) parts.push(a.aerobic_training_effect.toFixed(1));
+      cell.appendChild(makeEntry("done", a.activity_type, parts.filter(Boolean).join(" · ")));
     }
 
     for (const p of day.planned) {
-      const entry = document.createElement("div");
-      entry.className = "entry planned";
-      const mins = p.planned_duration_minutes ? `${p.planned_duration_minutes} min` : "";
-      entry.textContent = `Plan: ${p.activity_type} ${mins}`;
-      cell.appendChild(entry);
+      const detail = p.planned_duration_minutes ? `${p.planned_duration_minutes} min` : "";
+      cell.appendChild(makeEntry("planned", p.activity_type, detail));
     }
 
     grid.appendChild(cell);
