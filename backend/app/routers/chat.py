@@ -27,7 +27,7 @@ def post_chat(
 ):
     try:
         reply, plan_changes = ai_coach.handle_chat_message(db, user, payload.message)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    except ai_coach.CoachError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     return schemas.ChatResponse(reply=reply, plan_changes=plan_changes)

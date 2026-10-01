@@ -61,8 +61,13 @@ def login_and_export_session(email: str, password: str) -> str:
     serialized session that can be stored (encrypted) and reused later
     without the password."""
     client = garth.Client()
+
+    def _refuse_mfa():
+        # garth's default prompt is input(), which would block the request.
+        raise GarminAuthError("Garmin accounts with MFA enabled aren't supported yet.")
+
     try:
-        client.login(email, password)
+        client.login(email, password, prompt_mfa=_refuse_mfa)
     except Exception as exc:  # noqa: BLE001 - surface as a domain error
         raise GarminAuthError(f"Garmin login failed: {exc}") from exc
     return _export_session(client)
@@ -79,6 +84,12 @@ def get_authenticated_client(session_data: str) -> Garmin:
 
     api = Garmin()
     api.garth = garth_client
+    # Garmin.login() normally sets this; endpoints like get_sleep_data build
+    # their URL from it. Fetching the profile also validates the session.
+    try:
+        api.display_name = garth_client.profile["displayName"]
+    except Exception as exc:  # noqa: BLE001
+        raise GarminAuthError(f"Stored Garmin session could not be resumed: {exc}") from exc
     return api
 
 

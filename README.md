@@ -7,19 +7,34 @@ upcoming plan (not just suggest changes — it actually rewrites the calendar).
 
 ## Features
 
-- **Login** — simple email/password accounts (JWT sessions).
-- **Calendar** — 4-week view (2 weeks back, 2 weeks ahead) showing completed
-  Garmin activities (type, duration, training effect) and planned upcoming
-  sessions side by side, per day.
-- **Garmin sync** — a "Sync with Garmin" button. First use prompts for your
-  Garmin email/password to establish a session; every sync after that just
-  pulls new activities/sleep.
+- **Login with Garmin** — your Garmin Connect email/password *is* your app
+  login. The first login creates your account; every login refreshes the
+  stored Garmin session and immediately syncs your data (JWT sessions).
+- **Calendar** — Monday–Sunday weeks covering ~2 weeks back and 2 weeks
+  ahead, showing completed Garmin activities (type, duration, training
+  effect) and planned sessions (light blue) per day, with each week's
+  planned vs. done hours in a column on the right.
+- **Plan sessions yourself** — the **+** in the bottom-right of each day
+  opens a small window to plan a swim, ride, run or strength session and its
+  duration. Click a planned session to edit or delete it.
+- **Garmin sync** — runs automatically after login; the "Sync with Garmin"
+  button pulls new activities/sleep on demand. If the Garmin session has
+  expired you're sent back to the login form.
 - **Coach chat** — tell it how a session felt; it has context on what you've
   trained, your sleep, your stated objectives, and can use a tool call to
   create/update/delete sessions on your plan, which then shows up on the
   calendar immediately.
-- **Objectives** — a free-text goal statement (e.g. "half marathon in
-  spring, 3 runs + 2 swims/week") that the coach uses as ongoing context.
+- **Pick your AI** — the ⚙️ Settings menu (top right) lets each user choose
+  the chatbot behind the coach — Claude, ChatGPT, Gemini, Mistral, or **Custom**
+  (any OpenAI- or Anthropic-compatible API URL) — pick a
+  model, and paste their own API key (stored encrypted, never sent back to
+  the browser).
+- **Objectives** — tell the coach about your target event in the chat
+  ("Montreal half marathon on April 20, aiming for 1:45:00") and it records
+  the title, event date and target time as an objective card, with a
+  countdown. You can edit or delete it from the card.
+- **Sleep** — each day shows its Garmin sleep score (top right, coloured
+  good / fair / poor), and each week's column shows the average.
 
 ## Stack
 
@@ -28,8 +43,8 @@ upcoming plan (not just suggest changes — it actually rewrites the calendar).
 | Backend    | Python, FastAPI, SQLAlchemy                                          |
 | Database   | Postgres in production; SQLite automatically for local dev            |
 | Garmin     | unofficial `garminconnect` / `garth` libraries                       |
-| AI         | Anthropic Python SDK, tool use (`update_training_plan`)               |
-| Auth       | bcrypt-hashed passwords, JWT session tokens                          |
+| AI         | Anthropic SDK for Claude; OpenAI SDK for ChatGPT/Gemini/Mistral; tool use (`update_training_plan`) |
+| Auth       | Garmin Connect login (delegated), JWT session tokens                 |
 | Frontend   | plain HTML/CSS/JS, served directly by FastAPI — no build step        |
 | Deployment | one Docker Compose stack (`db` + `backend`), deployable via Portainer |
 
@@ -82,14 +97,10 @@ The first run will:
 
 Then open **http://localhost:8000**.
 
-Everything works out of the box except the coach chat, which needs an
-Anthropic API key. Open `.env`, set:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-and restart `npm start`. Subsequent runs reuse the existing venv and `.env`
+Everything works out of the box. For the coach chat, open ⚙️ Settings in
+the top right, choose a chatbot and paste your API key. (Optionally, set a
+server-wide fallback `ANTHROPIC_API_KEY=sk-ant-...` in `.env` and restart
+`npm start`; users without their own key will then use Claude with it.) Subsequent runs reuse the existing venv and `.env`
 and start in a couple of seconds.
 
 To reset local state (fresh database, fresh generated secrets):
@@ -102,7 +113,7 @@ npm start
 ## Deploying to your server (Docker / Portainer)
 
 1. Copy `.env.example` to `.env` and fill in real values — at minimum
-   `POSTGRES_PASSWORD`, `JWT_SECRET`, `FERNET_KEY`, `ANTHROPIC_API_KEY`.
+   `POSTGRES_PASSWORD`, `JWT_SECRET`, `FERNET_KEY` (`ANTHROPIC_API_KEY` is optional).
    (If you already generated these via `npm start` locally, you can reuse
    that `.env` — see the warning below first.)
 2. From the project root:
@@ -135,15 +146,17 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `POSTGRES_DB`                | docker-compose  | Postgres database name                                               |
 | `JWT_SECRET`                 | backend         | Signs session tokens — **required**                                  |
 | `FERNET_KEY`                 | backend         | Encrypts the stored Garmin session at rest — **required**            |
-| `ANTHROPIC_API_KEY`          | backend         | Enables the coach chat endpoint                                      |
-| `ANTHROPIC_MODEL`            | backend         | Model id for chat (default `claude-sonnet-4-6` — verify before deploying, see below) |
+| `ANTHROPIC_API_KEY`          | backend         | Optional fallback Claude key for users who haven't added their own   |
+| `ANTHROPIC_MODEL`            | backend         | Model used with the fallback key (default `claude-opus-5-5`)         |
 | `GARMIN_SYNC_LOOKBACK_DAYS`  | backend         | How many days of history each sync pulls (default 30)                 |
 | `CORS_ALLOW_ORIGINS`         | backend         | Comma-separated allowed origins, or `*`                              |
 
 ## Data model
 
-- **User** — email, hashed password, encrypted Garmin session token, Garmin
-  account email, free-text objectives.
+- **User** — Garmin account email, encrypted Garmin session token
+  (plus legacy free-text goals, still passed to the coach if present).
+- **Objective** — title, event date, target time; created by the coach's
+  `update_objectives` tool, editable by the user. (`hashed_password` is a legacy column, left empty.)
 - **Activity** — one row per completed Garmin activity: type, start time,
   duration, distance, avg HR, aerobic/anaerobic training effect, calories,
   plus the raw Garmin payload for anything not modeled explicitly.
@@ -151,6 +164,10 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   score, raw payload.
 - **PlannedTraining** — future sessions: date, activity type, planned
   duration, coaching notes, and whether it was set by the AI or manually.
+- **AISettings** — per user: chosen provider, optional model override, and
+  their API key (Fernet-encrypted), plus URL and API format for a custom
+  provider. New nullable columns are added to existing databases on startup
+  (`add_missing_columns` in `database.py`).
 - **ChatMessage** — role (user/assistant), content, timestamp — chat history
   and the context window for the coach.
 
@@ -158,14 +175,16 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 
 | Endpoint                | Method | Notes                                                       |
 |--------------------------|--------|---------------------------------------------------------------|
-| `/api/auth/signup`       | POST   | Create account, returns JWT                                   |
-| `/api/auth/login`        | POST   | Returns JWT                                                    |
-| `/api/garmin/connect`    | POST   | First-time Garmin login; stores encrypted session              |
+| `/api/auth/login`        | POST   | Garmin email/password; creates/updates the user, returns JWT  |
 | `/api/garmin/sync`       | POST   | Pulls recent activities + sleep, deduped by Garmin id/date     |
 | `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day       |
-| `/api/objectives`        | GET/POST | Free-text training goals                                     |
+| `/api/objectives`        | GET    | Objectives (title, event date, target time), set by the coach |
+| `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |
 | `/api/chat`              | POST   | Send a message; may apply plan changes via tool call           |
 | `/api/chat/history`      | GET    | Past chat messages                                             |
+| `/api/ai-settings`       | GET/PUT | Chatbot provider, model, API key (only the last 4 chars are returned), custom URL/format |
+| `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
+| `/api/planned/{id}`      | PATCH/DELETE | Edit or remove a planned session                       |
 
 Interactive API docs are available at `/docs` (Swagger UI) once the app is
 running.
@@ -174,7 +193,8 @@ running.
 
 - Garmin credentials are sent once to log in and are **never stored** —
   only the resulting session token, encrypted with Fernet, is persisted.
-- Passwords are hashed with bcrypt; sessions are signed JWTs.
+- The app has no passwords of its own: login is checked by Garmin, and the
+  password is discarded after use. Sessions are signed JWTs.
 - Using the unofficial `garminconnect`/`garth` library (logging in with your
   real Garmin email/password against reverse-engineered endpoints) is
   against Garmin's ToS, though it's standard practice for self-hosted Garmin
@@ -192,17 +212,16 @@ and falls back to the latter for older library versions. Before relying on
 it in production:
 
 - Confirm a real login actually round-trips a resumable session end to end.
-- Garmin accounts with MFA/2FA enabled aren't handled — `/api/garmin/connect`
-  will just fail with a generic error for those accounts.
+- Garmin accounts with MFA/2FA enabled can't log in yet — `/api/auth/login`
+  returns an "MFA not supported" error for those accounts.
 - The shape of `get_activities_by_date` / `get_sleep_data` responses (field
   names like `activityType.typeKey`, `dailySleepDTO.sleepScores.overall.value`)
   is based on documented/observed `garminconnect` output but should be
   spot-checked against a real payload, since Garmin's undocumented API can
   drift between library versions.
 - Garmin sessions do eventually expire; `/api/garmin/sync` surfaces expiry
-  as a 400 asking the user to reconnect, but there's no proactive refresh.
+  as a 401 and the app sends the user back to the Garmin login, but there's no proactive refresh.
 
-Also double-check `ANTHROPIC_MODEL` (default `claude-sonnet-4-6`, see
-`backend/app/config.py` / `.env.example`) against the current model id in
-the [Anthropic docs](https://docs.anthropic.com/) before deploying — model
-ids are updated over time.
+The default model ids for ChatGPT (`gpt-5`), Gemini (`gemini-2.5-flash`)
+and Mistral (`mistral-large-latest`) live in `backend/app/ai_providers.py`;
+users can type any other model id their provider offers in Settings.

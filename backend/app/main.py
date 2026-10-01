@@ -5,8 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .database import Base, engine
-from .routers import auth, calendar, chat, garmin, objectives
+from .database import Base, add_missing_columns, engine
+from .routers import ai_settings, auth, calendar, chat, garmin, objectives, planned
 
 settings = get_settings()
 
@@ -25,6 +25,7 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    add_missing_columns()
 
 
 app.include_router(auth.router)
@@ -32,6 +33,8 @@ app.include_router(garmin.router)
 app.include_router(calendar.router)
 app.include_router(objectives.router)
 app.include_router(chat.router)
+app.include_router(ai_settings.router)
+app.include_router(planned.router)
 
 
 @app.get("/api/health")

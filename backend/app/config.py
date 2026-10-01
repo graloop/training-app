@@ -16,10 +16,10 @@ class Settings(BaseSettings):
     # Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     fernet_key: str = ""
 
+    # Optional server-wide fallback for users who haven't saved their own key
+    # in the settings menu.
     anthropic_api_key: str = ""
-    # NOTE: confirm this is a live model id in the Anthropic docs before deploying;
-    # the project brief specified this value but model ids are updated over time.
-    anthropic_model: str = "claude-sonnet-4-6"
+    anthropic_model: str = "claude-opus-5-5"
 
     # How many days of history to pull on each Garmin sync.
     garmin_sync_lookback_days: int = 30

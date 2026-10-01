@@ -31,6 +31,7 @@ class User(Base):
     # Garmin password.
     garmin_session_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Legacy free-text goals (pre-structured objectives); still shown to the coach.
     objectives: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -39,6 +40,8 @@ class User(Base):
     sleep_records: Mapped[list["SleepRecord"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     planned_sessions: Mapped[list["PlannedTraining"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    ai_settings: Mapped["AISettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
+    objective_items: Mapped[list["Objective"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Activity(Base):
@@ -110,3 +113,42 @@ class ChatMessage(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
     user: Mapped["User"] = relationship(back_populates="chat_messages")
+
+
+class AISettings(Base):
+    """Which chat provider/model a user picked, and their own API key for it.
+    Kept in its own table so existing databases pick it up via create_all."""
+
+    __tablename__ = "ai_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)  # None = provider default
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet
+    # Only for provider "custom": endpoint and wire format ("openai" | "anthropic").
+    base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    api_format: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="ai_settings")
+
+
+class Objective(Base):
+    """A target event: set by the coach from the conversation, editable by the user."""
+
+    __tablename__ = "objectives"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    event_date: Mapped[datetime.date | None] = mapped_column(nullable=True)
+    target_time: Mapped[str | None] = mapped_column(String(32), nullable=True)  # e.g. "1:45:00"
+
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="objective_items")

@@ -38,7 +38,7 @@ text = text.replace("FERNET_KEY=", f"FERNET_KEY={Fernet.generate_key().decode()}
 path.write_text(text)
 PY
   echo "Generated JWT_SECRET / FERNET_KEY / POSTGRES_PASSWORD in .env."
-  echo "Add your ANTHROPIC_API_KEY to .env for the coach chat to work."
+  echo "Add your AI API key in the app's ⚙️ Settings menu (or ANTHROPIC_API_KEY in .env)."
 fi
 
 set -a
@@ -52,7 +52,7 @@ set +a
 export DATABASE_URL="${DATABASE_URL:-sqlite:///./dev.db}"
 
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  echo "WARNING: ANTHROPIC_API_KEY is not set in .env — everything except the coach chat will work."
+  echo "Note: no server-wide ANTHROPIC_API_KEY in .env — each user adds their own key in the app's ⚙️ Settings menu."
 fi
 
 echo "Starting AI Training Coach at http://localhost:8000"

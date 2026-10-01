@@ -7,26 +7,10 @@ from .. import garmin_client, models, schemas
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
-from ..security import decrypt_text, encrypt_text
+from ..security import decrypt_text
 
 router = APIRouter(prefix="/api/garmin", tags=["garmin"])
 settings = get_settings()
-
-
-@router.post("/connect", status_code=status.HTTP_204_NO_CONTENT)
-def connect(
-    payload: schemas.GarminConnectRequest,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
-):
-    try:
-        session_data = garmin_client.login_and_export_session(payload.garmin_email, payload.garmin_password)
-    except garmin_client.GarminAuthError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    user.garmin_email = payload.garmin_email
-    user.garmin_session_encrypted = encrypt_text(session_data)
-    db.commit()
 
 
 @router.post("/sync", response_model=schemas.GarminSyncResponse)
@@ -36,18 +20,19 @@ def sync(
 ):
     if not user.garmin_session_encrypted:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Garmin is not connected yet. Connect your account first.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No Garmin session stored. Log in again.",
         )
 
-    session_data = decrypt_text(user.garmin_session_encrypted)
-
+    # Logging in is what (re)connects Garmin, so an unusable session is
+    # reported as 401 and the frontend sends the user back to the login form.
     try:
+        session_data = decrypt_text(user.garmin_session_encrypted)
         api = garmin_client.get_authenticated_client(session_data)
-    except garmin_client.GarminAuthError as exc:
+    except (ValueError, garmin_client.GarminAuthError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Garmin session expired, please reconnect: {exc}",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Garmin session expired, please log in again: {exc}",
         ) from exc
 
     lookback_days = settings.garmin_sync_lookback_days

@@ -6,11 +6,6 @@ from pydantic import BaseModel, EmailStr, Field
 
 # --- Auth ---
 
-class SignupRequest(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8)
-
-
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -23,11 +18,6 @@ class TokenResponse(BaseModel):
 
 # --- Garmin ---
 
-class GarminConnectRequest(BaseModel):
-    garmin_email: EmailStr
-    garmin_password: str
-
-
 class GarminSyncResponse(BaseModel):
     activities_synced: int
     sleep_records_synced: int
@@ -36,12 +26,55 @@ class GarminSyncResponse(BaseModel):
 
 # --- Objectives ---
 
-class ObjectivesRequest(BaseModel):
-    text: str
+class ObjectiveOut(BaseModel):
+    id: int
+    title: str
+    event_date: datetime.date | None
+    target_time: str | None
+
+    class Config:
+        from_attributes = True
+
+
+class ObjectiveUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    event_date: datetime.date | None = None
+    target_time: str | None = Field(default=None, max_length=32)
 
 
 class ObjectivesResponse(BaseModel):
-    text: str | None
+    objectives: list[ObjectiveOut]
+
+
+# --- AI settings ---
+
+class AIProviderOut(BaseModel):
+    id: str
+    label: str
+    default_model: str
+    key_url: str
+    custom: bool
+
+
+class AISettingsOut(BaseModel):
+    provider: str
+    model: str  # effective model (the provider default when none was chosen)
+    custom_model: bool
+    has_api_key: bool
+    api_key_hint: str | None  # last 4 characters, never the key itself
+    using_server_key: bool  # no personal key, falling back to the server's Anthropic key
+    base_url: str | None  # custom provider only
+    api_format: str | None  # custom provider only: "openai" | "anthropic"
+    providers: list[AIProviderOut]
+
+
+class AISettingsUpdate(BaseModel):
+    provider: str
+    model: str | None = None  # empty/None = provider default
+    api_key: str | None = None  # None = keep the stored key
+    clear_api_key: bool = False
+    base_url: str | None = None  # required for "custom"
+    api_format: Literal["openai", "anthropic"] | None = None  # "custom" only, default "openai"
 
 
 # --- Calendar ---
@@ -86,6 +119,19 @@ class PlannedTrainingOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PlannedTrainingCreate(BaseModel):
+    date: datetime.date
+    activity_type: str = Field(min_length=1, max_length=64)
+    planned_duration_minutes: float = Field(gt=0, le=24 * 60)
+    notes: str | None = None
+
+
+class PlannedTrainingUpdate(BaseModel):
+    activity_type: str | None = Field(default=None, min_length=1, max_length=64)
+    planned_duration_minutes: float | None = Field(default=None, gt=0, le=24 * 60)
+    notes: str | None = None
 
 
 class CalendarDay(BaseModel):
