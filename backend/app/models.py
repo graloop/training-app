@@ -61,6 +61,7 @@ class Activity(Base):
     aerobic_training_effect: Mapped[float | None] = mapped_column(Float, nullable=True)
     anaerobic_training_effect: Mapped[float | None] = mapped_column(Float, nullable=True)
     calories: Mapped[float | None] = mapped_column(Float, nullable=True)
+    training_load: Mapped[float | None] = mapped_column(Float, nullable=True)  # Garmin "activityTrainingLoad"
     raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="activities")
@@ -79,6 +80,7 @@ class SleepRecord(Base):
     rem_sleep_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     light_sleep_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     sleep_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    resting_heart_rate: Mapped[float | None] = mapped_column(Float, nullable=True)  # bpm, from the sleep payload
     raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="sleep_records")
@@ -152,3 +154,4 @@ class Objective(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     user: Mapped["User"] = relationship(back_populates="objective_items")
+

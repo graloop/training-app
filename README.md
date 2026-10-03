@@ -16,7 +16,9 @@ upcoming plan (not just suggest changes — it actually rewrites the calendar).
   planned vs. done hours in a column on the right.
 - **Plan sessions yourself** — the **+** in the bottom-right of each day
   opens a small window to plan a swim, ride, run or strength session and its
-  duration. Click a planned session to edit or delete it.
+  duration. Click a planned session to edit or delete it. When a planned
+  session is done (same day, same sport, time within 15% of the plan) the
+  two merge into one dark-green "done as planned" entry.
 - **Garmin sync** — runs automatically after login; the "Sync with Garmin"
   button pulls new activities/sleep on demand. If the Garmin session has
   expired you're sent back to the login form.
@@ -24,17 +26,24 @@ upcoming plan (not just suggest changes — it actually rewrites the calendar).
   trained, your sleep, your stated objectives, and can use a tool call to
   create/update/delete sessions on your plan, which then shows up on the
   calendar immediately.
+  Each successful Garmin sync clears the conversation, so it never grows
+  forever (a failed sync keeps it).
 - **Pick your AI** — the ⚙️ Settings menu (top right) lets each user choose
   the chatbot behind the coach — Claude, ChatGPT, Gemini, Mistral, or **Custom**
   (any OpenAI- or Anthropic-compatible API URL) — pick a
   model, and paste their own API key (stored encrypted, never sent back to
-  the browser).
+  the browser). A **Test** button checks the server can reach that AI
+  before you save.
 - **Objectives** — tell the coach about your target event in the chat
   ("Montreal half marathon on April 20, aiming for 1:45:00") and it records
   the title, event date and target time as an objective card, with a
   countdown. You can edit or delete it from the card.
-- **Sleep** — each day shows its Garmin sleep score (top right, coloured
-  good / fair / poor), and each week's column shows the average.
+- **Sleep & recovery** — each day shows its Garmin sleep score (top right,
+  coloured good / fair / poor) and resting heart rate (❤️ bpm); each week's
+  column shows the average sleep score and average resting heart rate.
+- **Training load** — each completed activity shows Garmin's training load
+  next to its duration (e.g. "1 h · load 113"), and each week's column
+  shows the week's total load.
 
 ## Stack
 
@@ -158,10 +167,10 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 - **Objective** — title, event date, target time; created by the coach's
   `update_objectives` tool, editable by the user. (`hashed_password` is a legacy column, left empty.)
 - **Activity** — one row per completed Garmin activity: type, start time,
-  duration, distance, avg HR, aerobic/anaerobic training effect, calories,
+  duration, distance, avg HR, aerobic/anaerobic training effect, training load, calories,
   plus the raw Garmin payload for anything not modeled explicitly.
 - **SleepRecord** — per-night sleep: total/deep/REM/light minutes, sleep
-  score, raw payload.
+  score, resting heart rate, raw payload.
 - **PlannedTraining** — future sessions: date, activity type, planned
   duration, coaching notes, and whether it was set by the AI or manually.
 - **AISettings** — per user: chosen provider, optional model override, and
@@ -176,13 +185,14 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | Endpoint                | Method | Notes                                                       |
 |--------------------------|--------|---------------------------------------------------------------|
 | `/api/auth/login`        | POST   | Garmin email/password; creates/updates the user, returns JWT  |
-| `/api/garmin/sync`       | POST   | Pulls recent activities + sleep, deduped by Garmin id/date     |
+| `/api/garmin/sync`       | POST   | Pulls recent activities + sleep, deduped by Garmin id/date; starts a fresh coach chat |
 | `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day       |
 | `/api/objectives`        | GET    | Objectives (title, event date, target time), set by the coach |
 | `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |
 | `/api/chat`              | POST   | Send a message; may apply plan changes via tool call           |
 | `/api/chat/history`      | GET    | Past chat messages                                             |
 | `/api/ai-settings`       | GET/PUT | Chatbot provider, model, API key (only the last 4 chars are returned), custom URL/format |
+| `/api/ai-settings/test`  | POST   | Send one tiny request with the form's settings (nothing saved) to check the server reaches the AI |
 | `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
 | `/api/planned/{id}`      | PATCH/DELETE | Edit or remove a planned session                       |
 

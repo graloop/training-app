@@ -77,6 +77,14 @@ class AISettingsUpdate(BaseModel):
     api_format: Literal["openai", "anthropic"] | None = None  # "custom" only, default "openai"
 
 
+class AITestResult(BaseModel):
+    ok: bool
+    provider: str  # display label, e.g. "Custom AI (api.example.com)"
+    model: str
+    latency_ms: int
+    reply: str  # first characters of the model's answer
+
+
 # --- Calendar ---
 
 class ActivityOut(BaseModel):
@@ -91,6 +99,7 @@ class ActivityOut(BaseModel):
     aerobic_training_effect: float | None
     anaerobic_training_effect: float | None
     calories: float | None
+    training_load: float | None
 
     class Config:
         from_attributes = True
@@ -104,6 +113,7 @@ class SleepOut(BaseModel):
     rem_sleep_seconds: float | None
     light_sleep_seconds: float | None
     sleep_score: float | None
+    resting_heart_rate: float | None
 
     class Config:
         from_attributes = True

@@ -66,3 +66,26 @@ def test_users_are_isolated(client, auth):
         db.commit()
     other = login(client, email="other@example.com")
     assert client.get("/api/objectives", headers=other).json() == {"objectives": []}
+
+
+def test_frontend_is_revalidated_by_browsers(client):
+    for path in ["/", "/app.js", "/styles.css"]:
+        res = client.get(path)
+        assert res.status_code == 200
+        assert res.headers["cache-control"] == "no-cache"
+    etag = client.get("/app.js").headers["etag"]
+    assert client.get("/app.js", headers={"If-None-Match": etag}).status_code == 304  # unchanged = cheap
+
+
+def test_index_links_versioned_assets(client):
+    import os
+    import re
+
+    from app import main
+
+    html = client.get("/").text
+    for asset in ("app.js", "styles.css"):
+        version = int(os.path.getmtime(os.path.join(main._FRONTEND_DIR, asset)))
+        assert f'"/{asset}?v={version}"' in html
+    assert re.search(r'src="/app\.js\?v=\d+"', client.get("/index.html").text)
+    assert client.get("/app.js?v=123").status_code == 200  # the query string is ignored when serving

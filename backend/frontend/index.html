@@ -33,7 +33,10 @@
           <p class="hint"><span id="ai-key-state"></span> <a id="ai-key-link" target="_blank" rel="noopener">Get a key ↗</a></p>
           <div class="menu-actions">
             <button id="ai-clear" type="button" class="btn-link">Remove key</button>
-            <button id="ai-save" type="button">Save</button>
+            <span class="menu-buttons">
+              <button id="ai-test" type="button" class="btn-ghost" title="Check the server can reach this AI (nothing is saved)">Test</button>
+              <button id="ai-save" type="button">Save</button>
+            </span>
           </div>
           <p id="ai-status" class="status hidden" role="status"></p>
           <hr />
@@ -69,6 +72,7 @@
         <div id="calendar-grid" class="calendar-grid"></div>
       </div>
       <div class="legend">
+        <span class="entry completed">Done as planned</span>
         <span class="entry done">Done (Garmin)</span>
         <span class="entry planned">Planned</span>
       </div>

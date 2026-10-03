@@ -1,9 +1,10 @@
+import time
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import ai_coach, models, schemas
 from ..ai_providers import DEFAULT_PROVIDER, PROVIDERS
 from ..config import get_settings
 from ..database import get_db
@@ -52,12 +53,8 @@ def get_ai_settings(user: models.User = Depends(get_current_user)):
     return _to_out(user.ai_settings)
 
 
-@router.put("", response_model=schemas.AISettingsOut)
-def update_ai_settings(
-    payload: schemas.AISettingsUpdate,
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
-):
+def _validate(payload: schemas.AISettingsUpdate):
+    """(provider, model, base_url) from the form, or a 400 explaining what's missing."""
     if payload.provider not in PROVIDERS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown provider '{payload.provider}'")
     provider = PROVIDERS[payload.provider]
@@ -73,6 +70,50 @@ def update_ai_settings(
             )
         if model is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Custom provider needs a model name")
+    return provider, model, base_url
+
+
+@router.post("/test", response_model=schemas.AITestResult)
+def test_ai_settings(payload: schemas.AISettingsUpdate, user: models.User = Depends(get_current_user)):
+    """Check the server can reach the AI with the settings currently in the form
+    (saved or not). Nothing is saved. An empty key field reuses the saved key
+    when it belongs to the same provider/endpoint."""
+    provider, model, base_url = _validate(payload)
+    saved = user.ai_settings
+    same_endpoint = (
+        saved is not None
+        and saved.provider == provider.id
+        and (not provider.custom or saved.base_url == base_url)
+    )
+    draft = models.AISettings(
+        provider=provider.id,
+        model=model,
+        base_url=base_url if provider.custom else None,
+        api_format=(payload.api_format or "openai") if provider.custom else None,
+        api_key_encrypted=saved.api_key_encrypted if same_endpoint and not payload.clear_api_key else None,
+    )
+    try:
+        resolved, resolved_model, api_key = ai_coach.resolve_settings(draft, (payload.api_key or "").strip() or None)
+        started = time.monotonic()
+        reply = ai_coach.test_connection(resolved, resolved_model, api_key)
+    except ai_coach.CoachError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return schemas.AITestResult(
+        ok=True,
+        provider=resolved.label,
+        model=resolved_model,
+        latency_ms=round((time.monotonic() - started) * 1000),
+        reply=reply[:120],
+    )
+
+
+@router.put("", response_model=schemas.AISettingsOut)
+def update_ai_settings(
+    payload: schemas.AISettingsUpdate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    provider, model, base_url = _validate(payload)
 
     row = user.ai_settings
     if row is None:

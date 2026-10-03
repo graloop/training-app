@@ -200,15 +200,36 @@ async function saveAISettings(body) {
   }
 }
 
-document.getElementById("ai-save").addEventListener("click", () =>
-  saveAISettings({
+function aiFormValues() {
+  return {
     provider: aiProvider.value,
     model: aiModel.value,
     api_key: aiKey.value || null,
     base_url: aiBaseUrl.value,
     api_format: aiFormat.value,
-  })
-);
+  };
+}
+
+document.getElementById("ai-save").addEventListener("click", () => saveAISettings(aiFormValues()));
+
+// Checks what's in the form right now (saved or not) without saving it.
+const aiTest = document.getElementById("ai-test");
+aiTest.addEventListener("click", async () => {
+  aiTest.disabled = true;
+  aiTest.textContent = "Testing…";
+  showStatus(aiStatus, "Contacting the AI…");
+  try {
+    const r = await api("/api/ai-settings/test", { method: "POST", body: JSON.stringify(aiFormValues()) });
+    const reply = r.reply ? ` · replied “${r.reply.length > 40 ? r.reply.slice(0, 40) + "…" : r.reply}”` : "";
+    showStatus(aiStatus, `✓ Reached ${r.provider} · ${r.model} in ${(r.latency_ms / 1000).toFixed(1)} s${reply}`);
+    aiStatus.classList.add("ok");
+  } catch (err) {
+    showStatus(aiStatus, `✗ ${err.message}`, true);
+  } finally {
+    aiTest.disabled = false;
+    aiTest.textContent = "Test";
+  }
+});
 aiKey.addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("ai-save").click();
 });
@@ -260,7 +281,7 @@ function activityIcon(type) {
   return "🏅";
 }
 
-function makeEntry(className, type, detail) {
+function makeEntry(className, type, detail, extra) {
   const entry = document.createElement("div");
   entry.className = `entry ${className}`;
   entry.title = type;
@@ -273,6 +294,12 @@ function makeEntry(className, type, detail) {
   const detailEl = document.createElement("span");
   detailEl.className = "entry-detail";
   detailEl.textContent = detail;
+  if (extra) {
+    const extraEl = document.createElement("span");
+    extraEl.className = "entry-extra";
+    extraEl.textContent = extra;
+    detailEl.appendChild(extraEl);
+  }
   entry.appendChild(detailEl);
 
   return entry;
@@ -324,14 +351,34 @@ function makeSleepBadge(sleep) {
   return badge;
 }
 
+function makeRestingHrBadge(sleep) {
+  if (!sleep || sleep.resting_heart_rate == null) return null;
+  const bpm = Math.round(sleep.resting_heart_rate);
+  const badge = document.createElement("span");
+  badge.className = "rhr-badge";
+  badge.textContent = `❤️ ${bpm}`;
+  badge.title = `Resting heart rate ${bpm} bpm`;
+  return badge;
+}
+
 function renderWeekSummary(week) {
   let plannedMin = 0;
   let doneMin = 0;
   const sleepScores = [];
+  const restingHrs = [];
+  let load = 0;
+  let loadCount = 0;
   for (const day of week) {
     for (const p of day.planned) plannedMin += p.planned_duration_minutes || 0;
-    for (const a of day.activities) doneMin += (a.duration_seconds || 0) / 60;
+    for (const a of day.activities) {
+      doneMin += (a.duration_seconds || 0) / 60;
+      if (a.training_load != null) {
+        load += a.training_load;
+        loadCount += 1;
+      }
+    }
     if (day.sleep && day.sleep.sleep_score != null) sleepScores.push(day.sleep.sleep_score);
+    if (day.sleep && day.sleep.resting_heart_rate != null) restingHrs.push(day.sleep.resting_heart_rate);
   }
 
   const cell = document.createElement("div");
@@ -353,6 +400,18 @@ function renderWeekSummary(week) {
     cell.appendChild(row);
   }
 
+  const loadRow = document.createElement("div");
+  loadRow.className = "week-row load";
+  const loadName = document.createElement("span");
+  loadName.textContent = "Load";
+  const loadValue = document.createElement("strong");
+  loadValue.textContent = loadCount ? String(Math.round(load)) : "—";
+  loadRow.title = loadCount
+    ? `Total Garmin training load from ${loadCount} activit${loadCount > 1 ? "ies" : "y"}`
+    : "No training load this week";
+  loadRow.append(loadName, loadValue);
+  cell.appendChild(loadRow);
+
   const sleepRow = document.createElement("div");
   sleepRow.className = "week-row sleep";
   const sleepName = document.createElement("span");
@@ -370,6 +429,22 @@ function renderWeekSummary(week) {
   sleepRow.append(sleepName, sleepValue);
   cell.appendChild(sleepRow);
 
+  const rhrRow = document.createElement("div");
+  rhrRow.className = "week-row rhr";
+  const rhrName = document.createElement("span");
+  rhrName.textContent = "Resting HR";
+  const rhrValue = document.createElement("strong");
+  if (restingHrs.length) {
+    const avg = Math.round(restingHrs.reduce((a, b) => a + b, 0) / restingHrs.length);
+    rhrValue.textContent = `❤️ ${avg}`;
+    rhrRow.title = `Average resting heart rate over ${restingHrs.length} day${restingHrs.length > 1 ? "s" : ""}: ${avg} bpm`;
+  } else {
+    rhrValue.textContent = "—";
+    rhrRow.title = "No resting heart rate this week";
+  }
+  rhrRow.append(rhrName, rhrValue);
+  cell.appendChild(rhrRow);
+
   if (plannedMin > 0) {
     const pct = Math.round((doneMin / plannedMin) * 100);
     const bar = document.createElement("div");
@@ -381,6 +456,65 @@ function renderWeekSummary(week) {
     cell.appendChild(bar);
   }
   return cell;
+}
+
+// Planned vs. done: same day, same sport, and done time within 15% of the plan.
+const MATCH_TOLERANCE = 0.15;
+
+function sportCategory(type) {
+  const key = (type || "").toLowerCase();
+  if (key.includes("swim")) return "swim";
+  if (key.includes("run")) return "run";
+  if (["cycl", "bik", "ride", "zwift"].some((n) => key.includes(n))) return "bike";
+  if (key.includes("strength")) return "strength";
+  return null;
+}
+
+// Pairs each planned session with the closest same-sport activity of the day
+// that's within tolerance. Returns the pairs plus whatever is left unmatched.
+function matchDay(day) {
+  const activities = [...day.activities];
+  const planned = [];
+  const pairs = [];
+  for (const p of day.planned) {
+    const category = sportCategory(p.activity_type);
+    const plannedMin = p.planned_duration_minutes || 0;
+    let best = null;
+    if (category && plannedMin > 0) {
+      for (const a of activities) {
+        if (sportCategory(a.activity_type) !== category || !a.duration_seconds) continue;
+        const diff = Math.abs(a.duration_seconds / 60 - plannedMin) / plannedMin;
+        if (diff <= MATCH_TOLERANCE && (!best || diff < best.diff)) best = { a, diff };
+      }
+    }
+    if (best) {
+      pairs.push({ planned: p, activity: best.a });
+      activities.splice(activities.indexOf(best.a), 1);
+    } else {
+      planned.push(p);
+    }
+  }
+  return { pairs, activities, planned };
+}
+
+function makeActivityEntry(className, a) {
+  const detail = a.duration_seconds ? fmtHours(a.duration_seconds / 60) : "";
+  const load = a.training_load != null ? Math.round(a.training_load) : null;
+  const entry = makeEntry(className, a.activity_type, detail, load != null ? ` · load ${load}` : "");
+  if (load != null) entry.title = `${sportLabel(a.activity_type)} · ${detail} · training load ${load}`;
+  return entry;
+}
+
+function makeEditable(entry, date, planned) {
+  entry.tabIndex = 0;
+  entry.setAttribute("role", "button");
+  entry.addEventListener("click", () => openPlanDialog(date, planned));
+  entry.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openPlanDialog(date, planned);
+    }
+  });
 }
 
 function renderCalendar(data) {
@@ -407,28 +541,33 @@ function renderCalendar(data) {
       dateEl.className = "day-date";
       dateEl.textContent = fmtDate(day.date);
       head.appendChild(dateEl);
-      const sleepBadge = makeSleepBadge(day.sleep);
-      if (sleepBadge) head.appendChild(sleepBadge);
+      const stats = document.createElement("span");
+      stats.className = "day-stats";
+      for (const badge of [makeSleepBadge(day.sleep), makeRestingHrBadge(day.sleep)]) {
+        if (badge) stats.appendChild(badge);
+      }
+      if (stats.childElementCount) head.appendChild(stats);
       cell.appendChild(head);
 
-      for (const a of day.activities) {
-        const detail = a.duration_seconds ? fmtHours(a.duration_seconds / 60) : "";
-        cell.appendChild(makeEntry("done", a.activity_type, detail));
+      const { pairs, activities, planned } = matchDay(day);
+
+      for (const { planned: p, activity: a } of pairs) {
+        const entry = makeActivityEntry("completed", a);
+        const load = a.training_load != null ? ` · load ${Math.round(a.training_load)}` : "";
+        entry.title =
+          `✓ Done as planned: ${sportLabel(p.activity_type)}, planned ${fmtHours(p.planned_duration_minutes)}, ` +
+          `did ${fmtHours(a.duration_seconds / 60)}${load}. Click to edit the plan.`;
+        makeEditable(entry, day.date, p);
+        cell.appendChild(entry);
       }
 
-      for (const p of day.planned) {
+      for (const a of activities) cell.appendChild(makeActivityEntry("done", a));
+
+      for (const p of planned) {
         const detail = p.planned_duration_minutes ? fmtHours(p.planned_duration_minutes) : "";
         const entry = makeEntry("planned", p.activity_type, detail);
-        entry.tabIndex = 0;
-        entry.setAttribute("role", "button");
         entry.title = `${sportLabel(p.activity_type)} · planned${p.source === "ai" ? " by the coach" : ""}. Click to edit.`;
-        entry.addEventListener("click", () => openPlanDialog(day.date, p));
-        entry.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            openPlanDialog(day.date, p);
-          }
-        });
+        makeEditable(entry, day.date, p);
         cell.appendChild(entry);
       }
 
@@ -561,6 +700,7 @@ const syncBtn = document.getElementById("sync-btn");
 const syncStatus = document.getElementById("sync-status");
 
 function showStatus(el, text, isError = false) {
+  el.classList.remove("ok");
   el.textContent = text;
   el.classList.remove("hidden");
   el.classList.toggle("error", isError);
@@ -576,7 +716,8 @@ async function runSync() {
       syncStatus,
       `Synced ${result.activities_synced} activities and ${result.sleep_records_synced} sleep records.`
     );
-    await loadCalendar();
+    // The server starts a fresh coach conversation on every sync.
+    await Promise.all([loadCalendar(), loadChatHistory()]);
   } catch (err) {
     showStatus(syncStatus, err.message, true);
   } finally {

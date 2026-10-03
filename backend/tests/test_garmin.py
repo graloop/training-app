@@ -38,6 +38,7 @@ def test_sync_stores_and_dedupes(client, auth, monkeypatch):
                 "aerobicTrainingEffect": 3.2,
                 "anaerobicTrainingEffect": 1.1,
                 "calories": 700,
+                "activityTrainingLoad": 112.6,
             },
             {"activityId": 222, "activityType": {"typeKey": "lap_swimming"}},  # no start time -> skipped
         ],
@@ -46,7 +47,8 @@ def test_sync_stores_and_dedupes(client, auth, monkeypatch):
         garmin_client,
         "fetch_sleep",
         lambda api, day: (
-            {"dailySleepDTO": {"sleepTimeSeconds": 28800, "sleepScores": {"overall": {"value": 82}}}}
+            {"dailySleepDTO": {"sleepTimeSeconds": 28800, "sleepScores": {"overall": {"value": 82}}},
+             "restingHeartRate": 47}
             if day == yesterday
             else None
         ),
@@ -65,6 +67,8 @@ def test_sync_stores_and_dedupes(client, auth, monkeypatch):
     assert len(day["activities"]) == 1
     assert day["activities"][0]["activity_type"] == "running"
     assert day["sleep"]["sleep_score"] == 82
+    assert day["sleep"]["resting_heart_rate"] == 47
+    assert day["activities"][0]["training_load"] == 112.6
 
 
 # --- garmin_client against fake garth objects --------------------------------
@@ -101,3 +105,49 @@ def test_mfa_does_not_block_on_stdin(monkeypatch):
         assert "MFA" in str(exc)
     else:
         raise AssertionError("expected GarminAuthError")
+
+
+def _stub_sync(monkeypatch, fail=False):
+    def activities(api, start, end):
+        if fail:
+            raise RuntimeError("Garmin is down")
+        return []
+
+    monkeypatch.setattr(garmin_client, "get_authenticated_client", lambda s: object())
+    monkeypatch.setattr(garmin_client, "fetch_activities", activities)
+    monkeypatch.setattr(garmin_client, "fetch_sleep", lambda api, day: None)
+
+
+def _seed_chat(client, auth, fake_claude):
+    from conftest import text_response
+
+    fake_claude(text_response("hello"))
+    client.post("/api/chat", json={"message": "hi"}, headers=auth)
+    assert len(client.get("/api/chat/history", headers=auth).json()["messages"]) == 2
+
+
+def test_sync_clears_the_chat(client, auth, monkeypatch, fake_claude):
+    _seed_chat(client, auth, fake_claude)
+    _stub_sync(monkeypatch)
+    assert client.post("/api/garmin/sync", headers=auth).status_code == 200
+    assert client.get("/api/chat/history", headers=auth).json()["messages"] == []
+
+
+def test_failed_sync_keeps_the_chat(client, auth, monkeypatch, fake_claude):
+    _seed_chat(client, auth, fake_claude)
+    _stub_sync(monkeypatch, fail=True)
+    assert client.post("/api/garmin/sync", headers=auth).status_code == 502
+    assert len(client.get("/api/chat/history", headers=auth).json()["messages"]) == 2
+
+
+def test_sync_only_clears_own_chat(client, auth, monkeypatch, fake_claude):
+    from conftest import login
+
+    other = login(client, email="other@example.com")
+    from conftest import text_response
+
+    fake_claude(text_response("yo"))
+    client.post("/api/chat", json={"message": "mine"}, headers=other)
+    _stub_sync(monkeypatch)
+    client.post("/api/garmin/sync", headers=auth)
+    assert len(client.get("/api/chat/history", headers=other).json()["messages"]) == 2

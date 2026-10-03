@@ -76,6 +76,7 @@ def sync(
             aerobic_training_effect=raw.get("aerobicTrainingEffect"),
             anaerobic_training_effect=raw.get("anaerobicTrainingEffect"),
             calories=raw.get("calories"),
+            training_load=raw.get("activityTrainingLoad"),
             raw_json=raw,
         )
 
@@ -107,6 +108,7 @@ def sync(
             rem_sleep_seconds=day_dto.get("remSleepSeconds"),
             light_sleep_seconds=day_dto.get("lightSleepSeconds"),
             sleep_score=sleep_score,
+            resting_heart_rate=(raw_sleep or {}).get("restingHeartRate"),
             raw_json=raw_sleep,
         )
 
@@ -123,6 +125,9 @@ def sync(
         sleep_synced += 1
         day += datetime.timedelta(days=1)
 
+    # Each sync starts a fresh coach conversation, so the chat never grows forever.
+    # (Same transaction: a failed sync keeps the chat.)
+    db.query(models.ChatMessage).filter(models.ChatMessage.user_id == user.id).delete()
     db.commit()
 
     return schemas.GarminSyncResponse(

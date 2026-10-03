@@ -127,13 +127,13 @@ def _build_system_prompt(db: Session, user: models.User) -> str:
         mins = round(a.duration_seconds / 60) if a.duration_seconds else None
         return (
             f"- {a.start_time.date()} {a.activity_type}: {mins} min, "
-            f"avg HR {a.avg_hr}, aerobic effect {a.aerobic_training_effect}, "
+            f"avg HR {a.avg_hr}, training load {a.training_load}, aerobic effect {a.aerobic_training_effect}, "
             f"anaerobic effect {a.anaerobic_training_effect}"
         )
 
     def fmt_sleep(s: models.SleepRecord) -> str:
         hours = round(s.total_sleep_seconds / 3600, 1) if s.total_sleep_seconds else None
-        return f"- {s.date}: {hours} h sleep, score {s.sleep_score}"
+        return f"- {s.date}: {hours} h sleep, score {s.sleep_score}, resting HR {s.resting_heart_rate}"
 
     def fmt_planned(p: models.PlannedTraining) -> str:
         return (
@@ -266,7 +266,12 @@ class CoachError(Exception):
 def _resolve_provider(user: models.User) -> tuple[Provider, str, str]:
     """(provider, model, api_key) for this user: their own key from the
     settings menu, else the server-wide Anthropic key if one is configured."""
-    row = user.ai_settings
+    return resolve_settings(user.ai_settings)
+
+
+def resolve_settings(row: models.AISettings | None, api_key: str | None = None) -> tuple[Provider, str, str]:
+    """Same as _resolve_provider for a settings row that may not be saved yet;
+    `api_key` (plaintext) takes precedence over the row's stored key."""
     provider = PROVIDERS.get(row.provider if row else DEFAULT_PROVIDER, PROVIDERS[DEFAULT_PROVIDER])
     if provider.custom:
         if not (row.base_url and row.model):
@@ -278,6 +283,8 @@ def _resolve_provider(user: models.User) -> tuple[Provider, str, str]:
             openai_compatible=row.api_format != "anthropic",
         )
 
+    if api_key:
+        return provider, (row.model or provider.default_model), api_key
     if row and row.api_key_encrypted:
         try:
             api_key = decrypt_text(row.api_key_encrypted)
@@ -482,3 +489,32 @@ def handle_chat_message(db: Session, user: models.User, message_text: str) -> tu
     db.add(models.ChatMessage(user_id=user.id, role="assistant", content=reply_text))
     db.commit()
     return reply_text, plan_changes
+
+
+TEST_TIMEOUT_SECONDS = 20
+TEST_PROMPT = "Connection test from the training app. Reply with just: OK"
+
+
+def test_connection(provider: Provider, model: str, api_key: str) -> str:
+    """One tiny request to check the server can reach the AI with this
+    key/model/URL. Short timeout and no retries so a bad URL fails fast."""
+    if provider.openai_compatible:
+        def run():
+            client = openai.OpenAI(
+                api_key=api_key, base_url=provider.base_url, timeout=TEST_TIMEOUT_SECONDS, max_retries=0
+            )
+            response = client.chat.completions.create(
+                model=model, messages=[{"role": "user", "content": TEST_PROMPT}]
+            )
+            return response.choices[0].message.content or ""
+    else:
+        def run():
+            client = anthropic.Anthropic(
+                api_key=api_key, base_url=provider.base_url, timeout=TEST_TIMEOUT_SECONDS, max_retries=0
+            )
+            response = client.messages.create(
+                model=model, max_tokens=1024, messages=[{"role": "user", "content": TEST_PROMPT}]
+            )
+            return "".join(block.text for block in response.content if block.type == "text")
+
+    return (_call_provider(provider, model, run) or "").strip()

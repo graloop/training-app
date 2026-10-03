@@ -77,6 +77,7 @@ def test_system_prompt_includes_context(client, auth, fake_claude):
     client.post("/api/chat", json={"message": "hello"}, headers=auth)
     system = fake.calls[0]["system"]
     assert "Montreal half, event date 2027-04-20, target time 1:45:00" in system
+    assert "resting HR" not in system  # no sleep rows yet, so nothing to list
     assert [t["name"] for t in fake.calls[0]["tools"]] == ["update_training_plan", "update_objectives"]
     assert datetime.date.today().isoformat() in system
 
