@@ -1,8 +1,8 @@
 {
-  "name": "ai-trainer-with-garmin-data",
+  "name": "training-app",
   "private": true,
   "version": "1.0.0",
-  "description": "Training Coach \u2014 self-hosted Garmin-synced training calendar with admin-created accounts for a few friends.",
+  "description": "Training App \u2014 self-hosted Garmin-synced training calendar with admin-created accounts for a few friends.",
   "scripts": {
     "start": "bash scripts/dev.sh",
     "dev": "bash scripts/dev.sh",

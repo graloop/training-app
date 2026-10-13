@@ -1,4 +1,4 @@
-# Training Coach (Garmin-integrated)
+# Training App (Garmin-integrated)
 
 A self-hosted training calendar for you and a few friends. Each person logs
 in with an account the admin created, connects their own Garmin Connect,

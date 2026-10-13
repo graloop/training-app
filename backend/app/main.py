@@ -13,7 +13,7 @@ from .routers import admin, auth, calendar, garmin, objectives, plan, planned
 settings = get_settings()
 
 docs = {} if settings.enable_api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
-app = FastAPI(title="Training Coach", **docs)
+app = FastAPI(title="Training App", **docs)
 
 if settings.cors_allow_origins.strip():
     origins = ["*"] if settings.cors_allow_origins.strip() == "*" else [

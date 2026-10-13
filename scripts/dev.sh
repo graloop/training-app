@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local dev runner for the Training Coach backend (invoked via `npm start`).
+# Local dev runner for the Training App backend (invoked via `npm start`).
 # Sets up a Python virtualenv, installs deps, generates a local .env on first
 # run, and starts the FastAPI app with SQLite + auto-reload on :8000.
 set -euo pipefail
@@ -62,6 +62,6 @@ elif [ -z "${ADMIN_PASSWORD:-}" ]; then
   echo "Note: ADMIN_PASSWORD is empty in .env, so no admin account is created. Set it and restart."
 fi
 
-echo "Starting Training Coach at http://localhost:8000"
+echo "Starting Training App at http://localhost:8000"
 cd backend
 exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
