@@ -32,7 +32,7 @@ services:
       # SEED_TEST_ACCOUNTS is deliberately not passed: the generic admin/user
       # test logins only exist under `npm start`.
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
-      GARMIN_SYNC_LOOKBACK_DAYS: ${GARMIN_SYNC_LOOKBACK_DAYS:-30}
+      GARMIN_SYNC_LOOKBACK_DAYS: ${GARMIN_SYNC_LOOKBACK_DAYS:-90}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
     ports:
       - "8010:8000"

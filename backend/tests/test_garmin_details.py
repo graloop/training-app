@@ -209,3 +209,276 @@ def test_only_a_batch_per_sync(client, auth, monkeypatch):
     assert sorted(calls["summary"]) == ["1", "2", "3"]  # newest first
     assert client.post("/api/garmin/sync", headers=auth).json()["details_synced"] == 3
     assert client.post("/api/garmin/sync", headers=auth).json()["details_synced"] == 1
+
+
+# --- Daily recovery and load: conversions (all numbers invented) ------------------
+
+
+def test_morning_readiness_is_the_wake_up_reading():
+    entries = [
+        {"inputContext": "UPDATE_REALTIME_VARIABLES", "score": 80, "level": "HIGH", "feedbackShort": "RESTED_AND_READY",
+         "recoveryTime": 500, "timestampLocal": "2026-01-05T21:00:00"},
+        {"inputContext": "AFTER_POST_EXERCISE_RESET", "score": 40, "level": "LOW", "feedbackShort": "LISTEN_TO_YOUR_BODY",
+         "recoveryTime": 1500, "timestampLocal": "2026-01-05T08:00:00"},
+        {"inputContext": "AFTER_WAKEUP_RESET", "score": 66, "level": "MODERATE", "feedbackShort": "WELL_RECOVERED",
+         "recoveryTime": 120, "timestampLocal": "2026-01-05T06:00:00"},
+    ]
+    assert garmin_details.morning_readiness(entries) == {
+        "readiness": 66, "readiness_level": "moderate", "readiness_feedback": "well recovered", "recovery_minutes": 120}
+    # No wake-up reading (watch not worn overnight): the earliest one of the day.
+    assert garmin_details.morning_readiness(entries[:2])["readiness"] == 40
+    assert garmin_details.morning_readiness([]) == {}
+
+
+STATUS = {
+    "mostRecentTrainingStatus": {"latestTrainingStatusData": {
+        "111": {"trainingStatusFeedbackPhrase": "UNPRODUCTIVE_2", "primaryTrainingDevice": False,
+                "acuteTrainingLoadDTO": {"dailyTrainingLoadAcute": 1}},
+        "222": {"trainingStatusFeedbackPhrase": "PRODUCTIVE_3", "primaryTrainingDevice": True,
+                "acuteTrainingLoadDTO": {"dailyTrainingLoadAcute": 600, "dailyTrainingLoadChronic": 500,
+                                         "dailyAcuteChronicWorkloadRatio": 1.2, "acwrStatus": "OPTIMAL"}},
+    }},
+    "mostRecentVO2Max": {"generic": {"vo2MaxPreciseValue": 51.4, "vo2MaxValue": 51.0}},
+    "mostRecentTrainingLoadBalance": {"metricsTrainingLoadBalanceDTOMap": {"222": {
+        "primaryTrainingDevice": True, "trainingBalanceFeedbackPhrase": "AEROBIC_HIGH_SHORTAGE",
+        "monthlyLoadAerobicLow": 1200.4, "monthlyLoadAerobicLowTargetMin": 500, "monthlyLoadAerobicLowTargetMax": 1100,
+        "monthlyLoadAerobicHigh": 300.2, "monthlyLoadAerobicHighTargetMin": 600, "monthlyLoadAerobicHighTargetMax": 1200,
+        "monthlyLoadAnaerobic": 250.0, "monthlyLoadAnaerobicTargetMin": 200, "monthlyLoadAnaerobicTargetMax": 600}}},
+}
+
+
+def test_status_fields_use_the_primary_device():
+    assert garmin_details.status_fields(STATUS) == {
+        "training_status": "productive", "acute_load": 600, "chronic_load": 500, "load_ratio": 1.2,
+        "load_ratio_status": "optimal", "vo2max": 51.4,
+        "load_focus": {"phrase": "aerobic high shortage", "low": 1200, "low_target": [500, 1100], "high": 300,
+                       "high_target": [600, 1200], "anaerobic": 250, "anaerobic_target": [200, 600]},
+    }
+    assert garmin_details.status_fields({}) == {}
+    assert garmin_details.status_fields({"mostRecentTrainingStatus": None, "mostRecentVO2Max": None}) == {}
+
+
+def test_stats_and_weather_fields():
+    assert garmin_details.stats_fields({"averageStressLevel": 30, "bodyBatteryHighestValue": 95,
+                                        "bodyBatteryLowestValue": 20, "totalSteps": 9000}) == {
+        "stress_avg": 30, "body_battery_high": 95, "body_battery_low": 20, "steps": 9000}
+    assert garmin_details.stats_fields({"averageStressLevel": -1})["stress_avg"] is None  # Garmin's "no data"
+    assert garmin_details.weather_fields({"temp": 50, "windSpeed": 10, "relativeHumidity": 60.4}) == {
+        "temp_c": 10, "wind_kmh": 16, "humidity": 60}
+    assert garmin_details.weather_fields({"temp": None}) == {}
+
+
+def test_compact_laps_keep_kind_stroke_and_cadence():
+    laps = [
+        {"distance": 400.0, "duration": 90.0, "intensityType": "ACTIVE", "averageRunCadence": 181.6},
+        {"distance": 200.0, "duration": 80.0, "intensityType": "RECOVERY"},
+        {"distance": 1000.0, "duration": 300.0, "intensityType": "INTERVAL"},  # a manual lap: says nothing
+        {"distance": 100.0, "duration": 95.0, "swimStroke": "BREASTSTROKE", "averageSWOLF": 41.0},
+        {"distance": 0.0, "duration": 20.0, "averageSWOLF": 0.0},
+    ]
+    assert garmin_details.compact_laps(laps) == [
+        {"distance": 400, "duration": 90.0, "cadence": 182, "kind": "active"},
+        {"distance": 200, "duration": 80.0, "kind": "recovery"},
+        {"distance": 1000, "duration": 300.0},
+        {"distance": 100, "duration": 95.0, "stroke": "breaststroke", "swolf": 41},
+        {"distance": 0, "duration": 20.0},
+    ]
+
+
+# --- Daily recovery and load: during a sync ---------------------------------------
+
+
+def _stub_days(monkeypatch, lookback=5, sleep_days=None, refuse=()):
+    """Garmin answering the per-day calls. `refuse` names the calls that raise."""
+    from app.routers import garmin as garmin_router
+
+    calls = {"sleep": [], "readiness": [], "status": [], "stats": [], "weather": []}
+    monkeypatch.setattr(garmin_router.settings, "garmin_sync_lookback_days", lookback)
+    monkeypatch.setattr(garmin_client, "get_authenticated_client", lambda s: object())
+    monkeypatch.setattr(garmin_client, "fetch_activities", lambda api, a, b: [])
+    monkeypatch.setattr(garmin_client, "fetch_profile", lambda api: {})
+
+    def sleep(api, day):
+        calls["sleep"].append(day)
+        if sleep_days is not None and day not in sleep_days:
+            return None
+        return {"dailySleepDTO": {"sleepTimeSeconds": 27000, "sleepScores": {"overall": {"value": 80}}}, "restingHeartRate": 50}
+
+    def make(name, payload):
+        def call(api, day):
+            calls[name].append(day)
+            if name in refuse:
+                raise RuntimeError("429")
+            return payload
+        return call
+
+    monkeypatch.setattr(garmin_client, "fetch_sleep", sleep)
+    monkeypatch.setattr(garmin_client, "fetch_training_readiness", make("readiness", [
+        {"inputContext": "AFTER_WAKEUP_RESET", "score": 66, "level": "MODERATE", "feedbackShort": "WELL_RECOVERED", "recoveryTime": 120}]))
+    monkeypatch.setattr(garmin_client, "fetch_training_status", make("status", STATUS))
+    monkeypatch.setattr(garmin_client, "fetch_daily_stats", make("stats", {"averageStressLevel": 30, "bodyBatteryHighestValue": 95,
+                                                                            "bodyBatteryLowestValue": 20, "totalSteps": 9000}))
+    return calls
+
+
+def _days_ago(n):
+    return TODAY - datetime.timedelta(days=n)
+
+
+def test_sync_stores_sleep_and_recovery_for_each_day(client, auth, monkeypatch):
+    calls = _stub_days(monkeypatch, lookback=5)
+    res = client.post("/api/garmin/sync", headers=auth).json()
+    assert res["days_synced"] == 6 and res["sleep_records_synced"] == 6 and res["more_to_sync"] is False
+    assert calls["sleep"] == [_days_ago(i) for i in range(6)]  # newest first
+    with SessionLocal() as db:
+        rows = {m.date: m for m in db.query(models.DailyMetrics)}
+        day = rows[_days_ago(3)]
+        assert (day.readiness, day.readiness_level, day.training_status) == (66, "moderate", "productive")
+        assert (day.acute_load, day.chronic_load, day.load_ratio, day.stress_avg) == (600, 500, 1.2, 30)
+        assert (day.body_battery_low, day.body_battery_high, day.vo2max) == (20, 95, 51.4)
+        assert day.load_focus["phrase"] == "aerobic high shortage"
+        assert [rows[_days_ago(i)].final for i in range(6)] == [False, False, True, True, True, True]
+        assert db.query(models.SleepRecord).count() == 6
+
+
+def test_later_syncs_only_ask_for_today_and_yesterday(client, auth, monkeypatch):
+    _stub_days(monkeypatch, lookback=5)
+    client.post("/api/garmin/sync", headers=auth)
+    calls = _stub_days(monkeypatch, lookback=5)
+    res = client.post("/api/garmin/sync", headers=auth).json()
+    for name in ("sleep", "readiness", "status", "stats"):
+        assert calls[name] == [TODAY, _days_ago(1)], name  # these two can still change
+    assert res["days_synced"] == 2 and res["more_to_sync"] is False
+    with SessionLocal() as db:
+        assert db.query(models.DailyMetrics).count() == 6 and db.query(models.SleepRecord).count() == 6  # updated, not duplicated
+
+
+def test_a_long_backlog_is_fetched_over_several_syncs(client, auth, monkeypatch):
+    monkeypatch.setattr(garmin_details.sync_days, "__defaults__", (4,))  # 4 days per sync
+    calls = _stub_days(monkeypatch, lookback=9)
+    first = client.post("/api/garmin/sync", headers=auth).json()
+    assert first["days_synced"] == 4 and first["more_to_sync"] is True
+    assert calls["sleep"] == [_days_ago(i) for i in range(4)]
+    second = client.post("/api/garmin/sync", headers=auth).json()
+    assert second["more_to_sync"] is True
+    assert calls["sleep"][4:] == [TODAY, _days_ago(1), _days_ago(4), _days_ago(5)]  # the open days, then older ones
+    third = client.post("/api/garmin/sync", headers=auth).json()
+    fourth = client.post("/api/garmin/sync", headers=auth).json()
+    assert third["more_to_sync"] is True and fourth["more_to_sync"] is False
+    with SessionLocal() as db:
+        assert db.query(models.DailyMetrics).count() == 10
+
+
+def test_a_part_garmin_refuses_is_retried_a_few_times_then_dropped(client, auth, monkeypatch):
+    calls = _stub_days(monkeypatch, lookback=3, refuse=("readiness",))
+    assert client.post("/api/garmin/sync", headers=auth).status_code == 200
+    with SessionLocal() as db:
+        old = db.query(models.DailyMetrics).filter_by(date=_days_ago(3)).one()
+        assert old.readiness is None and old.stress_avg == 30 and old.final is False  # kept what did answer
+    client.post("/api/garmin/sync", headers=auth)
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:
+        assert db.query(models.DailyMetrics).filter_by(date=_days_ago(3)).one().final is True  # gave up after 3 tries
+    asked = len(calls["readiness"])
+    client.post("/api/garmin/sync", headers=auth)
+    assert calls["readiness"][asked:] == [TODAY, _days_ago(1)]  # the old day is left alone now
+
+
+def test_days_without_sleep_data_are_not_asked_again(client, auth, monkeypatch):
+    calls = _stub_days(monkeypatch, lookback=4, sleep_days={_days_ago(1)})
+    res = client.post("/api/garmin/sync", headers=auth).json()
+    assert res["sleep_records_synced"] == 1 and res["days_synced"] == 5
+    client.post("/api/garmin/sync", headers=auth)
+    assert calls["sleep"][5:] == [TODAY, _days_ago(1)]  # the empty nights of 2-4 days ago are settled
+
+
+def test_garmin_down_for_the_day_calls_stops_early_and_keeps_the_sync(client, auth, monkeypatch):
+    calls = _stub_days(monkeypatch, lookback=20, sleep_days=set(), refuse=("readiness", "status", "stats"))
+    res = client.post("/api/garmin/sync", headers=auth)
+    assert res.status_code == 200 and res.json()["more_to_sync"] is True
+    assert len(calls["sleep"]) == garmin_details.GIVE_UP_AFTER_FAILURES
+
+
+def test_sweat_and_weather_for_outdoor_sessions(client, auth, monkeypatch):
+    calls = _stub(monkeypatch, [{**_activity("1", "running"), "startLatitude": 46.0}, _activity("2", "lap_swimming")])
+    monkeypatch.setattr(garmin_client, "fetch_activity_summary",
+                        lambda api, aid: {"summaryDTO": {"directWorkoutRpe": 50, "directWorkoutFeel": 50, "waterEstimated": 800.0}})
+    weather_calls = []
+    monkeypatch.setattr(garmin_client, "fetch_activity_weather",
+                        lambda api, aid: weather_calls.append(aid) or {"temp": 41, "windSpeed": 5, "relativeHumidity": 70})
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:
+        by_id = {a.garmin_activity_id: a for a in db.query(models.Activity)}
+        assert by_id["1"].extras == {"sweat_ml": 800, "temp_c": 5, "wind_kmh": 8, "humidity": 70}
+        assert by_id["2"].extras == {"sweat_ml": 800}  # indoors: no weather asked
+    assert weather_calls == ["1"]
+
+
+# --- Importing older activities ----------------------------------------------------
+
+
+def test_import_history(client, auth, monkeypatch):
+    from app.routers import garmin as garmin_router
+
+    monkeypatch.setattr(garmin_router.settings, "garmin_sync_lookback_days", 90)
+    asked = []
+    old = [_activity("old1", "running", days_ago=200), _activity("old2", "cycling", days_ago=120)]
+
+    def activities(api, start, end):
+        asked.append((start, end))
+        return old
+
+    monkeypatch.setattr(garmin_client, "get_authenticated_client", lambda s: object())
+    monkeypatch.setattr(garmin_client, "fetch_activities", activities)
+    summaries = []
+    monkeypatch.setattr(garmin_client, "fetch_activity_summary", lambda api, aid: summaries.append(aid) or {})
+
+    res = client.post("/api/garmin/import-history", json={"months": 12}, headers=auth)
+    assert res.status_code == 200 and res.json()["activities_imported"] == 2
+    since, until = asked[0]
+    assert until == TODAY - datetime.timedelta(days=90)  # stops where the regular sync begins
+    assert 360 <= (TODAY - since).days <= 370 and res.json()["since"] == since.isoformat()
+    assert summaries == []  # one list, no per-activity requests
+    with SessionLocal() as db:
+        assert db.query(models.Activity).count() == 2
+    assert client.post("/api/garmin/import-history", json={"months": 12}, headers=auth).json()["activities_imported"] == 2
+    with SessionLocal() as db:
+        assert db.query(models.Activity).count() == 2  # importing twice doesn't duplicate
+
+    # Old history isn't queued for effort/feel/laps: that would be hundreds of requests.
+    monkeypatch.setattr(garmin_client, "fetch_activities", lambda api, a, b: [])
+    monkeypatch.setattr(garmin_client, "fetch_sleep", lambda api, d: None)
+    res = client.post("/api/garmin/sync", headers=auth).json()
+    assert summaries == [] and res["details_synced"] == 0
+
+    assert client.post("/api/garmin/import-history", json={"months": 2}, headers=auth).json()["activities_imported"] == 0
+    assert client.post("/api/garmin/import-history", json={"months": 99}, headers=auth).status_code == 422
+
+
+def test_import_history_needs_garmin_and_a_regular_account(client, monkeypatch):
+    from conftest import admin_auth, make_user
+
+    friend = make_user(client, "friend", garmin=False)
+    assert client.post("/api/garmin/import-history", json={"months": 6}, headers=friend).status_code == 409
+    assert client.post("/api/garmin/import-history", json={"months": 6}, headers=admin_auth(client)).status_code == 403
+
+
+def test_details_fetched_by_an_older_version_are_refreshed_once(client, auth, monkeypatch):
+    calls = _stub(monkeypatch, [_activity("1", "running", laps=5)])
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:  # as an older version left it: effort and old-style laps, no extras
+        a = db.query(models.Activity).one()
+        a.extras = None
+        a.laps = [{"distance": 1000, "duration": 240.0}]
+        db.commit()
+    with SessionLocal() as db:
+        assert db.query(models.Activity).filter(models.Activity.extras.is_(None)).count() == 1  # a real NULL, findable
+    before = (len(calls["summary"]), len(calls["laps"]))
+    res = client.post("/api/garmin/sync", headers=auth).json()
+    assert res["details_synced"] == 1
+    assert (len(calls["summary"]), len(calls["laps"])) == (before[0] + 1, before[1] + 1)
+    with SessionLocal() as db:
+        a = db.query(models.Activity).one()
+        assert a.extras == {} and len(a.laps) == 2  # indoors-less stub: no weather, laps re-read in the new format
+    res = client.post("/api/garmin/sync", headers=auth).json()
+    assert res["details_synced"] == 0 and len(calls["summary"]) == before[0] + 1  # and never again after that

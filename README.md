@@ -37,11 +37,20 @@ adjust sessions — it edits the page like you would.
   session is done (same day, same sport, time within 15% of the plan) the
   two merge into one dark-green "done as planned" entry.
 - **Garmin sync** — runs automatically after login; the "Sync with Garmin"
-  button pulls new activities/sleep on demand. Each new activity is also
-  asked once for its perceived effort, feel and laps (up to 40 activities
-  per sync, so a first sync catches up over one or two runs), and your
-  Garmin profile (zones, thresholds, records) is refreshed. None of these
-  extras can fail a sync. If the Garmin session has
+  button (on both tabs) pulls on demand. It looks back 90 days: activities
+  come as one list; sleep, the morning Training Readiness, Training Status
+  (acute vs chronic load, load focus), stress and body battery are fetched
+  per day, and only for days not stored yet (today and yesterday are always
+  refreshed). Each activity is asked once for its perceived effort, feel,
+  laps, weather and sweat loss. The work is done in batches (30 days and 40
+  activities per request) and the page keeps going until nothing is
+  waiting, so a first sync takes a minute or two and later ones a few
+  seconds. Your Garmin profile (zones, thresholds, records) is refreshed
+  each time. None of the extras can fail a sync: what Garmin doesn't answer
+  is asked again next time.
+- **Older history** — *Import older activities* on the Plan page brings in
+  up to 3 years of activities (one list from Garmin), which the log shows as
+  one line of totals per week. If the Garmin session has
   expired the page shows the "Connect your Garmin account" form; you stay
   logged in.
 - **Plan page** — the **Plan** tab is where future weeks get planned, by
@@ -50,12 +59,20 @@ adjust sessions — it edits the page like you would.
   1. **Training log** — the last 2 to 12 weeks as plain text. Per session:
      duration, distance, pace, average HR, load, and the **perceived effort
      and feel you answered on the watch**. In *Full* detail also time in each
-     HR zone, max HR, Garmin's session type, bike power, cadence, climb,
-     interval totals, fastest splits and the **laps** of runs and swims. Per
-     day: sleep score, duration and stages, resting HR, overnight HRV and
-     body battery. Plus weekly totals, your objectives, what is already
-     planned, and an **athlete block from Garmin**: max HR, threshold HR and
-     pace, VO2max, HR zones, race predictions and personal records. An
+     HR zone, max HR, Garmin's session type and training effect, bike power,
+     cadence, climb, weather and sweat loss, interval totals, fastest
+     splits, and the **reps** of interval runs (separated from warm-up and
+     recoveries) or the laps of steady runs and swim sets (with rests, pool
+     length, strokes and SWOLF). Per day: the morning **Training
+     Readiness**, sleep score, duration and stages, resting HR, overnight
+     HRV, stress and body battery. Plus weekly totals, your objectives, what
+     is already planned, an **athlete block from Garmin** (max HR, threshold
+     HR and pace, VO2max, HR zones, race predictions, personal records),
+     Garmin's **training status** (acute vs chronic load, load by intensity
+     against its targets) and **earlier weeks** as one line of totals each,
+     up to a year back. A session shows "effort not answered" when the watch
+     prompt was skipped and "not synced yet" when its details haven't been
+     fetched. An
      **About you** box adds what Garmin doesn't know (availability,
      constraints, injuries, equipment). *Summary* detail keeps one line per
      session. **Copy log for Claude** copies it with the line format, for a
@@ -277,7 +294,7 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `SEED_TEST_ACCOUNTS`         | `npm start` only | `true` (the `npm start` default) creates `admin`/`adminadmin` and `user`/`useruser` for local testing; never passed to Docker, refused on Postgres |
 | `ENABLE_API_DOCS`            | backend         | `true` serves Swagger UI at `/docs` (default `false`)                |
 | `FERNET_KEY`                 | backend         | Encrypts the stored Garmin session at rest — **required**            |
-| `GARMIN_SYNC_LOOKBACK_DAYS`  | backend         | How many days of history each sync pulls (default 30)                 |
+| `GARMIN_SYNC_LOOKBACK_DAYS`  | backend         | How far back a sync looks (default 90); only missing days are requested |
 | `CORS_ALLOW_ORIGINS`         | backend         | Empty = same-origin only (default); comma-separated origins, or `*`  |
 
 ## Data model
@@ -294,11 +311,14 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   usernames can't fill the database.
 - **Objective** — title, event date, target time, notes; added and edited on
   the page.
+- **DailyMetrics** — per day: morning Training Readiness, Garmin's training
+  status, acute and chronic load and their ratio, load by intensity, VO2max,
+  stress and body battery.
 - **PlanDraft** — one per user: the weeks being planned, the session lines as
   typed and the block notes. Not on the calendar until confirmed.
 - **Activity** — one row per completed Garmin activity: type, start time,
   duration, distance, avg HR, aerobic/anaerobic training effect, training load, calories,
-  perceived effort (1-10) and feel, the laps of runs and swims,
+  perceived effort (1-10) and feel, the laps of runs and swims, weather and sweat loss,
   plus the raw Garmin payload for anything not modeled explicitly.
 - **SleepRecord** — per-night sleep: total/deep/REM/light minutes, sleep
   score, resting heart rate, raw payload.
@@ -319,7 +339,8 @@ New nullable columns are added to existing databases on startup
 | `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin / delete user and their data (`?confirm=<username>` required) |
 | `/api/admin/activity`    | GET    | Admin: logins and failed attempts per day (`?days=7&tz_offset=`), totals, recent connections |
 | `/api/garmin/connect`    | POST/DELETE | Link your Garmin (email/password sent once to Garmin) / unlink |
-| `/api/garmin/sync`       | POST   | Pulls recent activities + sleep, deduped by Garmin id/date; 409 = connect Garmin first |
+| `/api/garmin/sync`       | POST   | One batch: activities, then missing days (sleep, readiness, status, stress) and activity details; `more_to_sync` says to call again; 409 = connect Garmin first |
+| `/api/garmin/import-history` | POST | `{"months": 12}`: older activities, for the long-term weekly totals |
 | `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day       |
 | `/api/objectives`        | GET/POST | List / add objectives (title, event date, target time)      |
 | `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |

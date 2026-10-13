@@ -118,6 +118,17 @@ class GarminSyncResponse(BaseModel):
     sleep_records_synced: int
     lookback_days: int
     details_synced: int = 0  # activities whose effort/feel/laps were fetched this time
+    days_synced: int = 0  # days whose sleep and recovery data were fetched this time
+    more_to_sync: bool = False  # older days or activity details are still waiting: sync again
+
+
+class HistoryImportRequest(BaseModel):
+    months: int = Field(default=12, ge=1, le=36)
+
+
+class HistoryImportResponse(BaseModel):
+    activities_imported: int
+    since: datetime.date
 
 
 # --- Objectives ---

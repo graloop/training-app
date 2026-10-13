@@ -143,3 +143,19 @@ def fetch_profile(api: Garmin) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             result[name] = None
     return result
+
+
+def fetch_training_readiness(api: Garmin, day: datetime.date) -> list[dict[str, Any]]:
+    return api.get_training_readiness(day.isoformat()) or []
+
+
+def fetch_training_status(api: Garmin, day: datetime.date) -> dict[str, Any]:
+    return api.get_training_status(day.isoformat()) or {}
+
+
+def fetch_daily_stats(api: Garmin, day: datetime.date) -> dict[str, Any]:
+    return api.get_stats(day.isoformat()) or {}
+
+
+def fetch_activity_weather(api: Garmin, activity_id: str) -> dict[str, Any]:
+    return api.get_activity_weather(activity_id) or {}

@@ -753,6 +753,7 @@ planDialog.addEventListener("click", (e) => {
 // --- Garmin sync ---
 
 const syncBtn = document.getElementById("sync-btn");
+const logSyncBtn = document.getElementById("log-sync");
 const syncStatus = document.getElementById("sync-status");
 
 function showStatus(el, text, isError = false) {
@@ -763,31 +764,56 @@ function showStatus(el, text, isError = false) {
   el.classList.toggle("status", !isError);
 }
 
-async function runSync() {
-  syncBtn.disabled = true;
-  showStatus(syncStatus, "Syncing with Garmin...");
+// A first sync has weeks of sleep, recovery data and session details to fetch.
+// The server does it in batches; keep going until nothing is waiting.
+const MAX_SYNC_ROUNDS = 8;
+let syncing = false;
+
+async function runSync(statusEl = syncStatus) {
+  if (!(statusEl instanceof Element)) statusEl = syncStatus; // called as a click handler
+  if (syncing) return;
+  syncing = true;
+  for (const btn of [syncBtn, logSyncBtn]) btn.disabled = true;
+  const totals = { activities: 0, days: 0, details: 0 };
+  let result = null;
   try {
-    const result = await api("/api/garmin/sync", { method: "POST" });
+    for (let round = 1; round <= MAX_SYNC_ROUNDS; round++) {
+      showStatus(
+        statusEl,
+        round === 1 ? "Syncing with Garmin…" : `Fetching older days and session details (step ${round})…`
+      );
+      result = await api("/api/garmin/sync", { method: "POST" });
+      totals.activities = Math.max(totals.activities, result.activities_synced);
+      totals.days += result.days_synced;
+      totals.details += result.details_synced;
+      await loadCalendar();
+      if (currentTab === "plan") await loadLog();
+      if (!result.more_to_sync) break;
+    }
     showStatus(
-      syncStatus,
-      `Synced ${result.activities_synced} activities and ${result.sleep_records_synced} sleep records` +
-        (result.details_synced ? `, with effort, feel and laps for ${result.details_synced}.` : ".")
+      statusEl,
+      `Synced ${totals.activities} ${totals.activities === 1 ? "activity" : "activities"}, ` +
+        `${plural(totals.days, "day")} of sleep and recovery` +
+        (totals.details ? `, effort, feel and laps for ${plural(totals.details, "session")}` : "") +
+        (result.more_to_sync ? ". Older data is still waiting: sync again to continue." : ".")
     );
-    await loadCalendar();
-    if (currentTab === "plan") await loadLog();
+    if (!result.more_to_sync) statusEl.classList.add("ok");
   } catch (err) {
     if (err.status === 409) {
-      syncStatus.classList.add("hidden");
+      statusEl.classList.add("hidden");
+      showTab("calendar", { load: false });
       showGarminConnect(err.message);
-    } else {
-      showStatus(syncStatus, err.message, true);
+    } else if (err.status !== 401) {
+      showStatus(statusEl, err.message, true);
     }
   } finally {
+    syncing = false;
+    logSyncBtn.disabled = false;
     syncBtn.disabled = !(me && me.garmin_connected);
   }
 }
 
-syncBtn.addEventListener("click", runSync);
+syncBtn.addEventListener("click", () => runSync(syncStatus));
 
 // --- Objectives (added and edited here) ---
 
@@ -1258,7 +1284,7 @@ async function saveDraft({ quiet = false } = {}) {
 }
 
 async function loadPlanPage() {
-  for (const el of [draftStatus, confirmStatus, logStatus, aboutStatus]) el.classList.add("hidden");
+  for (const el of [draftStatus, confirmStatus, logStatus, aboutStatus, importStatus]) el.classList.add("hidden");
   confirmView.classList.add("hidden");
   try {
     const [draft, about] = await Promise.all([
@@ -1275,6 +1301,30 @@ async function loadPlanPage() {
 
 logWeeks.addEventListener("change", loadLog);
 logDetail.addEventListener("change", loadLog);
+logSyncBtn.addEventListener("click", () => runSync(logStatus));
+
+// Older activities come as one list from Garmin: enough for the long-term weekly totals.
+const importBtn = document.getElementById("import-btn");
+const importStatus = document.getElementById("import-status");
+importBtn.addEventListener("click", async () => {
+  importBtn.disabled = true;
+  showStatus(importStatus, "Asking Garmin for your older activities…");
+  try {
+    const months = Number(document.getElementById("import-months").value);
+    const result = await api("/api/garmin/import-history", { method: "POST", body: JSON.stringify({ months }) });
+    showStatus(
+      importStatus,
+      `Imported ${result.activities_imported} older ${result.activities_imported === 1 ? "activity" : "activities"} back to ` +
+        `${fmtLongDate(result.since)}. They are in the log under "Earlier weeks".`
+    );
+    importStatus.classList.add("ok");
+    await loadLog();
+  } catch (err) {
+    if (err.status !== 401) showStatus(importStatus, err.message, true);
+  } finally {
+    importBtn.disabled = false;
+  }
+});
 
 // "About you" is saved on its own and shows up in the log.
 async function saveAbout() {

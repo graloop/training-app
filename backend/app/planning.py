@@ -92,7 +92,10 @@ def _fmt_effort(a: models.Activity) -> str:
         parts.append(f"effort {a.perceived_effort}/10")
     if a.feel is not None:
         parts.append(f"felt {FEEL_WORDS.get(a.feel, f'{a.feel}/100')}")
-    return ", ".join(parts)
+    if parts:
+        return ", ".join(parts)
+    # Nothing to show: a skipped prompt on the watch, or details not fetched yet.
+    return "effort not answered" if a.details_synced_at else "effort not synced yet"
 
 
 def _fmt_seconds(seconds: float) -> str:
@@ -102,14 +105,67 @@ def _fmt_seconds(seconds: float) -> str:
     return f"{total // 60}:{total % 60:02d}"
 
 
-def _fmt_lap(lap: dict, sport: str) -> str | None:
-    metres, seconds = lap.get("distance") or 0, lap.get("duration") or 0
-    if metres < 20 or seconds < 5:
-        return None  # a pause or a rest at the wall
+def _is_real_lap(lap: dict) -> bool:
+    return (lap.get("distance") or 0) >= 20 and (lap.get("duration") or 0) >= 5  # not a pause or a rest at the wall
+
+
+def _fmt_lap(lap: dict, sport: str, rep: bool = False) -> str:
+    metres, seconds = lap["distance"], lap["duration"]
     distance = f"{metres / 1000:.2f} km" if sport == "run" and metres >= 1000 else f"{round(metres)} m"
-    pace = _fmt_pace(seconds / 60 / (metres / 100)) + " /100 m" if sport == "swim" else _fmt_pace(seconds / 60 / (metres / 1000)) + " /km"
-    hr = f", HR {round(lap['avg_hr'])}" if lap.get("avg_hr") else ""
-    return f"{distance} {_fmt_seconds(seconds)} ({pace}{hr})"
+    extra = [_fmt_pace(seconds / 60 / (metres / 100)) + " /100 m" if sport == "swim" else _fmt_pace(seconds / 60 / (metres / 1000)) + " /km"]
+    if lap.get("avg_hr"):
+        extra.append(f"HR {round(lap['avg_hr'])}" + (f" max {round(lap['max_hr'])}" if rep and lap.get("max_hr") else ""))
+    if rep and lap.get("cadence"):
+        extra.append(f"{round(lap['cadence'])} spm")
+    if sport == "swim":
+        if lap.get("stroke") and lap["stroke"] not in ("mixed", "freestyle"):
+            extra.append(lap["stroke"])
+        if lap.get("swolf"):
+            extra.append(f"swolf {round(lap['swolf'])}")
+    return f"{distance} {_fmt_seconds(seconds)} ({', '.join(extra)})"
+
+
+def _work_laps(laps: list[dict], sport: str) -> list[dict] | None:
+    """The reps of an interval session, or None when the laps are all alike.
+    Structured workouts say which laps are work; with manual laps the reps are
+    the clearly faster ones (at least 25% faster than the slowest)."""
+    if any(lap.get("kind") for lap in laps):
+        work = [lap for lap in laps if lap.get("kind") == "active"]
+        return work if 0 < len(work) < len(laps) else None
+    if sport != "run" or len(laps) < 4:
+        return None
+    speeds = [lap["distance"] / lap["duration"] for lap in laps]
+    if max(speeds) < 1.25 * min(speeds):
+        return None
+    cut = (max(speeds) + min(speeds)) / 2
+    return [lap for lap, speed in zip(laps, speeds) if speed > cut]
+
+
+def _lap_lines(a: models.Activity, sport: str) -> list[str]:
+    all_laps = a.laps or []
+    laps = [lap for lap in all_laps if _is_real_lap(lap)]
+    if len(laps) < 2:
+        return []
+    work = _work_laps(laps, sport)
+    if work:
+        shown = [_fmt_lap(lap, sport, rep=True) for lap in work[:MAX_LAPS_SHOWN]]
+        easy = [lap for lap in laps if lap not in work]
+        metres, seconds = sum(lap["distance"] for lap in easy), sum(lap["duration"] for lap in easy)
+        lines = ["reps: " + " | ".join(shown) + (f" | +{len(work) - len(shown)} more" if len(work) > len(shown) else "")]
+        if easy and metres:
+            lines.append(f"other laps (warm-up, recoveries, cool-down): {len(easy)}, {metres / 1000:.2f} km in "
+                         f"{_fmt_seconds(seconds)} ({_fmt_pace(seconds / 60 / (metres / 1000))} /km)")
+        return lines
+    shown = []
+    for index, lap in enumerate(all_laps):
+        if not _is_real_lap(lap):
+            continue
+        text = _fmt_lap(lap, sport)
+        if sport == "swim" and index + 1 < len(all_laps) and not _is_real_lap(all_laps[index + 1]) and (all_laps[index + 1].get("duration") or 0) >= 5:
+            text += f" +{_fmt_seconds(all_laps[index + 1]['duration'])} rest"
+        shown.append(text)
+    more = f" | +{len(shown) - MAX_LAPS_SHOWN} more" if len(shown) > MAX_LAPS_SHOWN else ""
+    return ["laps: " + " | ".join(shown[:MAX_LAPS_SHOWN]) + more]
 
 
 def _detail_lines(a: models.Activity) -> list[str]:
@@ -126,7 +182,11 @@ def _detail_lines(a: models.Activity) -> list[str]:
         body.append("HR zones " + " · ".join(f"Z{i} {round(s / 60)}" for i, s in enumerate(zones, start=1)) + " min")
     label = raw.get("trainingEffectLabel")
     if label and label != "UNKNOWN":
-        body.append(f"{_EFFECT_WORDS.get(label, label.lower().replace('_', ' '))} session")
+        effect = f"{_EFFECT_WORDS.get(label, label.lower().replace('_', ' '))} session"
+        if a.aerobic_training_effect is not None:
+            effect += f" (training effect {a.aerobic_training_effect:.1f} aerobic"
+            effect += f", {a.anaerobic_training_effect:.1f} anaerobic)" if a.anaerobic_training_effect is not None else ")"
+        body.append(effect)
     if raw.get("differenceBodyBattery"):
         body.append(f"body battery {raw['differenceBodyBattery']:+d}")
     if body:
@@ -153,8 +213,31 @@ def _detail_lines(a: models.Activity) -> list[str]:
                 best.append(f"{name} {_fmt_seconds(seconds)}")
         if best:
             mechanics.append("fastest " + ", ".join(best))
+    if sport == "swim":
+        factor = (raw.get("unitOfPoolLength") or {}).get("factor") or 100
+        if raw.get("poolLength"):
+            mechanics.append(f"pool {raw['poolLength'] / factor:g} m")
+        if raw.get("activeLengths"):
+            mechanics.append(f"{round(raw['activeLengths'])} lengths")
+        if raw.get("avgStrokes"):
+            mechanics.append(f"{raw['avgStrokes']:.1f} strokes/length")
+        if raw.get("averageSwolf"):
+            mechanics.append(f"SWOLF {round(raw['averageSwolf'])}")
     if mechanics:
         lines.append(" · ".join(mechanics))
+
+    extras = a.extras or {}
+    conditions = []
+    if extras.get("temp_c") is not None:
+        conditions.append(f"{extras['temp_c']} °C")
+    if extras.get("wind_kmh"):
+        conditions.append(f"wind {extras['wind_kmh']} km/h")
+    if extras.get("humidity"):
+        conditions.append(f"humidity {extras['humidity']}%")
+    if extras.get("sweat_ml"):
+        conditions.append(f"estimated sweat loss {extras['sweat_ml'] / 1000:.1f} L")
+    if conditions:
+        lines.append("conditions: " + " · ".join(conditions))
 
     splits = {s.get("splitType"): s for s in raw.get("splitSummaries") or []}
     work = splits.get("INTERVAL_ACTIVE")
@@ -166,13 +249,7 @@ def _detail_lines(a: models.Activity) -> list[str]:
             text += f", recoveries {_fmt_seconds(rest['duration'])} in total"
         lines.append(text)
 
-    laps = [_fmt_lap(lap, sport) for lap in a.laps or []]
-    laps = [lap for lap in laps if lap]
-    if len(laps) > 1:
-        shown = laps[:MAX_LAPS_SHOWN]
-        more = f" | +{len(laps) - len(shown)} more" if len(laps) > len(shown) else ""
-        lines.append("laps: " + " | ".join(shown) + more)
-    return lines
+    return lines + _lap_lines(a, sport)
 
 
 def _fmt_night(night: models.SleepRecord | None, full: bool) -> str:
@@ -202,11 +279,95 @@ def _fmt_night(night: models.SleepRecord | None, full: bool) -> str:
     return "".join(f" · {p}" for p in parts)
 
 
+def _fmt_day_label(day: datetime.date, night: models.SleepRecord | None, metrics: "models.DailyMetrics | None", full: bool) -> str:
+    label = fmt_day(day)
+    if metrics is not None and metrics.readiness is not None:
+        label += f" · readiness {metrics.readiness}" + (f" {metrics.readiness_level}" if full and metrics.readiness_level else "")
+    label += _fmt_night(night, full)
+    if full and metrics is not None:
+        if metrics.stress_avg is not None:
+            label += f" · stress {metrics.stress_avg}"
+        if metrics.body_battery_low is not None and metrics.body_battery_high is not None:
+            label += f" · day battery {metrics.body_battery_low}–{metrics.body_battery_high}"
+    return label
+
+
+def _fmt_load(m: "models.DailyMetrics") -> str:
+    text = f"acute load {round(m.acute_load)} (7 days)"
+    if m.chronic_load:
+        text += f" vs chronic {round(m.chronic_load)} (4 weeks)"
+    if m.load_ratio is not None:
+        text += f": ratio {m.load_ratio:.1f}" + (f", {m.load_ratio_status}" if m.load_ratio_status else "")
+    return text
+
+
+def _status_lines(latest: "models.DailyMetrics | None") -> list[str]:
+    """Garmin's own verdict on the training: status, acute vs chronic load, load focus."""
+    if latest is None:
+        return ["- nothing from Garmin yet: press Sync with Garmin"]
+    facts = []
+    if latest.training_status:
+        facts.append(latest.training_status)
+    if latest.acute_load is not None:
+        facts.append(_fmt_load(latest))
+    if latest.vo2max:
+        facts.append(f"VO2max {latest.vo2max:.1f}")
+    lines = [f"- as of {fmt_day(latest.date)}: " + " · ".join(facts)] if facts else []
+    focus = latest.load_focus or {}
+    parts = []
+    for key, name in (("low", "low aerobic"), ("high", "high aerobic"), ("anaerobic", "anaerobic")):
+        if key in focus:
+            target = focus.get(f"{key}_target")
+            parts.append(f"{name} {focus[key]}" + (f" (target {target[0]}–{target[1]})" if target else ""))
+    if parts:
+        lines.append("- load by intensity over 4 weeks: " + " · ".join(parts) + (f" → {focus['phrase']}" if focus.get("phrase") else ""))
+    return lines or ["- nothing from Garmin yet: press Sync with Garmin"]
+
+
+MAX_EARLIER_WEEKS = 52
+
+
+def _earlier_weeks(db: Session, user: models.User, start: datetime.date) -> list[str]:
+    """One line per week before the detailed part, up to a year back: the long-term picture."""
+    oldest = start - datetime.timedelta(weeks=MAX_EARLIER_WEEKS)
+    rows = (
+        db.query(models.Activity.start_time, models.Activity.activity_type, models.Activity.duration_seconds,
+                 models.Activity.training_load)
+        .filter(
+            models.Activity.user_id == user.id,
+            models.Activity.start_time >= datetime.datetime.combine(oldest, datetime.time.min),
+            models.Activity.start_time < datetime.datetime.combine(start, datetime.time.min),
+        )
+        .all()
+    )
+    if not rows:
+        return ['- no earlier activities stored ("Import older activities" adds up to 3 years)']
+    weeks: dict[datetime.date, dict] = {}
+    for start_time, activity_type, seconds, load in rows:
+        week = weeks.setdefault(monday_of(start_time.date()), {"sports": {s: 0.0 for s in SPORTS}, "count": 0, "load": 0.0})
+        week["sports"][sport_of(activity_type)] += (seconds or 0) / 60
+        week["count"] += 1
+        week["load"] += load or 0
+    lines = []
+    week_start = min(weeks)
+    while week_start < start:
+        week = weeks.get(week_start)
+        label = f"Week of {MONTH_NAMES[week_start.month - 1]} {week_start.day}, {week_start.year}"
+        if week is None:
+            lines.append(f"{label} · no training recorded")
+        else:
+            lines.append(f"{label} · {fmt_minutes(sum(week['sports'].values()))} ({_split(week['sports'])}) · "
+                         f"{week['count']} session{'s' if week['count'] != 1 else ''}"
+                         + (f" · load {round(week['load'])}" if week["load"] else ""))
+        week_start += datetime.timedelta(days=7)
+    return lines
+
+
 def _athlete_lines(user: models.User) -> list[str]:
     """Zones, thresholds, records and predictions as Garmin has them."""
     profile = user.garmin_profile or {}
     if not profile:
-        return ["- nothing from Garmin yet (it arrives with the next sync)"]
+        return ["- nothing from Garmin yet: press Sync with Garmin"]
     lines = []
     facts = []
     for key, text in (("max_hr", "max HR {}"), ("lactate_threshold_hr", "threshold HR {}"), ("vo2max_running", "VO2max (run) {}"),
@@ -310,6 +471,25 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
         .order_by(models.Objective.event_date.is_(None), models.Objective.event_date)
         .all()
     )
+    daily = {
+        m.date: m
+        for m in db.query(models.DailyMetrics).filter(
+            models.DailyMetrics.user_id == user.id, models.DailyMetrics.date >= start, models.DailyMetrics.date <= today
+        )
+    }
+    latest_status = (
+        db.query(models.DailyMetrics)
+        .filter(models.DailyMetrics.user_id == user.id, models.DailyMetrics.date <= today,
+                models.DailyMetrics.acute_load.is_not(None))
+        .order_by(models.DailyMetrics.date.desc())
+        .first()
+    )
+    # Where this account's Garmin data begins: earlier days are "not synced", not "no training".
+    first_activity = db.query(models.Activity.start_time).filter(models.Activity.user_id == user.id).order_by(models.Activity.start_time).first()
+    first_night = db.query(models.SleepRecord.date).filter(models.SleepRecord.user_id == user.id).order_by(models.SleepRecord.date).first()
+    starts = [d for d in (first_activity[0].date() if first_activity else None, first_night[0] if first_night else None) if d]
+    data_start = min(starts) if starts else None
+    unsynced = sum(1 for a in activities if a.details_synced_at is None)
 
     acts_by_day: dict[datetime.date, list[models.Activity]] = {}
     for a in activities:
@@ -323,10 +503,12 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
         f"Today is {DAY_NAMES[today.weekday()]} {MONTH_NAMES[today.month - 1]} {today.day}, {today.year}. "
         f"Covers {fmt_day(start)} to {fmt_day(today)} ({weeks} week{'s' if weeks != 1 else ''}), from Garmin.",
         "Times are h:mm. \"plan\" lines are what was planned for that day. Effort (1-10) and \"felt\" are what "
-        "the athlete answered on the watch after the session.",
-        "",
-        "OBJECTIVES",
+        "the athlete answered on the watch after the session; \"effort not answered\" means the prompt was skipped.",
     ]
+    if unsynced:
+        lines.append(f"NOTE: {unsynced} session{'s' if unsynced != 1 else ''} below still wait{'s' if unsynced == 1 else ''} "
+                     "for effort, feel, laps and weather from Garmin (\"effort not synced yet\"): press Sync with Garmin.")
+    lines += ["", "OBJECTIVES"]
     if objectives:
         for o in objectives:
             when = f"{o.event_date.isoformat()} ({(o.event_date - today).days} days away)" if o.event_date else "no date"
@@ -337,12 +519,20 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
         lines.append("- none yet (add them under Objectives)")
 
     lines += ["", "ATHLETE"] + _athlete_lines(user)
+    lines += ["", "TRAINING STATUS (Garmin)"] + _status_lines(latest_status)
     lines += ["", "ABOUT THE ATHLETE (their own notes)"]
     lines += [line.rstrip() for line in user.athlete_notes.strip().splitlines()] if (user.athlete_notes or "").strip() else ["- nothing written yet"]
+
+    lines += ["", "EARLIER WEEKS (totals only)"] + _earlier_weeks(db, user, start)
 
     week_start = start
     while week_start <= today:
         days = [week_start + datetime.timedelta(days=i) for i in range(7)]
+        if data_start is None or days[-1] < data_start:
+            lines += ["", f"WEEK OF {fmt_day(week_start).upper()} · not synced"
+                      + (f" (this account's Garmin data starts {fmt_day(data_start)})" if data_start else " (no Garmin data yet)")]
+            week_start += datetime.timedelta(days=7)
+            continue
         done = {s: 0.0 for s in SPORTS}
         planned_min = 0.0
         load = 0.0
@@ -368,16 +558,34 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
             header += f" · sleep avg {round(sum(scores) / len(scores))}"
         if rhrs:
             header += f" · resting HR avg {round(sum(rhrs) / len(rhrs))}"
+        week_metrics = [daily[d] for d in days if d in daily]
+        ready = [m.readiness for m in week_metrics if m.readiness is not None]
+        if ready:
+            header += f" · readiness avg {round(sum(ready) / len(ready))}"
         if week_start == monday_of(today):
             header += " · in progress"
         lines += ["", header]
+        if full:
+            recovery = []
+            stress = [m.stress_avg for m in week_metrics if m.stress_avg is not None]
+            if stress:
+                recovery.append(f"stress avg {round(sum(stress) / len(stress))}")
+            loaded = [m for m in week_metrics if m.acute_load is not None]
+            if loaded:
+                recovery.append(f"at week end {_fmt_load(loaded[-1])}")
+                if loaded[-1].training_status:
+                    recovery.append(f"Garmin status {loaded[-1].training_status}")
+            if recovery:
+                lines.append("  " + " · ".join(recovery))
 
         for day in days:
             if day > today:
                 break
+            if day < data_start:
+                continue  # before this account's Garmin data starts
             day_acts = acts_by_day.get(day, [])
             day_plans = plans_by_day.get(day, [])
-            label = fmt_day(day) + _fmt_night(sleep.get(day), full)
+            label = _fmt_day_label(day, sleep.get(day), daily.get(day), full)
             if not day_acts and not day_plans:
                 lines.append(f"{label} · no training")
                 continue

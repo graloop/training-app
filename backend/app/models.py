@@ -41,7 +41,7 @@ class User(Base):
 
     # Zones, thresholds, records and race predictions as Garmin has them,
     # refreshed on each sync (see garmin_details.normalize_profile).
-    garmin_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    garmin_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The athlete's own words: availability, constraints, what Garmin doesn't know.
     athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -56,6 +56,7 @@ class User(Base):
     login_events: Mapped[list["LoginEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     objective_items: Mapped[list["Objective"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     plan_draft: Mapped["PlanDraft | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
+    daily_metrics: Mapped[list["DailyMetrics"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Activity(Base):
@@ -79,7 +80,9 @@ class Activity(Base):
     # Answered on the watch after the activity; fetched per activity (see garmin_details).
     perceived_effort: Mapped[int | None] = mapped_column(Integer, nullable=True)  # RPE 1-10
     feel: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0 very weak .. 100 very strong
-    laps: Mapped[list | None] = mapped_column(JSON, nullable=True)  # compact per-lap distance/time/HR
+    # none_as_null: "nothing yet" is a real SQL NULL, so it can be queried for.
+    laps: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)  # compact per-lap distance/time/HR
+    extras: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)  # sweat_ml, temp_c, wind_kmh, humidity
     details_synced_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
@@ -176,3 +179,42 @@ class PlanDraft(Base):
     confirmed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="plan_draft")
+
+
+class DailyMetrics(Base):
+    """Garmin's daily recovery and load picture: the morning Training Readiness,
+    Training Status with acute vs chronic load, stress and body battery."""
+
+    __tablename__ = "daily_metrics"
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_daily_metrics_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    date: Mapped[datetime.date] = mapped_column(nullable=False, index=True)
+
+    readiness: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0-100, the wake-up reading
+    readiness_level: Mapped[str | None] = mapped_column(String(32), nullable=True)  # "high", "moderate", ...
+    readiness_feedback: Mapped[str | None] = mapped_column(String(64), nullable=True)  # "well recovered"
+    recovery_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    training_status: Mapped[str | None] = mapped_column(String(32), nullable=True)  # "maintaining", "productive", ...
+    acute_load: Mapped[float | None] = mapped_column(Float, nullable=True)  # last 7 days
+    chronic_load: Mapped[float | None] = mapped_column(Float, nullable=True)  # last 4 weeks
+    load_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    load_ratio_status: Mapped[str | None] = mapped_column(String(32), nullable=True)  # "optimal", "low", "high"
+    vo2max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 4-week load by intensity against Garmin's targets: {"phrase", "low", "low_target": [min, max], ...}
+    load_focus: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+
+    stress_avg: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    body_battery_high: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    body_battery_low: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    steps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # False while the day could still change (today, yesterday) or Garmin
+    # refused part of it: fetched again next sync, a few times at most.
+    final: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    attempts: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="daily_metrics")

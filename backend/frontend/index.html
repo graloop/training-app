@@ -120,12 +120,24 @@
               <option value="full" selected>Full (zones, laps, recovery)</option>
               <option value="summary">Summary (one line per session)</option>
             </select>
+            <button id="log-sync" type="button" class="btn-ghost">Sync with Garmin</button>
             <button id="log-copy" type="button" class="btn-ghost">Copy log for Claude</button>
           </div>
         </div>
         <p class="hint">What you did (from Garmin, with the effort and feel you answered on the watch), your sleep and recovery, your zones and records, your objectives and what is already planned. This is what the plan is written from.</p>
         <p id="log-status" class="status hidden" role="status"></p>
         <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
+        <div class="form-row import-row">
+          <label for="import-months" class="inline-label">Long-term picture:</label>
+          <select id="import-months" aria-label="How far back to import older activities">
+            <option value="6">last 6 months</option>
+            <option value="12" selected>last 12 months</option>
+            <option value="24">last 2 years</option>
+            <option value="36">last 3 years</option>
+          </select>
+          <button id="import-btn" type="button" class="btn-ghost">Import older activities</button>
+          <span id="import-status" class="status hidden" role="status"></span>
+        </div>
 
         <label for="about-text">About you: what Garmin doesn't know</label>
         <textarea id="about-text" rows="4" maxlength="10000" placeholder="e.g. Free on weekday mornings and Sunday. Pool is closed on Saturdays. Exams the first week of December. Indoor trainer at home. Sore left knee after long runs."></textarea>

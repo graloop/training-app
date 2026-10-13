@@ -335,12 +335,13 @@ def test_log_text(client, auth):
     assert (f"WEEK OF {label(monday).upper()} · done 2:33 (swim 1:02 · bike 0:41 · run 0:30 · other 0:20) · planned 1:30"
             " · load 125 · sleep avg 78 · resting HR avg 46") in text
     assert f"{label(monday)} · sleep 85 · RHR 46" in text
-    assert "  done  swim 1:02 · 3.0 km · 2:04 /100 m · avg HR 128 · load 85 — Pool Swim" in text
-    assert "  done  run 0:30 · 5.1 km · 5:53 /km · avg HR 141 · load 40 — Easy Run" in text
+    assert "  done  swim 1:02 · 3.0 km · 2:04 /100 m · avg HR 128 · load 85 · effort not synced yet — Pool Swim" in text
+    assert "  done  run 0:30 · 5.1 km · 5:53 /km · avg HR 141 · load 40 · effort not synced yet — Easy Run" in text
+    assert "NOTE: 4 sessions below still wait for effort, feel, laps and weather from Garmin" in text
     assert "  plan  run 0:30 — easy HR under 145 (done as planned)" in text
-    assert "  done  bike 0:41 · 20.5 km · 30.0 km/h · avg HR 118 — Zwift" in text
+    assert "  done  bike 0:41 · 20.5 km · 30.0 km/h · avg HR 118 · effort not synced yet — Zwift" in text
     assert "  plan  bike 1:00\n" in text  # 41 min vs 60 planned: not within 15%, so not marked done
-    assert "  done  yoga 0:20" in text
+    assert "  done  yoga 0:20 · effort not synced yet" in text
     assert f"{label(monday + datetime.timedelta(days=1))} · no training" in text
     assert f"WEEK OF {label(THIS_MONDAY).upper()} · done 0:00 · planned" in text and "· in progress" in text
     ahead = text[text.index("ALREADY ON THE CALENDAR AFTER TODAY"):]
@@ -466,7 +467,10 @@ def test_summary_log_keeps_one_line_per_session(client, auth):
 
 def test_log_before_any_details_or_profile(client, auth):
     text = client.get("/api/plan/log", headers=auth).json()["text"]
-    assert "ATHLETE\n- nothing from Garmin yet (it arrives with the next sync)" in text
+    assert "ATHLETE\n- nothing from Garmin yet: press Sync with Garmin" in text
+    assert "TRAINING STATUS (Garmin)\n- nothing from Garmin yet: press Sync with Garmin" in text
+    assert "EARLIER WEEKS (totals only)\n- no earlier activities stored" in text
+    assert text.count("· not synced (no Garmin data yet)") == 6 and "no training" not in text  # nothing synced at all
     assert "ABOUT THE ATHLETE (their own notes)\n- nothing written yet" in text
 
 
@@ -482,3 +486,153 @@ def test_about_notes_round_trip_and_privacy(client, auth):
     assert client.get("/api/plan/about", headers=admin_auth(client)).status_code == 403
     client.put("/api/plan/about", json={"notes": ""}, headers=auth)
     assert "- nothing written yet" in client.get("/api/plan/log", headers=auth).json()["text"]
+
+
+# --- Phase 3: recovery per day, training status, reps, swim, weather, history ------
+
+
+def _seed_phase3(db):
+    """Last week, fully in the past. All numbers invented."""
+    user = db.query(models.User).filter_by(username="athlete").one()
+    monday = THIS_MONDAY - datetime.timedelta(days=7)
+    at = lambda d, h: datetime.datetime.combine(monday + datetime.timedelta(days=d), datetime.time(h))  # noqa: E731
+    synced = datetime.datetime(2026, 1, 1)
+    manual_laps = [  # a track session with manual laps: warm-up, 3 fast reps with jogs, cool-down
+        {"distance": 3000, "duration": 1080.0, "avg_hr": 135},
+        {"distance": 1000, "duration": 220.0, "avg_hr": 172, "max_hr": 180, "cadence": 184},
+        {"distance": 400, "duration": 150.0, "avg_hr": 150},
+        {"distance": 1000, "duration": 218.0, "avg_hr": 175, "max_hr": 183, "cadence": 185},
+        {"distance": 400, "duration": 152.0, "avg_hr": 152},
+        {"distance": 1000, "duration": 216.0, "avg_hr": 177, "max_hr": 186},
+        {"distance": 2000, "duration": 740.0, "avg_hr": 138},
+    ]
+    structured_laps = [
+        {"distance": 2000, "duration": 720.0, "kind": "warmup"},
+        {"distance": 800, "duration": 180.0, "avg_hr": 170, "kind": "active"},
+        {"distance": 200, "duration": 90.0, "kind": "recovery"},
+        {"distance": 800, "duration": 182.0, "avg_hr": 172, "kind": "active"},
+        {"distance": 1000, "duration": 360.0, "kind": "cooldown"},
+    ]
+    steady_laps = [{"distance": 1000, "duration": 330.0 + i, "avg_hr": 140} for i in range(5)]
+    swim_laps = [
+        {"distance": 400, "duration": 400.0, "avg_hr": 140, "stroke": "freestyle", "swolf": 34},
+        {"distance": 0, "duration": 25.0},
+        {"distance": 100, "duration": 110.0, "stroke": "breaststroke", "swolf": 48},
+        {"distance": 0, "duration": 3.0},
+        {"distance": 200, "duration": 190.0, "stroke": "mixed"},
+    ]
+    db.add_all([
+        models.Activity(user_id=user.id, garmin_activity_id="m", activity_type="track_running", name="Manual laps",
+                        start_time=at(0, 7), duration_seconds=2776, distance_meters=8800, laps=manual_laps,
+                        aerobic_training_effect=3.4, anaerobic_training_effect=2.1, details_synced_at=synced,
+                        raw_json={"trainingEffectLabel": "VO2MAX"}, extras={"sweat_ml": 950, "temp_c": 5, "wind_kmh": 16, "humidity": 70}),
+        models.Activity(user_id=user.id, garmin_activity_id="w", activity_type="running", name="Workout",
+                        start_time=at(1, 7), duration_seconds=1532, distance_meters=4800, laps=structured_laps,
+                        perceived_effort=8, feel=50, details_synced_at=synced),
+        models.Activity(user_id=user.id, garmin_activity_id="e", activity_type="running", name="Easy",
+                        start_time=at(2, 7), duration_seconds=1660, distance_meters=5000, laps=steady_laps,
+                        details_synced_at=synced),
+        models.Activity(user_id=user.id, garmin_activity_id="p", activity_type="lap_swimming", name="Pool",
+                        start_time=at(3, 6), duration_seconds=900, distance_meters=700, laps=swim_laps, details_synced_at=synced,
+                        raw_json={"poolLength": 2500.0, "unitOfPoolLength": {"factor": 100.0}, "activeLengths": 28,
+                                  "avgStrokes": 10.84, "averageSwolf": 36.0}),
+        models.SleepRecord(user_id=user.id, date=monday, sleep_score=80, resting_heart_rate=50),
+        models.DailyMetrics(user_id=user.id, date=monday, readiness=66, readiness_level="moderate", stress_avg=30,
+                            body_battery_low=20, body_battery_high=95, acute_load=500, chronic_load=480, load_ratio=1.0,
+                            load_ratio_status="optimal", training_status="maintaining", final=True),
+        models.DailyMetrics(user_id=user.id, date=monday + datetime.timedelta(days=1), readiness=40, readiness_level="low",
+                            stress_avg=50, final=True),
+        models.DailyMetrics(user_id=user.id, date=monday + datetime.timedelta(days=6), readiness=80, readiness_level="high",
+                            acute_load=600, chronic_load=500, load_ratio=1.2, load_ratio_status="optimal",
+                            training_status="productive", vo2max=51.4, final=True,
+                            load_focus={"phrase": "aerobic high shortage", "low": 1200, "low_target": [500, 1100],
+                                        "high": 300, "high_target": [600, 1200], "anaerobic": 250, "anaerobic_target": [200, 600]}),
+        # older history: two weeks with training, a gap week between them
+        models.Activity(user_id=user.id, garmin_activity_id="h1", activity_type="cycling", duration_seconds=7200, training_load=120,
+                        start_time=datetime.datetime.combine(monday - datetime.timedelta(weeks=20), datetime.time(9))),
+        models.Activity(user_id=user.id, garmin_activity_id="h2", activity_type="running", duration_seconds=3600, training_load=80,
+                        start_time=datetime.datetime.combine(monday - datetime.timedelta(weeks=20, days=-2), datetime.time(9))),
+        models.Activity(user_id=user.id, garmin_activity_id="h3", activity_type="lap_swimming", duration_seconds=1800,
+                        start_time=datetime.datetime.combine(monday - datetime.timedelta(weeks=18), datetime.time(9))),
+        models.Activity(user_id=user.id, garmin_activity_id="h4", activity_type="running", duration_seconds=600,
+                        start_time=datetime.datetime.combine(monday - datetime.timedelta(weeks=60), datetime.time(9))),  # over a year: left out
+    ])
+    db.commit()
+    return monday
+
+
+def test_reps_are_separated_from_warm_up_and_recoveries(client, auth):
+    with SessionLocal() as db:
+        _seed_phase3(db)
+    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    # manual laps: the clearly faster ones are the reps, with max HR and cadence
+    assert ("        reps: 1.00 km 3:40 (3:40 /km, HR 172 max 180, 184 spm) | 1.00 km 3:38 (3:38 /km, HR 175 max 183, 185 spm)"
+            " | 1.00 km 3:36 (3:36 /km, HR 177 max 186)") in text
+    assert "        other laps (warm-up, recoveries, cool-down): 4, 5.80 km in 35:22 (6:06 /km)" in text
+    # a structured workout says which laps are work
+    assert "        reps: 800 m 3:00 (3:45 /km, HR 170) | 800 m 3:02 (3:48 /km, HR 172)" in text
+    assert "        other laps (warm-up, recoveries, cool-down): 3, 3.20 km in 19:30 (6:06 /km)" in text
+    # an even run is just its laps
+    assert "        laps: 1.00 km 5:30 (5:30 /km, HR 140) | 1.00 km 5:31 (5:31 /km, HR 140)" in text
+    # effort: answered, skipped on the watch
+    assert "· effort 8/10, felt normal — Workout" in text
+    assert "· effort not answered — Easy" in text and "NOTE:" not in text
+
+
+def test_swim_sets_training_effect_and_conditions(client, auth):
+    with SessionLocal() as db:
+        _seed_phase3(db)
+    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    assert "        pool 25 m · 28 lengths · 10.8 strokes/length · SWOLF 36" in text
+    assert ("        laps: 400 m 6:40 (1:40 /100 m, HR 140, swolf 34) +0:25 rest | 100 m 1:50 (1:50 /100 m, breaststroke, swolf 48)"
+            " | 200 m 3:10 (1:35 /100 m)") in text  # a 3 s touch at the wall isn't a rest
+    assert "        VO2max session (training effect 3.4 aerobic, 2.1 anaerobic)" in text
+    assert "        conditions: 5 °C · wind 16 km/h · humidity 70% · estimated sweat loss 0.9 L" in text or \
+           "        conditions: 5 °C · wind 16 km/h · humidity 70% · estimated sweat loss 1.0 L" in text
+
+
+def test_recovery_per_day_and_week_and_garmin_training_status(client, auth):
+    with SessionLocal() as db:
+        monday = _seed_phase3(db)
+    full = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    assert f"{label(monday)} · readiness 66 moderate · sleep 80 · RHR 50 · stress 30 · day battery 20–95\n" in full
+    assert f"{label(monday + datetime.timedelta(days=1))} · readiness 40 low · stress 50\n" in full
+    header = next(line for line in full.splitlines() if line.startswith(f"WEEK OF {label(monday).upper()}"))
+    assert header.endswith("· sleep avg 80 · resting HR avg 50 · readiness avg 62")
+    assert ("  stress avg 40 · at week end acute load 600 (7 days) vs chronic 500 (4 weeks): ratio 1.2, optimal"
+            " · Garmin status productive") in full
+    status = full[full.index("TRAINING STATUS (Garmin)"):full.index("EARLIER WEEKS")]
+    assert f"- as of {label(monday + datetime.timedelta(days=6))}: productive · acute load 600 (7 days) vs chronic 500 (4 weeks): ratio 1.2, optimal · VO2max 51.4" in status
+    assert ("- load by intensity over 4 weeks: low aerobic 1200 (target 500–1100) · high aerobic 300 (target 600–1200)"
+            " · anaerobic 250 (target 200–600) → aerobic high shortage") in status
+
+    summary = client.get("/api/plan/log", params={"weeks": 2, "detail": "summary"}, headers=auth).json()["text"]
+    assert f"{label(monday)} · readiness 66 · sleep 80 · RHR 50\n" in summary  # the score, nothing more
+    assert "stress" not in summary[summary.index("\nWEEK OF"):] and "TRAINING STATUS (Garmin)" in summary
+
+
+def test_earlier_weeks_give_the_long_term_picture(client, auth):
+    with SessionLocal() as db:
+        monday = _seed_phase3(db)
+    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    earlier = text[text.index("EARLIER WEEKS (totals only)"):text.index("\nWEEK OF")].splitlines()
+    w20, w18 = monday - datetime.timedelta(weeks=20), monday - datetime.timedelta(weeks=18)
+    name = lambda d: f"Week of {planning.MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"  # noqa: E731
+    assert earlier[1] == f"{name(w20)} · 3:00 (bike 2:00 · run 1:00) · 2 sessions · load 200"
+    assert earlier[2] == f"{name(w20 + datetime.timedelta(weeks=1))} · no training recorded"  # a gap shows as a gap
+    assert earlier[3] == f"{name(w18)} · 0:30 (swim 0:30) · 1 session"
+    assert len([line for line in earlier if line.startswith("Week of")]) == 20  # every week from the first stored one up to the detailed part
+    assert not any("600" in line or "0:10" in line for line in earlier)  # the session over a year old is left out
+
+
+def test_days_before_the_first_synced_data_are_not_called_rest_days(client, auth):
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        first = THIS_MONDAY - datetime.timedelta(days=5)  # the Wednesday of last week
+        db.add(models.SleepRecord(user_id=user.id, date=first, sleep_score=75))
+        db.commit()
+    text = client.get("/api/plan/log", params={"weeks": 4}, headers=auth).json()["text"]
+    assert text.count(f"· not synced (this account's Garmin data starts {label(first)})") == 2  # two whole weeks before it
+    assert label(first - datetime.timedelta(days=1)) + " " not in text[text.index("\nWEEK OF"):text.index("ALREADY ON")]
+    assert f"{label(first)} · sleep 75 · no training" in text
+    assert f"{label(first + datetime.timedelta(days=1))} · no training" in text  # after the start: a real rest day

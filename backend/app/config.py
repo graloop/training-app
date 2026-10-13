@@ -16,8 +16,9 @@ class Settings(BaseSettings):
     # Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     fernet_key: str = ""
 
-    # How many days of history to pull on each Garmin sync.
-    garmin_sync_lookback_days: int = 30
+    # How far back a sync looks. Activities come in one list; sleep and daily
+    # recovery data are only requested for days that aren't stored yet.
+    garmin_sync_lookback_days: int = 90
 
     # Comma-separated origins allowed to call the API from another site.
     # Empty = same-origin only (the frontend is served by this app, so that's
