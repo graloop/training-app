@@ -1,54 +1,33 @@
-from conftest import make_user, text_response, tool_response
-
-OBJ = "update_objectives"
+from conftest import make_user
 
 
 def _objectives(client, auth):
     return client.get("/api/objectives", headers=auth).json()["objectives"]
 
 
-def test_coach_creates_objective(client, auth, fake_claude):
-    fake_claude(
-        tool_response([{"action": "create", "title": "Montreal half marathon", "event_date": "2027-04-20",
-                        "target_time": "1:45:00"}], name=OBJ),
-        text_response("Locked in!"),
-    )
-    res = client.post("/api/chat", json={"message": "My race is the Montreal half on April 20, aiming 1:45"},
-                      headers=auth)
-    assert res.json()["reply"] == "Locked in!"
-    [obj] = _objectives(client, auth)
-    assert (obj["title"], obj["event_date"], obj["target_time"]) == ("Montreal half marathon", "2027-04-20", "1:45:00")
+def _add(client, auth, **body):
+    res = client.post("/api/objectives", json=body, headers=auth)
+    assert res.status_code == 201, res.text
+    return res.json()
 
 
-def test_coach_updates_and_deletes(client, auth, fake_claude):
-    fake_claude(tool_response([{"action": "create", "title": "10k"}], name=OBJ), text_response("ok"))
-    client.post("/api/chat", json={"message": "a"}, headers=auth)
-    [obj] = _objectives(client, auth)
-    assert obj["event_date"] is None and obj["target_time"] is None  # coach may not know them yet
-
-    fake_claude(tool_response([{"action": "update", "id": obj["id"], "target_time": "45:00"}], name=OBJ),
-                text_response("ok"))
-    client.post("/api/chat", json={"message": "b"}, headers=auth)
-    assert _objectives(client, auth)[0]["target_time"] == "45:00"
-
-    fake_claude(tool_response([{"action": "delete", "id": obj["id"]}], name=OBJ), text_response("ok"))
-    client.post("/api/chat", json={"message": "c"}, headers=auth)
-    assert _objectives(client, auth) == []
+def test_create_objective(client, auth):
+    obj = _add(client, auth, title="  City triathlon ", event_date="2027-06-20", target_time=" 5:30:00 ")
+    assert (obj["title"], obj["event_date"], obj["target_time"]) == ("City triathlon", "2027-06-20",
+                                                                     "5:30:00")
+    assert client.post("/api/objectives", json={"title": "   "}, headers=auth).status_code == 422
+    assert client.post("/api/objectives", json={}, headers=auth).status_code == 422
+    assert client.post("/api/objectives", json={"title": "x", "event_date": "spring"}, headers=auth).status_code == 422
+    assert [o["title"] for o in _objectives(client, auth)] == ["City triathlon"]
 
 
-def test_coach_bad_input_is_ignored(client, auth, fake_claude):
-    fake_claude(tool_response([{"action": "create", "title": ""},
-                               {"action": "create", "title": "x", "event_date": "spring"}], name=OBJ),
-                text_response("ok"))
-    assert client.post("/api/chat", json={"message": "a"}, headers=auth).status_code == 200
-    assert _objectives(client, auth) == []
+def test_date_and_target_time_are_optional(client, auth):
+    obj = _add(client, auth, title="10k")
+    assert obj["event_date"] is None and obj["target_time"] is None
 
 
-def test_user_edits_and_deletes(client, auth, fake_claude):
-    fake_claude(tool_response([{"action": "create", "title": "Half", "event_date": "2027-04-20",
-                                "target_time": "1:50:00"}], name=OBJ), text_response("ok"))
-    client.post("/api/chat", json={"message": "a"}, headers=auth)
-    [obj] = _objectives(client, auth)
+def test_edit_and_delete(client, auth):
+    obj = _add(client, auth, title="Half", event_date="2027-04-20", target_time="1:50:00")
 
     res = client.patch(f"/api/objectives/{obj['id']}", json={"title": " Montreal half ", "event_date": "2027-04-27",
                                                             "target_time": "1:45:00"}, headers=auth)
@@ -64,35 +43,16 @@ def test_user_edits_and_deletes(client, auth, fake_claude):
     assert _objectives(client, auth) == []
 
 
-def test_sorted_by_event_date_undated_last(client, auth, fake_claude):
-    fake_claude(tool_response([
-        {"action": "create", "title": "someday"},
-        {"action": "create", "title": "later", "event_date": "2027-09-01"},
-        {"action": "create", "title": "sooner", "event_date": "2027-05-01"},
-    ], name=OBJ), text_response("ok"))
-    client.post("/api/chat", json={"message": "a"}, headers=auth)
+def test_sorted_by_event_date_undated_last(client, auth):
+    _add(client, auth, title="someday")
+    _add(client, auth, title="later", event_date="2027-09-01")
+    _add(client, auth, title="sooner", event_date="2027-05-01")
     assert [o["title"] for o in _objectives(client, auth)] == ["sooner", "later", "someday"]
 
 
-def test_other_users_objectives_are_off_limits(client, auth, fake_claude):
-    fake_claude(tool_response([{"action": "create", "title": "mine"}], name=OBJ), text_response("ok"))
-    client.post("/api/chat", json={"message": "a"}, headers=auth)
-    [obj] = _objectives(client, auth)
+def test_other_users_objectives_are_off_limits(client, auth):
+    obj = _add(client, auth, title="mine")
     other = make_user(client, "other")
     assert client.patch(f"/api/objectives/{obj['id']}", json={"title": "x"}, headers=other).status_code == 404
     assert client.delete(f"/api/objectives/{obj['id']}", headers=other).status_code == 404
-    fake_claude(tool_response([{"action": "delete", "id": obj["id"]}], name=OBJ), text_response("ok"))
-    client.post("/api/chat", json={"message": "b"}, headers=other)
     assert len(_objectives(client, auth)) == 1
-
-
-def test_user_creates_objective_by_hand(client, auth):
-    res = client.post("/api/objectives", json={"title": "  Ironman 70.3 Mont-Tremblant ", "event_date": "2027-06-20",
-                                               "target_time": " 5:30:00 "}, headers=auth)
-    assert res.status_code == 201
-    obj = res.json()
-    assert (obj["title"], obj["event_date"], obj["target_time"]) == ("Ironman 70.3 Mont-Tremblant", "2027-06-20",
-                                                                     "5:30:00")
-    assert client.post("/api/objectives", json={"title": "   "}, headers=auth).status_code == 422
-    assert client.post("/api/objectives", json={}, headers=auth).status_code == 422
-    assert [o["title"] for o in _objectives(client, auth)] == ["Ironman 70.3 Mont-Tremblant"]

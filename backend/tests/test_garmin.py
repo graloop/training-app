@@ -109,52 +109,6 @@ def test_mfa_does_not_block_on_stdin(monkeypatch):
         raise AssertionError("expected GarminAuthError")
 
 
-def _stub_sync(monkeypatch, fail=False):
-    def activities(api, start, end):
-        if fail:
-            raise RuntimeError("Garmin is down")
-        return []
-
-    monkeypatch.setattr(garmin_client, "get_authenticated_client", lambda s: object())
-    monkeypatch.setattr(garmin_client, "fetch_activities", activities)
-    monkeypatch.setattr(garmin_client, "fetch_sleep", lambda api, day: None)
-
-
-def _seed_chat(client, auth, fake_claude):
-    from conftest import text_response
-
-    fake_claude(text_response("hello"))
-    client.post("/api/chat", json={"message": "hi"}, headers=auth)
-    assert len(client.get("/api/chat/history", headers=auth).json()["messages"]) == 2
-
-
-def test_sync_clears_the_chat(client, auth, monkeypatch, fake_claude):
-    _seed_chat(client, auth, fake_claude)
-    _stub_sync(monkeypatch)
-    assert client.post("/api/garmin/sync", headers=auth).status_code == 200
-    assert client.get("/api/chat/history", headers=auth).json()["messages"] == []
-
-
-def test_failed_sync_keeps_the_chat(client, auth, monkeypatch, fake_claude):
-    _seed_chat(client, auth, fake_claude)
-    _stub_sync(monkeypatch, fail=True)
-    assert client.post("/api/garmin/sync", headers=auth).status_code == 502
-    assert len(client.get("/api/chat/history", headers=auth).json()["messages"]) == 2
-
-
-def test_sync_only_clears_own_chat(client, auth, monkeypatch, fake_claude):
-    from conftest import make_user
-
-    other = make_user(client, "other")
-    from conftest import text_response
-
-    fake_claude(text_response("yo"))
-    client.post("/api/chat", json={"message": "mine"}, headers=other)
-    _stub_sync(monkeypatch)
-    client.post("/api/garmin/sync", headers=auth)
-    assert len(client.get("/api/chat/history", headers=other).json()["messages"]) == 2
-
-
 def test_login_errors_are_short_and_readable(monkeypatch):
     class Rejecting:
         def __init__(self, *a, **kw):

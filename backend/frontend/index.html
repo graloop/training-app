@@ -11,17 +11,18 @@
     <h1>Training Coach</h1>
     <div id="user-actions" class="hidden">
       <span id="user-name"></span>
-      <button id="admin-btn" type="button" class="btn-ghost hidden">👥 Users</button>
       <div class="menu">
         <button id="settings-btn" class="btn-ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-menu">⚙️ Settings</button>
         <div id="settings-menu" class="menu-panel hidden" role="dialog" aria-label="Settings">
-          <h3>Garmin</h3>
-          <p id="garmin-state" class="hint"></p>
-          <div class="menu-actions">
-            <button id="garmin-reconnect" type="button" class="btn-link">Reconnect Garmin</button>
-            <button id="garmin-disconnect" type="button" class="btn-link danger">Disconnect</button>
+          <div id="garmin-settings" class="menu-fields">
+            <h3>Garmin</h3>
+            <p id="garmin-state" class="hint"></p>
+            <div class="menu-actions">
+              <button id="garmin-reconnect" type="button" class="btn-link">Reconnect Garmin</button>
+              <button id="garmin-disconnect" type="button" class="btn-link danger">Disconnect</button>
+            </div>
+            <hr />
           </div>
-          <hr />
           <h3>Change password</h3>
           <form id="password-form" class="menu-fields" novalidate>
             <label for="pw-current">Current password</label>
@@ -32,34 +33,6 @@
           </form>
           <p id="pw-status" class="status hidden" role="status"></p>
 
-          <div id="ai-settings-section" class="menu-fields hidden">
-            <hr />
-            <h3>AI coach chat</h3>
-            <label for="ai-provider">Chatbot</label>
-            <select id="ai-provider"></select>
-            <div id="ai-custom-fields" class="menu-fields hidden">
-              <label for="ai-base-url">API URL</label>
-              <input id="ai-base-url" type="url" placeholder="https://example.com/v1" autocomplete="off" spellcheck="false" />
-              <label for="ai-format">API format</label>
-              <select id="ai-format">
-                <option value="openai">OpenAI-compatible (/chat/completions)</option>
-                <option value="anthropic">Anthropic-compatible (/v1/messages)</option>
-              </select>
-            </div>
-            <label for="ai-model">Model</label>
-            <input id="ai-model" type="text" autocomplete="off" spellcheck="false" />
-            <label for="ai-key">API key</label>
-            <input id="ai-key" type="password" autocomplete="off" spellcheck="false" />
-            <p class="hint"><span id="ai-key-state"></span> <a id="ai-key-link" target="_blank" rel="noopener">Get a key ↗</a></p>
-            <div class="menu-actions">
-              <button id="ai-clear" type="button" class="btn-link">Remove key</button>
-              <span class="menu-buttons">
-                <button id="ai-test" type="button" class="btn-ghost" title="Check the server can reach this AI (nothing is saved)">Test</button>
-                <button id="ai-save" type="button">Save</button>
-              </span>
-            </div>
-            <p id="ai-status" class="status hidden" role="status"></p>
-          </div>
           <hr />
           <button id="logout-btn" class="btn-link">Log out</button>
         </div>
@@ -83,6 +56,12 @@
   </main>
 
   <main id="app-view" class="hidden">
+    <nav class="tabs" aria-label="Sections">
+      <button id="tab-btn-calendar" type="button" class="tab active" aria-current="page">Calendar</button>
+      <button id="tab-btn-plan" type="button" class="tab">Plan</button>
+    </nav>
+
+    <div id="tab-calendar">
     <section id="garmin-panel" class="panel hidden" aria-labelledby="garmin-title">
       <h2 id="garmin-title">Connect your Garmin account</h2>
       <p id="garmin-reason" class="hint"></p>
@@ -126,26 +105,147 @@
       </div>
       <div id="objectives-list" class="objectives-list"></div>
     </section>
+    </div>
 
-    <section class="panel" aria-labelledby="notes-title">
-      <h2 id="notes-title">Notes for your coach</h2>
-      <p class="hint">Anything the coach should keep in mind: weekly availability, injuries, preferred rest day, season plan.</p>
-      <form id="notes-form">
-        <label for="notes-text" class="visually-hidden">Notes for your coach</label>
-        <textarea id="notes-text" rows="5" maxlength="5000" placeholder="e.g. Free Tue/Thu evenings and weekend mornings. Pool only Mon/Wed/Fri. Left knee sore after long runs."></textarea>
-        <div class="form-row">
-          <button type="submit">Save notes</button>
-          <span id="notes-status" class="status hidden" role="status"></span>
+    <div id="tab-plan" class="hidden">
+      <p class="hint plan-intro">Plan future weeks here, by hand or with Claude in Chrome: read the training log, write the draft, check the preview, then put it on the calendar. Nothing changes on the calendar until you confirm.</p>
+
+      <section class="panel" aria-labelledby="log-title">
+        <div class="panel-header">
+          <h2 id="log-title">1 · Training log</h2>
+          <div class="calendar-nav">
+            <label for="log-weeks" class="inline-label">Show the last</label>
+            <select id="log-weeks" aria-label="How many weeks of training log to show">
+              <option value="2">2 weeks</option>
+              <option value="4">4 weeks</option>
+              <option value="6" selected>6 weeks</option>
+              <option value="8">8 weeks</option>
+              <option value="12">12 weeks</option>
+            </select>
+            <button id="log-copy" type="button" class="btn-ghost">Copy log for Claude</button>
+          </div>
         </div>
-      </form>
+        <p class="hint">What you did (from Garmin), your sleep, your objectives and what is already planned. This is what the plan is written from.</p>
+        <p id="log-status" class="status hidden" role="status"></p>
+        <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
+      </section>
+
+      <section class="panel" aria-labelledby="draft-title">
+        <h2 id="draft-title">2 · Draft plan</h2>
+        <div class="plan-weeks">
+          <label for="plan-start">Plan starting the week of</label>
+          <select id="plan-start"></select>
+          <label for="plan-weeks">for</label>
+          <select id="plan-weeks" aria-label="Number of weeks to plan">
+            <option value="1">1 week</option>
+            <option value="2">2 weeks</option>
+            <option value="3">3 weeks</option>
+            <option value="4" selected>4 weeks</option>
+            <option value="5">5 weeks</option>
+            <option value="6">6 weeks</option>
+            <option value="8">8 weeks</option>
+            <option value="12">12 weeks</option>
+          </select>
+          <span id="plan-range" class="subtle"></span>
+        </div>
+
+        <label for="draft-text">Draft sessions, one per line: <code>date | sport | duration | details</code></label>
+        <textarea id="draft-text" rows="12" spellcheck="false" placeholder="Tue Oct 13 | run | 1:15 | Track: 2×6×400 m at 5K effort, 200 m jog between
+Wed Oct 14 | swim | 1:00 | 8×100 m steady, 20 s rest
+Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
+        <p id="draft-format" class="hint">Format: one session per line, written as <code>date | sport | duration | details</code>. Date like <code>Tue Oct 13</code> or <code>2026-10-13</code>. Sport: swim, bike, run or strength. Duration like <code>1:15</code> or <code>45 min</code>. Details are optional (the workout itself). Two sessions on one day are two lines. Lines starting with <code>#</code> are comments, and rest days need no line.</p>
+
+        <label for="draft-notes">Block notes (goal, zones, weekly rhythm, rules of thumb)</label>
+        <textarea id="draft-notes" rows="5" placeholder="e.g. Goal: a spring half marathon. Easy runs stay conversational. One rest day a week, long run on Sunday."></textarea>
+
+        <div class="form-row">
+          <button id="draft-save" type="button">Save and preview</button>
+          <span id="draft-status" class="status hidden" role="status"></span>
+        </div>
+
+        <div id="draft-errors" class="draft-errors hidden" role="alert"></div>
+        <div id="draft-preview"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="confirm-title">
+        <h2 id="confirm-title">3 · Put it on the calendar</h2>
+        <p id="confirm-summary" class="hint"></p>
+        <div class="form-row">
+          <button id="draft-confirm" type="button">Put this plan on the calendar</button>
+          <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
+        </div>
+        <p id="confirm-status" class="status hidden" role="status"></p>
+      </section>
+    </div>
+
+  </main>
+
+  <main id="admin-view" class="hidden">
+    <div class="panel-header dash-header">
+      <div>
+        <h2 id="dash-title">Admin dashboard</h2>
+        <p class="hint">Monitor who connects and manage accounts. Admin accounts don't have a training calendar.</p>
+      </div>
+      <button id="dash-refresh" type="button" class="btn-ghost">Refresh</button>
+    </div>
+    <p id="dash-error" class="error hidden" role="alert"></p>
+
+    <section class="stat-row" aria-label="Last 7 days at a glance">
+      <div class="stat-tile"><span class="stat-label">Accounts</span><span id="stat-accounts" class="stat-value">–</span><span class="stat-note" id="stat-accounts-note"></span></div>
+      <div class="stat-tile"><span class="stat-label">Active this week</span><span id="stat-active" class="stat-value">–</span><span class="stat-note">accounts that logged in</span></div>
+      <div class="stat-tile"><span class="stat-label">Logins this week</span><span id="stat-logins" class="stat-value">–</span><span class="stat-note">successful</span></div>
+      <div class="stat-tile"><span class="stat-label">Failed attempts</span><span id="stat-failed" class="stat-value">–</span><span class="stat-note">wrong password, last 7 days</span></div>
     </section>
 
-    <section id="chat-panel" class="panel hidden" aria-labelledby="chat-title">
-      <h2 id="chat-title">Coach chat <span id="chat-ai-label" class="subtle"></span></h2>
-      <div id="chat-log" class="chat-log"></div>
-      <form id="chat-form" class="chat-form">
-        <input type="text" id="chat-input" placeholder="How are you feeling after today's run?" autocomplete="off" aria-label="Message to the coach" />
-        <button type="submit">Send</button>
+    <section class="panel" aria-labelledby="connections-title">
+      <h2 id="connections-title">Connections, last 7 days</h2>
+      <figure class="chart" aria-labelledby="chart-caption">
+        <figcaption id="chart-caption" class="subtle">Successful logins per day</figcaption>
+        <div id="logins-chart" class="bar-chart"></div>
+      </figure>
+      <h3 class="dash-subtitle">Recent connections</h3>
+      <div class="table-scroll">
+        <table class="users-table" aria-describedby="connections-title">
+          <thead>
+            <tr><th scope="col">When</th><th scope="col">Account</th><th scope="col">Result</th></tr>
+          </thead>
+          <tbody id="events-body"></tbody>
+        </table>
+      </div>
+      <p id="events-empty" class="subtle hidden">No connections in the last 7 days.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="accounts-title">
+      <h2 id="accounts-title">Accounts</h2>
+      <div class="table-scroll">
+        <table class="users-table">
+          <thead>
+            <tr>
+              <th scope="col">Username</th><th scope="col">Role</th><th scope="col">Last login</th>
+              <th scope="col">Garmin</th><th scope="col">Created</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="users-body"></tbody>
+        </table>
+      </div>
+      <p id="user-status" class="status hidden" role="status"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="create-title">
+      <h2 id="create-title">Create an account</h2>
+      <p class="hint">Only people with an account can log in. Send the new user their username and password; they can change the password in ⚙️ Settings.</p>
+      <form id="user-form" class="inline-form" novalidate>
+        <label for="new-username">New account's username</label>
+        <input id="new-username" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="e.g. marie" />
+        <label for="new-password">New account's password (8+ characters)</label>
+        <div class="input-with-button">
+          <input id="new-password" type="text" autocomplete="off" spellcheck="false" />
+          <button id="gen-password" type="button" class="btn-ghost">Generate</button>
+        </div>
+        <label class="checkbox"><input id="new-admin" type="checkbox" /> Admin: sees this dashboard instead of a calendar</label>
+        <button type="submit">Create account</button>
+        <p id="create-status" class="status hidden" role="status"></p>
       </form>
     </section>
   </main>
@@ -175,35 +275,6 @@
         <button type="submit">Save</button>
       </div>
     </form>
-  </dialog>
-
-  <dialog id="admin-dialog" class="wide-dialog" aria-labelledby="admin-title">
-    <div class="dialog-body">
-      <div class="panel-header">
-        <h3 id="admin-title">Users</h3>
-        <button id="admin-close" type="button" class="btn-ghost">Close</button>
-      </div>
-      <p class="hint">Only people with an account here can log in. Give each friend their username and password; they can change the password in ⚙️ Settings.</p>
-      <table class="users-table">
-        <thead>
-          <tr><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Garmin</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
-        </thead>
-        <tbody id="users-body"></tbody>
-      </table>
-      <h4>Add a user</h4>
-      <form id="user-form" class="inline-form" novalidate>
-        <label for="new-username">New user's username</label>
-        <input id="new-username" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="e.g. marie" />
-        <label for="new-password">New user's password (8+ characters)</label>
-        <div class="input-with-button">
-          <input id="new-password" type="text" autocomplete="off" spellcheck="false" />
-          <button id="gen-password" type="button" class="btn-ghost">Generate</button>
-        </div>
-        <label class="checkbox"><input id="new-admin" type="checkbox" /> Admin (can manage users)</label>
-        <button type="submit">Create user</button>
-        <p id="user-status" class="status hidden" role="status"></p>
-      </form>
-    </div>
   </dialog>
 
   <script src="/app.js"></script>

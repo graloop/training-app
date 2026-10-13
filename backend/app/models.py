@@ -39,18 +39,17 @@ class User(Base):
     # Garmin password.
     garmin_session_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Free-text "notes for the coach" (availability, injuries, preferences),
-    # edited on the page. Column name kept from the older free-text goals.
-    objectives: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set on every successful login; shown to the admin next to the account.
+    last_login_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     activities: Mapped[list["Activity"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     sleep_records: Mapped[list["SleepRecord"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     planned_sessions: Mapped[list["PlannedTraining"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    ai_settings: Mapped["AISettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
+    login_events: Mapped[list["LoginEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     objective_items: Mapped[list["Objective"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    plan_draft: Mapped["PlanDraft | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class Activity(Base):
@@ -105,7 +104,7 @@ class PlannedTraining(Base):
     activity_type: Mapped[str] = mapped_column(String(64), nullable=False)
     planned_duration_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source: Mapped[str] = mapped_column(String(16), default="manual")  # "manual" | "ai"
+    source: Mapped[str] = mapped_column(String(16), default="manual")  # older rows may say "ai"
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -113,42 +112,8 @@ class PlannedTraining(Base):
     user: Mapped["User"] = relationship(back_populates="planned_sessions")
 
 
-class ChatMessage(Base):
-    __tablename__ = "chat_messages"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-
-    role: Mapped[str] = mapped_column(String(16), nullable=False)  # "user" | "assistant"
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-
-    user: Mapped["User"] = relationship(back_populates="chat_messages")
-
-
-class AISettings(Base):
-    """Which chat provider/model a user picked, and their own API key for it.
-    Kept in its own table so existing databases pick it up via create_all."""
-
-    __tablename__ = "ai_settings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
-
-    provider: Mapped[str] = mapped_column(String(32), nullable=False)
-    model: Mapped[str | None] = mapped_column(String(128), nullable=True)  # None = provider default
-    api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)  # Fernet
-    # Only for provider "custom": endpoint and wire format ("openai" | "anthropic").
-    base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    api_format: Mapped[str | None] = mapped_column(String(16), nullable=True)
-
-    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-    user: Mapped["User"] = relationship(back_populates="ai_settings")
-
-
 class Objective(Base):
-    """A target event: set by the coach from the conversation, editable by the user."""
+    """A target event (title, date, target time), added and edited on the page."""
 
     __tablename__ = "objectives"
 
@@ -164,3 +129,38 @@ class Objective(Base):
 
     user: Mapped["User"] = relationship(back_populates="objective_items")
 
+
+class LoginEvent(Base):
+    """One login attempt, for the admin dashboard. Failed attempts on names
+    that aren't accounts are stored without the typed name (it may be a
+    password typed in the wrong box)."""
+
+    __tablename__ = "login_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    username: Mapped[str] = mapped_column(String(255), nullable=False)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    user: Mapped["User | None"] = relationship(back_populates="login_events")
+
+
+class PlanDraft(Base):
+    """The Plan page's working draft: the weeks being planned, the sessions as
+    typed (one per line) and the block notes. Nothing here is on the calendar
+    until the user confirms."""
+
+    __tablename__ = "plan_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+
+    start_date: Mapped[datetime.date] = mapped_column(nullable=False)  # a Monday
+    weeks: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    confirmed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="plan_draft")

@@ -3,7 +3,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from . import models
-from .config import get_settings
 from .database import get_db
 from .security import decode_access_token
 
@@ -37,6 +36,12 @@ def get_current_admin(user: models.User = Depends(get_current_user)) -> models.U
     return user
 
 
-def require_ai_chat() -> None:
-    if not get_settings().ai_chat_enabled:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The AI chat is turned off on this server")
+def get_current_member(user: models.User = Depends(get_current_user)) -> models.User:
+    """A regular account. Admin accounts only monitor and manage accounts: they
+    have no calendar, plan, objectives or Garmin connection of their own."""
+    if user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin accounts manage users and don't have a training calendar",
+        )
+    return user

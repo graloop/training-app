@@ -16,11 +16,6 @@ class Settings(BaseSettings):
     # Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     fernet_key: str = ""
 
-    # Optional server-wide fallback for users who haven't saved their own key
-    # in the settings menu.
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-opus-5-5"
-
     # How many days of history to pull on each Garmin sync.
     garmin_sync_lookback_days: int = 30
 
@@ -35,9 +30,11 @@ class Settings(BaseSettings):
     admin_username: str = ""
     admin_password: str = ""
 
-    # The built-in coach chat calls an AI provider's API. Off by default: the
-    # app is meant to be edited directly (by hand or with Claude in Chrome).
-    ai_chat_enabled: bool = False
+    # Local testing only: also create the generic accounts admin/adminadmin and
+    # user/useruser on startup. `npm start` turns this on; docker-compose never
+    # passes it, and it's refused on anything but a local SQLite database,
+    # because those passwords are public.
+    seed_test_accounts: bool = False
 
     # Swagger UI at /docs. Off by default so the API isn't advertised when the
     # app is reachable from the internet.

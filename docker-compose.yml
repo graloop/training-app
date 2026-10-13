@@ -24,12 +24,14 @@ services:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-trainer}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-trainer}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       FERNET_KEY: ${FERNET_KEY:?set FERNET_KEY in .env}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
-      AI_CHAT_ENABLED: ${AI_CHAT_ENABLED:-false}
+      # The hosted app's first admin login. Fill both in before deploying
+      # (Portainer: the stack's "Environment variables" section). The password
+      # is only used to create the account; change it in the app afterwards.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME to the admin username you want}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD to the admin password you want}
+      # SEED_TEST_ACCOUNTS is deliberately not passed: the generic admin/user
+      # test logins only exist under `npm start`.
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
       GARMIN_SYNC_LOOKBACK_DAYS: ${GARMIN_SYNC_LOOKBACK_DAYS:-30}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
     ports:

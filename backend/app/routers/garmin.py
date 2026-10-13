@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .. import garmin_client, models, schemas
 from ..config import get_settings
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_member
 from ..security import decrypt_text, encrypt_text
 from .auth import me_out
 
@@ -18,7 +18,7 @@ settings = get_settings()
 def connect(
     payload: schemas.GarminConnectRequest,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_member),
 ):
     """Link (or re-link) this user's own Garmin Connect account. The Garmin
     password is sent once to Garmin and never stored; only the resulting
@@ -36,7 +36,7 @@ def connect(
 
 
 @router.delete("/connect", response_model=schemas.MeOut)
-def disconnect(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+def disconnect(db: Session = Depends(get_db), user: models.User = Depends(get_current_member)):
     """Forget the stored Garmin session. Already-synced data stays."""
     user.garmin_session_encrypted = None
     db.commit()
@@ -46,7 +46,7 @@ def disconnect(db: Session = Depends(get_db), user: models.User = Depends(get_cu
 @router.post("/sync", response_model=schemas.GarminSyncResponse)
 def sync(
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_member),
 ):
     # 409 (not 401) when Garmin isn't usable: the frontend shows the
     # "Connect Garmin" form instead of logging the user out of the app.
@@ -152,9 +152,6 @@ def sync(
         sleep_synced += 1
         day += datetime.timedelta(days=1)
 
-    # Each sync starts a fresh coach conversation, so the chat never grows forever.
-    # (Same transaction: a failed sync keeps the chat.)
-    db.query(models.ChatMessage).filter(models.ChatMessage.user_id == user.id).delete()
     db.commit()
 
     return schemas.GarminSyncResponse(

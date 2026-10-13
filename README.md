@@ -3,20 +3,26 @@
 A self-hosted training calendar for you and a few friends. Each person logs
 in with an account the admin created, connects their own Garmin Connect,
 and sees their activities, sleep and resting heart rate on a 4-week
-calendar next to their planned sessions, objectives and notes.
+calendar next to their planned sessions and objectives.
 
-There's no AI API to pay for: open the page in Chrome and ask the
-**Claude in Chrome** extension to plan your week, add objectives or adjust
-sessions — it edits the page like you would. (The older built-in chat that
-calls an AI API is still there, off by default: `AI_CHAT_ENABLED=true`.)
+There is no built-in chatbot and no AI API key: open the page in Chrome and
+ask the **Claude in Chrome** extension to plan your week, add objectives or
+adjust sessions — it edits the page like you would.
 
 ## Features
 
 - **Private accounts** — only people the admin created can log in (username
-  + password, no sign-up). The admin manages accounts from **👥 Users**:
-  create, reset password, grant admin, delete. Everyone can change their own
-  password in ⚙️ Settings. Five wrong passwords lock that username for
-  15 minutes; a password change or reset logs out every other session.
+  + password, no sign-up). Everyone can change their own password in
+  ⚙️ Settings. Five wrong passwords lock that username for 15 minutes; a
+  password change or reset logs out every other session.
+- **Admin dashboard** — admin accounts are for monitoring and managing, not
+  for training: instead of the calendar they get a dashboard with the
+  connections of the last 7 days (logins per day, failed attempts, the list
+  of recent connections), every account with its last login, and the tools
+  to create an account, reset a password, grant or remove admin rights and
+  delete an account (the dashboard lists what the account holds and asks
+  for its username to be typed first; deleting can't be undone). Admins have no calendar, plan, objectives or Garmin
+  connection, so keep a separate regular account for your own training.
 - **Connect Garmin** — after logging in, each person links their own Garmin
   Connect account (once; reconnect if Garmin expires the session). Garmin
   problems never log you out of the app — the page just asks to reconnect.
@@ -32,25 +38,29 @@ calls an AI API is still there, off by default: `AI_CHAT_ENABLED=true`.)
   two merge into one dark-green "done as planned" entry.
 - **Garmin sync** — runs automatically after login; the "Sync with Garmin"
   button pulls new activities/sleep on demand. If the Garmin session has
-  expired you're sent back to the login form.
-- **Coach chat** *(only with `AI_CHAT_ENABLED=true`)* — tell it how a session felt; it has context on what you've
-  trained, your sleep, your stated objectives, and can use a tool call to
-  create/update/delete sessions on your plan, which then shows up on the
-  calendar immediately.
-  Each successful Garmin sync clears the conversation, so it never grows
-  forever (a failed sync keeps it).
-- **Pick your AI** *(only with `AI_CHAT_ENABLED=true`)* — the ⚙️ Settings menu (top right) lets each user choose
-  the chatbot behind the coach — Claude, ChatGPT, Gemini, Mistral, or **Custom**
-  (any OpenAI- or Anthropic-compatible API URL) — pick a
-  model, and paste their own API key (stored encrypted, never sent back to
-  the browser). A **Test** button checks the server can reach that AI
-  before you save.
+  expired the page shows the "Connect your Garmin account" form; you stay
+  logged in.
+- **Plan page** — the **Plan** tab is where future weeks get planned, by
+  hand or with Claude in Chrome, without touching the calendar until you
+  confirm:
+  1. **Training log** — the last 2 to 12 weeks as plain text: every session
+     with duration, distance, pace, average HR and load, sleep score and
+     resting HR per day, weekly totals with the swim/bike/run split, your
+     objectives and what is already planned. **Copy log for Claude** copies
+     it with the line format, for a normal Claude conversation.
+  2. **Draft plan** — pick the first week to plan (any week up to about six
+     months ahead) and how many weeks, then write one session per line:
+     `Tue Oct 13 | run | 1:15 | Track: 2×6×400 m`. The page shows the draft as
+     a table per week with a weekly split, and flags any line it can't read
+     (a wrong weekday for the date, a date outside the chosen weeks, an
+     unreadable duration). Block notes (goal, zones, rules of thumb) are
+     saved with the draft.
+  3. **Put it on the calendar** — adds the draft's sessions and replaces
+     whatever was planned from today to the end of those weeks, so
+     re-planning never duplicates. Done activities are never touched.
 - **Objectives** — **+ Add objective** records a target event (title, event
   date, target time) as a card with a countdown; edit or delete it from the
   card.
-- **Notes for your coach** — free text for availability, injuries,
-  preferences and season plan, so whoever plans your week (you, or Claude in
-  Chrome) has the context on the page.
 - **Sleep & recovery** — each day shows its Garmin sleep score (top right,
   coloured good / fair / poor) and resting heart rate (❤️ bpm); each week's
   column shows the average sleep score and average resting heart rate.
@@ -65,7 +75,7 @@ calls an AI API is still there, off by default: `AI_CHAT_ENABLED=true`.)
 | Backend    | Python, FastAPI, SQLAlchemy                                          |
 | Database   | Postgres in production; SQLite automatically for local dev            |
 | Garmin     | unofficial `garminconnect` / `garth` libraries                       |
-| AI         | Anthropic SDK for Claude; OpenAI SDK for ChatGPT/Gemini/Mistral; tool use (`update_training_plan`) |
+| AI         | none built in — use the Claude in Chrome extension on the page        |
 | Auth       | Local accounts created by the admin (scrypt hashes), JWT session tokens |
 | Frontend   | plain HTML/CSS/JS, served directly by FastAPI — no build step        |
 | Deployment | one Docker Compose stack (`db` + `backend`), deployable via Portainer |
@@ -88,14 +98,14 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── main.py         FastAPI app, mounts routers + static frontend
     │   ├── config.py       env-driven settings
     │   ├── database.py     SQLAlchemy engine/session
-    │   ├── models.py       User, Activity, SleepRecord, PlannedTraining, ChatMessage
+    │   ├── models.py       User, Activity, SleepRecord, PlannedTraining, Objective, LoginEvent
     │   ├── schemas.py       Pydantic request/response models
     │   ├── security.py     scrypt password hashing, JWT, Fernet encryption
-    │   ├── deps.py          get_current_user auth dependency
+    │   ├── deps.py          auth dependencies: any user / regular member / admin
     │   ├── garmin_client.py wraps garth/garminconnect for login + sync
-    │   ├── ai_coach.py       Claude chat + plan-editing tool loop
-    │   ├── accounts.py       first-admin bootstrap + login lockout
-    │   └── routers/          auth, admin, profile, garmin, calendar, objectives, planned, chat, ai_settings
+    │   ├── accounts.py       first-admin bootstrap, test accounts, login lockout, connection log
+    │   ├── planning.py       training log text + draft plan parser (Plan page)
+    │   └── routers/          auth, admin, garmin, calendar, objectives, planned, plan
     └── frontend/             index.html, app.js, styles.css (static, no build)
 ```
 
@@ -120,9 +130,20 @@ The first run will:
 
 Then open **http://localhost:8000**.
 
-The first run prints the admin login (`admin` / a generated password, also
-saved as `ADMIN_PASSWORD` in `.env`). Subsequent runs reuse the existing venv
-and `.env` and start in a couple of seconds.
+`npm start` creates two generic accounts for testing and prints them:
+
+| Username | Password     | Role         |
+|----------|--------------|--------------|
+| `admin`  | `adminadmin` | admin        |
+| `user`   | `useruser`   | regular user |
+
+They are re-applied on every start (changed passwords and roles go back to
+the table above) and exist **only** under `npm start` on the local SQLite
+database: the Docker/Portainer stack never creates them. Put
+`SEED_TEST_ACCOUNTS=false` in `.env` to turn them off; the account named by
+`ADMIN_USERNAME` / `ADMIN_PASSWORD` in `.env` works either way.
+Subsequent runs reuse the existing venv and `.env` and start in a couple of
+seconds.
 
 To reset local state (fresh database, fresh generated secrets):
 
@@ -133,31 +154,54 @@ npm start
 
 ## Deploying to your server (Docker / Portainer)
 
-1. Copy `.env.example` to `.env` and fill in real values — at minimum
-   `POSTGRES_PASSWORD`, `JWT_SECRET`, `FERNET_KEY`, `ADMIN_USERNAME` and
-   `ADMIN_PASSWORD` (use a long one).
-   (If you already generated these via `npm start` locally, you can reuse
-   that `.env` — see the warning below first.)
-2. From the project root:
-   ```bash
-   docker compose up -d --build
-   ```
-   or, in Portainer, create a stack from `docker-compose.yml` and paste the
-   same environment variables in the stack's env editor.
-3. The app listens on port 8000. Put your own reverse proxy in front of it
-   if you want TLS/a domain name — the compose file doesn't include one.
+1. Choose the hosted app's admin login and the secrets. These five are
+   required — the stack refuses to deploy, with a message naming the missing
+   one, until they're all set:
 
-4. Log in as the admin, open **👥 Users** and create an account for each
+   | Variable            | What to put                                         |
+   |---------------------|-----------------------------------------------------|
+   | `ADMIN_USERNAME`    | the admin username you want (lowercase, e.g. `sam`) |
+   | `ADMIN_PASSWORD`    | the admin password you want — long and not reused   |
+   | `POSTGRES_PASSWORD` | any long random string                              |
+   | `JWT_SECRET`        | `python -c "import secrets; print(secrets.token_hex(32))"` |
+   | `FERNET_KEY`        | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+
+2. Deploy:
+   - **Portainer:** Stacks → Add stack → point it at this repository (or
+     paste `docker-compose.yml`), then in the **Environment variables**
+     section add the five names above with your values (or use *Load
+     variables from .env file* with a filled-in copy of `.env.example`) →
+     Deploy the stack.
+   - **Command line:** copy `.env.example` to `.env`, fill it in, then
+     ```bash
+     docker compose up -d --build
+     ```
+
+   The admin account is created on the first start. `ADMIN_PASSWORD` is only
+   used to create it, so changing the password in the app later sticks. The
+   generic `admin` / `user` test accounts from `npm start` are never created
+   here.
+3. The stack publishes the app on port **8010** of the server (the app
+   itself listens on 8000 inside the container). Put your own reverse proxy
+   in front of it if you want TLS/a domain name — the compose file doesn't
+   include one.
+
+4. Log in as the admin: you land on the dashboard. Under **Create an
+   account**, make one for yourself (your training account) and one for each
    friend (**Generate** makes a random password). Send each friend their
    username, password and the URL; they connect their own Garmin on first
    login and can change their password in ⚙️ Settings.
 
+**The admin account is not a training account.** It only shows the
+dashboard, so don't set `ADMIN_USERNAME` to an account that holds training
+data: that account would be made an admin on every start and lose its
+calendar view (the data itself is kept, and comes back with **Make user**).
+
 **Upgrading from the Garmin-login version:** old accounts are named after
-their Garmin email and have no password, so they can't log in until they get
-one. Either set `ADMIN_USERNAME` to your old Garmin email (that account
-becomes the admin with `ADMIN_PASSWORD`, keeping its data), or give an old
-account a password from 👥 Users → Reset password. Everyone has to log in
-again once after the upgrade.
+their Garmin email and have no password, so they can't log in until the
+admin gives them one (dashboard → **Reset password**). Everyone has to log in
+again once after the upgrade. The tables of the removed chat (messages and
+stored AI API keys) are deleted on the first start.
 
 ### Letting friends reach it from outside your home
 
@@ -180,7 +224,11 @@ reachable from the internet (the defaults).
 Open the app in Chrome, log in, open the Claude extension and ask in plain
 words, for example:
 
-- "Read my objectives, my notes and the last two weeks, then plan next week
+- On the **Plan** tab: "Read my training log and my block notes, then plan
+  the next 4 weeks in the draft box, one session per line in the format
+  shown. Save and preview, and tell me the weekly totals." Then discuss,
+  let it adjust the draft, and confirm yourself when you're happy.
+- "Read my objectives and the last two weeks, then plan next week
   with 3 runs, 2 swims and a long ride. Put the workout details in each
   session."
 - "Move Thursday's run to Friday and make it 45 minutes easy."
@@ -211,13 +259,11 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `POSTGRES_PASSWORD`          | docker-compose  | Postgres password — **required** for the Docker stack                |
 | `POSTGRES_DB`                | docker-compose  | Postgres database name                                               |
 | `JWT_SECRET`                 | backend         | Signs session tokens — **required**                                  |
-| `ADMIN_USERNAME`             | backend         | First admin account, created on startup (default `admin`)            |
-| `ADMIN_PASSWORD`             | backend         | Its password — only used to *create* it; change it later in the app  |
-| `AI_CHAT_ENABLED`            | backend         | `true` brings back the built-in coach chat + AI settings (default `false`) |
+| `ADMIN_USERNAME`             | backend         | First admin account, created on startup — **required** for the Docker stack |
+| `ADMIN_PASSWORD`             | backend         | Its password — **required** for the Docker stack; only used to *create* the account, change it later in the app |
+| `SEED_TEST_ACCOUNTS`         | `npm start` only | `true` (the `npm start` default) creates `admin`/`adminadmin` and `user`/`useruser` for local testing; never passed to Docker, refused on Postgres |
 | `ENABLE_API_DOCS`            | backend         | `true` serves Swagger UI at `/docs` (default `false`)                |
 | `FERNET_KEY`                 | backend         | Encrypts the stored Garmin session at rest — **required**            |
-| `ANTHROPIC_API_KEY`          | backend         | Chat only: fallback Claude key for users who haven't added their own |
-| `ANTHROPIC_MODEL`            | backend         | Model used with the fallback key (default `claude-opus-5-5`)         |
 | `GARMIN_SYNC_LOOKBACK_DAYS`  | backend         | How many days of history each sync pulls (default 30)                 |
 | `CORS_ALLOW_ORIGINS`         | backend         | Empty = same-origin only (default); comma-separated origins, or `*`  |
 
@@ -225,45 +271,52 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 
 - **User** — username (stored in the historical `email` column), scrypt
   password hash, admin flag, token version (bumped on password change to
-  log out old sessions), Garmin email + encrypted Garmin session token, and
-  the free-text "notes for your coach".
+  log out old sessions), last login time, Garmin email + encrypted Garmin
+  session token.
+- **LoginEvent** — one row per login attempt (account, success or not,
+  time), kept 90 days, for the admin dashboard. A failed attempt on a name
+  that isn't an account is stored as "(unknown account)", never with the
+  typed text. At most 20 of those are stored per hour, so guessing
+  usernames can't fill the database.
 - **Objective** — title, event date, target time; added and edited on the
-  page (or by the chat's `update_objectives` tool when the chat is on).
+  page.
+- **PlanDraft** — one per user: the weeks being planned, the session lines as
+  typed and the block notes. Not on the calendar until confirmed.
 - **Activity** — one row per completed Garmin activity: type, start time,
   duration, distance, avg HR, aerobic/anaerobic training effect, training load, calories,
   plus the raw Garmin payload for anything not modeled explicitly.
 - **SleepRecord** — per-night sleep: total/deep/REM/light minutes, sleep
   score, resting heart rate, raw payload.
 - **PlannedTraining** — future sessions: date, activity type, planned
-  duration, coaching notes, and whether it was set by the AI or manually.
-- **AISettings** — per user: chosen provider, optional model override, and
-  their API key (Fernet-encrypted), plus URL and API format for a custom
-  provider. New nullable columns are added to existing databases on startup
-  (`add_missing_columns` in `database.py`).
-- **ChatMessage** — role (user/assistant), content, timestamp — chat history
-  and the context window for the coach.
+  duration and workout details.
+
+New nullable columns are added to existing databases on startup
+(`add_missing_columns` in `database.py`).
 
 ## API surface
 
 | Endpoint                | Method | Notes                                                       |
 |--------------------------|--------|---------------------------------------------------------------|
 | `/api/auth/login`        | POST   | Username/password → JWT (429 after 5 failures in 15 min)      |
-| `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status, whether the chat is on |
+| `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status                    |
 | `/api/auth/password`     | POST   | Change your own password; returns a new token                 |
 | `/api/admin/users`       | GET/POST | Admin: list users / create a user                            |
-| `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin / delete user and their data |
-| `/api/profile/notes`     | GET/PUT | Your notes for the coach                                     |
+| `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin / delete user and their data (`?confirm=<username>` required) |
+| `/api/admin/activity`    | GET    | Admin: logins and failed attempts per day (`?days=7&tz_offset=`), totals, recent connections |
 | `/api/garmin/connect`    | POST/DELETE | Link your Garmin (email/password sent once to Garmin) / unlink |
 | `/api/garmin/sync`       | POST   | Pulls recent activities + sleep, deduped by Garmin id/date; 409 = connect Garmin first |
 | `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day       |
 | `/api/objectives`        | GET/POST | List / add objectives (title, event date, target time)      |
 | `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |
-| `/api/chat`              | POST   | Chat only (404 unless `AI_CHAT_ENABLED`); may apply plan changes |
-| `/api/chat/history`      | GET    | Past chat messages                                             |
-| `/api/ai-settings`       | GET/PUT | Chatbot provider, model, API key (only the last 4 chars are returned), custom URL/format |
-| `/api/ai-settings/test`  | POST   | Send one tiny request with the form's settings (nothing saved) to check the server reaches the AI |
+| `/api/plan/log`          | GET    | Training log as text (`?weeks=6`): sessions, sleep, weekly totals, objectives, what's planned |
+| `/api/plan/draft`        | GET/PUT | The draft plan (first week, number of weeks, session lines, notes), returned parsed with errors and weekly totals |
+| `/api/plan/draft/confirm`| POST   | Put the draft on the calendar, replacing planned sessions from today to the draft's last day |
 | `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
 | `/api/planned/{id}`      | PATCH/DELETE | Edit or remove a planned session                       |
+
+The Garmin, calendar, objectives and planned endpoints are for regular
+accounts; an admin account gets a 403 there. The `/api/admin/*` endpoints are
+admin-only.
 
 Interactive API docs are at `/docs` (Swagger UI) when `ENABLE_API_DOCS=true`.
 
@@ -307,7 +360,3 @@ it in production:
 - Garmin sessions do eventually expire; `/api/garmin/sync` surfaces expiry
   as a 409 and the page shows the "Connect your Garmin account" form, but
   there's no proactive refresh.
-
-The default model ids for ChatGPT (`gpt-5`), Gemini (`gemini-2.5-flash`)
-and Mistral (`mistral-large-latest`) live in `backend/app/ai_providers.py`;
-users can type any other model id their provider offers in Settings.

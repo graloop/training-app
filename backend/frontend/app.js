@@ -28,7 +28,7 @@ function clearSession() {
 }
 
 let memoryToken = null; // fallback when localStorage is unavailable
-let me = null; // { id, username, is_admin, garmin_connected, garmin_email, ai_chat_enabled }
+let me = null; // { id, username, is_admin, garmin_connected, garmin_email }
 
 async function api(path, options = {}) {
   const headers = options.headers || {};
@@ -39,7 +39,6 @@ async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers });
   // A 401 without a token is a failed login, not an expired session.
   if (res.status === 401 && token) {
-    adminDialog.close();
     const message = "Your session expired, please log in again.";
     clearSession();
     showAuthView();
@@ -67,12 +66,18 @@ async function api(path, options = {}) {
 
 // --- Auth view ---
 
-function showAuthView() {
-  document.getElementById("auth-view").classList.remove("hidden");
-  document.getElementById("app-view").classList.add("hidden");
-  document.getElementById("user-actions").classList.add("hidden");
+const VIEWS = ["auth-view", "app-view", "admin-view"];
+
+function showView(id) {
+  for (const view of VIEWS) document.getElementById(view).classList.toggle("hidden", view !== id);
+  document.getElementById("user-actions").classList.toggle("hidden", id === "auth-view");
 }
 
+function showAuthView() {
+  showView("auth-view");
+}
+
+// Regular accounts get the calendar; admin accounts get the dashboard instead.
 async function showAppView({ sync = false } = {}) {
   try {
     me = await api("/api/auth/me");
@@ -84,19 +89,26 @@ async function showAppView({ sync = false } = {}) {
     return;
   }
   // Nothing from a previous session should linger (status lines, half-typed forms).
-  for (const el of document.querySelectorAll("#app-view .status, #app-view .error, #settings-menu .status"))
+  for (const el of document.querySelectorAll(
+    "#app-view .status, #app-view .error, #admin-view .status, #admin-view .error, #settings-menu .status"
+  ))
     el.classList.add("hidden");
   document.getElementById("garmin-password").value = "";
+  document.getElementById("user-name").textContent = me.username + (me.is_admin ? " · admin" : "");
+  document.getElementById("garmin-settings").classList.toggle("hidden", me.is_admin);
+
+  if (me.is_admin) {
+    showView("admin-view");
+    document.getElementById("new-password").value = randomPassword();
+    await loadDashboard();
+    return;
+  }
   weekOffset = 0;
-  document.getElementById("auth-view").classList.add("hidden");
-  document.getElementById("app-view").classList.remove("hidden");
-  document.getElementById("user-actions").classList.remove("hidden");
-  document.getElementById("user-name").textContent = me.username;
-  document.getElementById("admin-btn").classList.toggle("hidden", !me.is_admin);
-  document.getElementById("chat-panel").classList.toggle("hidden", !me.ai_chat_enabled);
-  document.getElementById("ai-settings-section").classList.toggle("hidden", !me.ai_chat_enabled);
+  showView("app-view");
   renderGarminState();
+  showTab(location.hash === "#plan" ? "plan" : "calendar", { load: false });
   await loadAll();
+  if (currentTab === "plan") await loadPlanPage();
   if (sync && me.garmin_connected) runSync();
 }
 
@@ -130,31 +142,17 @@ document.getElementById("logout-btn").addEventListener("click", () => {
   showAuthView();
 });
 
-// --- Settings menu (AI provider + API key) ---
+// --- Settings menu (Garmin connection, password, log out) ---
 
 const settingsBtn = document.getElementById("settings-btn");
 const settingsMenu = document.getElementById("settings-menu");
-const aiProvider = document.getElementById("ai-provider");
-const aiModel = document.getElementById("ai-model");
-const aiKey = document.getElementById("ai-key");
-const aiKeyState = document.getElementById("ai-key-state");
-const aiKeyLink = document.getElementById("ai-key-link");
-const aiClear = document.getElementById("ai-clear");
-const aiStatus = document.getElementById("ai-status");
-const aiCustomFields = document.getElementById("ai-custom-fields");
-const aiBaseUrl = document.getElementById("ai-base-url");
-const aiFormat = document.getElementById("ai-format");
-
-let aiSettings = null;
 
 function setMenuOpen(open) {
   settingsMenu.classList.toggle("hidden", !open);
   settingsBtn.setAttribute("aria-expanded", String(open));
   if (open) {
-    aiStatus.classList.add("hidden");
     document.getElementById("pw-status").classList.add("hidden");
-    if (aiSettings) renderAISettings();
-    (me && me.ai_chat_enabled ? aiProvider : document.getElementById("pw-current")).focus();
+    document.getElementById("pw-current").focus();
   }
 }
 
@@ -168,124 +166,6 @@ document.addEventListener("keydown", (e) => {
     settingsBtn.focus();
   }
 });
-
-function selectedProvider() {
-  return aiSettings.providers.find((p) => p.id === aiProvider.value);
-}
-
-// Placeholders and key status for whichever provider is selected in the
-// dropdown, which may not be the saved one yet.
-function renderProviderFields() {
-  const provider = selectedProvider();
-  const isSaved = provider.id === aiSettings.provider;
-  aiModel.placeholder = provider.custom ? "Model name (required)" : provider.default_model;
-  aiKeyLink.href = provider.key_url;
-  aiKeyLink.classList.toggle("hidden", !provider.key_url);
-  aiCustomFields.classList.toggle("hidden", !provider.custom);
-
-  if (isSaved && aiSettings.has_api_key) {
-    aiKey.placeholder = `•••• ${aiSettings.api_key_hint}`;
-    aiKeyState.textContent = "Key saved. Leave empty to keep it.";
-  } else if (isSaved && aiSettings.using_server_key) {
-    aiKey.placeholder = "Optional";
-    aiKeyState.textContent = "Using the server's Claude key.";
-  } else {
-    aiKey.placeholder = `Paste your ${provider.label} key`;
-    aiKeyState.textContent = isSaved ? "No key saved." : "Switching provider removes the current key.";
-  }
-  aiClear.classList.toggle("hidden", !(isSaved && aiSettings.has_api_key));
-}
-
-function renderAISettings() {
-  aiProvider.innerHTML = "";
-  for (const p of aiSettings.providers) {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = p.label;
-    aiProvider.appendChild(opt);
-  }
-  aiProvider.value = aiSettings.provider;
-  aiModel.value = aiSettings.custom_model ? aiSettings.model : "";
-  aiBaseUrl.value = aiSettings.base_url || "";
-  aiFormat.value = aiSettings.api_format || "openai";
-  aiKey.value = "";
-  renderProviderFields();
-  renderChatLabel();
-}
-
-function renderChatLabel() {
-  const label = document.getElementById("chat-ai-label");
-  const provider = aiSettings.providers.find((p) => p.id === aiSettings.provider);
-  const ready = aiSettings.has_api_key || aiSettings.using_server_key;
-  const name = provider.custom && aiSettings.base_url ? `Custom (${new URL(aiSettings.base_url).host})` : provider.label;
-  label.textContent = ready
-    ? `· ${name} · ${aiSettings.model}`
-    : `· no API key for ${provider.label}, add one in ⚙️ Settings`;
-}
-
-aiProvider.addEventListener("change", () => {
-  aiModel.value = "";
-  renderProviderFields();
-});
-
-async function saveAISettings(body) {
-  try {
-    aiSettings = await api("/api/ai-settings", { method: "PUT", body: JSON.stringify(body) });
-    renderAISettings();
-    showStatus(aiStatus, "Saved.");
-  } catch (err) {
-    showStatus(aiStatus, err.message, true);
-  }
-}
-
-function aiFormValues() {
-  return {
-    provider: aiProvider.value,
-    model: aiModel.value,
-    api_key: aiKey.value || null,
-    base_url: aiBaseUrl.value,
-    api_format: aiFormat.value,
-  };
-}
-
-document.getElementById("ai-save").addEventListener("click", () => saveAISettings(aiFormValues()));
-
-// Checks what's in the form right now (saved or not) without saving it.
-const aiTest = document.getElementById("ai-test");
-aiTest.addEventListener("click", async () => {
-  aiTest.disabled = true;
-  aiTest.textContent = "Testing…";
-  showStatus(aiStatus, "Contacting the AI…");
-  try {
-    const r = await api("/api/ai-settings/test", { method: "POST", body: JSON.stringify(aiFormValues()) });
-    const reply = r.reply ? ` · replied “${r.reply.length > 40 ? r.reply.slice(0, 40) + "…" : r.reply}”` : "";
-    showStatus(aiStatus, `✓ Reached ${r.provider} · ${r.model} in ${(r.latency_ms / 1000).toFixed(1)} s${reply}`);
-    aiStatus.classList.add("ok");
-  } catch (err) {
-    showStatus(aiStatus, `✗ ${err.message}`, true);
-  } finally {
-    aiTest.disabled = false;
-    aiTest.textContent = "Test";
-  }
-});
-aiKey.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") document.getElementById("ai-save").click();
-});
-aiClear.addEventListener("click", () =>
-  saveAISettings({
-    provider: aiSettings.provider,
-    model: aiModel.value,
-    clear_api_key: true,
-    base_url: aiBaseUrl.value,
-    api_format: aiFormat.value,
-  })
-);
-
-async function loadAISettings() {
-  if (!me || !me.ai_chat_enabled) return;
-  aiSettings = await api("/api/ai-settings");
-  renderAISettings();
-}
 
 // --- Garmin connection ---
 
@@ -711,7 +591,7 @@ function renderCalendar(data) {
         const detail = p.planned_duration_minutes ? fmtHours(p.planned_duration_minutes) : "";
         const entry = makeEntry("planned", p.activity_type, detail);
         entry.title =
-          `Planned ${sportLabel(p.activity_type)}, ${detail}${p.source === "ai" ? " (set by the coach)" : ""}` +
+          `Planned ${sportLabel(p.activity_type)}, ${detail}` +
           `${p.notes ? `: ${p.notes}` : ""}. Click to edit.`;
         addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
@@ -883,8 +763,7 @@ async function runSync() {
       syncStatus,
       `Synced ${result.activities_synced} activities and ${result.sleep_records_synced} sleep records.`
     );
-    // The server starts a fresh coach conversation on every sync.
-    await Promise.all([loadCalendar(), loadChatHistory()]);
+    await loadCalendar();
   } catch (err) {
     if (err.status === 409) {
       syncStatus.classList.add("hidden");
@@ -1087,78 +966,367 @@ document.getElementById("objective-add").addEventListener("click", () => {
   renderObjectiveEdit(card, { id: null, title: "", event_date: null, target_time: null });
 });
 
-// --- Notes for the coach ---
+// --- Calendar / Plan tabs ---
 
-const notesText = document.getElementById("notes-text");
-const notesStatus = document.getElementById("notes-status");
+const TABS = ["calendar", "plan"];
+let currentTab = "calendar";
 
-async function loadNotes() {
-  notesText.value = (await api("/api/profile/notes")).notes;
+function showTab(name, { load = true } = {}) {
+  currentTab = name;
+  for (const tab of TABS) {
+    document.getElementById(`tab-${tab}`).classList.toggle("hidden", tab !== name);
+    const btn = document.getElementById(`tab-btn-${tab}`);
+    btn.classList.toggle("active", tab === name);
+    if (tab === name) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
+  }
+  try {
+    history.replaceState(null, "", name === "plan" ? "#plan" : location.pathname);
+  } catch (_) {
+    /* not essential */
+  }
+  if (!load) return;
+  if (name === "plan") loadPlanPage();
+  else loadCalendar();
 }
 
-document.getElementById("notes-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
+for (const tab of TABS) document.getElementById(`tab-btn-${tab}`).addEventListener("click", () => showTab(tab));
+
+// --- Plan page: training log, draft plan, confirm ---
+
+const logEl = document.getElementById("training-log");
+const logWeeks = document.getElementById("log-weeks");
+const logStatus = document.getElementById("log-status");
+const planStart = document.getElementById("plan-start");
+const planWeeks = document.getElementById("plan-weeks");
+const draftText = document.getElementById("draft-text");
+const draftNotes = document.getElementById("draft-notes");
+const draftStatus = document.getElementById("draft-status");
+const draftErrors = document.getElementById("draft-errors");
+const draftPreview = document.getElementById("draft-preview");
+const confirmBtn = document.getElementById("draft-confirm");
+const confirmView = document.getElementById("confirm-view");
+const confirmStatus = document.getElementById("confirm-status");
+
+let planDraft = null; // the server's last answer: parsed sessions, errors, weekly totals
+let draftDirty = false; // typed since the last save
+
+function fmtHM(minutes) {
+  const total = Math.round(minutes || 0);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function fmtSpan(startIso, endIso) {
+  const start = new Date(startIso + "T00:00:00");
+  const end = new Date(endIso + "T00:00:00");
+  const opts = { weekday: "short", month: "short", day: "numeric" };
+  return `${start.toLocaleDateString(undefined, opts)} to ${end.toLocaleDateString(undefined, { ...opts, year: "numeric" })}`;
+}
+
+function thisMonday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return addDays(today, -((today.getDay() + 6) % 7));
+}
+
+// Every Monday from this week to about six months out, so any future week can be planned.
+function fillPlanStart(selectedIso) {
+  const monday = thisMonday();
+  const options = [];
+  for (let i = 0; i < 27; i++) {
+    const day = addDays(monday, i * 7);
+    let label = day.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      ...(day.getFullYear() !== monday.getFullYear() ? { year: "numeric" } : {}),
+    });
+    if (i === 0) label = `This week (${label})`;
+    if (i === 1) label = `Next week (${label})`;
+    options.push([isoDate(day), label]);
+  }
+  if (selectedIso && !options.some(([iso]) => iso === selectedIso)) options.unshift([selectedIso, fmtLongDate(selectedIso)]);
+  planStart.innerHTML = "";
+  for (const [iso, label] of options) {
+    const opt = document.createElement("option");
+    opt.value = iso;
+    opt.textContent = label;
+    planStart.appendChild(opt);
+  }
+  if (selectedIso) planStart.value = selectedIso;
+}
+
+async function loadLog() {
   try {
-    notesText.value = (await api("/api/profile/notes", { method: "PUT", body: JSON.stringify({ notes: notesText.value }) })).notes;
-    showStatus(notesStatus, "Saved.");
-    notesStatus.classList.add("ok");
+    const data = await api(`/api/plan/log?weeks=${logWeeks.value}&today=${isoDate(new Date())}`);
+    logEl.textContent = data.text;
+    logStatus.classList.add("hidden");
   } catch (err) {
-    showStatus(notesStatus, err.message, true);
+    if (err.status !== 401) showStatus(logStatus, `Couldn't load the log: ${err.message}`, true);
+  }
+}
+
+function renderDraftErrors(errors) {
+  draftErrors.innerHTML = "";
+  draftErrors.classList.toggle("hidden", errors.length === 0);
+  if (!errors.length) return;
+  const title = document.createElement("strong");
+  title.textContent = `${plural(errors.length, "line")} to fix before this can go on the calendar:`;
+  const list = document.createElement("ul");
+  for (const e of errors) {
+    const item = document.createElement("li");
+    const where = document.createElement("span");
+    where.className = "error-line";
+    where.textContent = `Line ${e.line}: ${e.text}`;
+    const why = document.createElement("span");
+    why.textContent = e.message;
+    item.append(where, why);
+    list.appendChild(item);
+  }
+  draftErrors.append(title, list);
+}
+
+function renderDraftPreview(draft) {
+  draftPreview.innerHTML = "";
+  if (!draft.sessions_count) return;
+  const today = isoDate(new Date());
+
+  draft.weeks_preview.forEach((week, index) => {
+    const heading = document.createElement("h3");
+    heading.className = "plan-week-title";
+    heading.textContent = `Week ${index + 1} · ${fmtSpan(week.start, week.end)} · ${fmtHM(week.total_minutes)}`;
+    const table = document.createElement("table");
+    table.className = "users-table plan-table";
+    const head = table.createTHead().insertRow();
+    for (const name of ["Day", "Sessions", "Time"]) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = name;
+      head.appendChild(th);
+    }
+    const body = table.createTBody();
+    for (let i = 0; i < 7; i++) {
+      const iso = isoDate(addDays(new Date(week.start + "T00:00:00"), i));
+      const sessions = week.sessions.filter((s) => s.date === iso);
+      const row = body.insertRow();
+      const dayCell = row.insertCell();
+      dayCell.textContent = fmtDate(iso);
+      dayCell.className = "plan-day";
+      const sessionsCell = row.insertCell();
+      if (!sessions.length) {
+        sessionsCell.textContent = iso < today ? "(already past)" : "–";
+        sessionsCell.className = "subtle";
+      }
+      for (const s of sessions) {
+        const line = document.createElement("div");
+        line.className = "plan-session";
+        const name = document.createElement("strong");
+        name.textContent = `${activityIcon(s.activity_type)} ${sportLabel(s.activity_type)} ${fmtHM(s.minutes)}`;
+        line.appendChild(name);
+        if (s.details) line.appendChild(document.createTextNode(` · ${s.details}`));
+        sessionsCell.appendChild(line);
+      }
+      const timeCell = row.insertCell();
+      timeCell.className = "plan-time";
+      timeCell.textContent = sessions.length ? fmtHM(sessions.reduce((sum, s) => sum + s.minutes, 0)) : "";
+    }
+    draftPreview.append(heading, table);
+  });
+
+  // Weekly split, like a block summary. Strength/Other only appear when used.
+  const sports = [["swim", "Swim"], ["bike", "Bike"], ["run", "Run"], ["strength", "Strength"], ["other", "Other"]].filter(
+    ([key], i) => i < 3 || draft.weeks_preview.some((w) => w.minutes_by_sport[key] > 0)
+  );
+  const heading = document.createElement("h3");
+  heading.className = "plan-week-title";
+  heading.textContent = "Weekly split";
+  const table = document.createElement("table");
+  table.className = "users-table plan-table split-table";
+  const head = table.createTHead().insertRow();
+  for (const name of ["Week", ...sports.map(([, label]) => label), "Total"]) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = name;
+    head.appendChild(th);
+  }
+  const body = table.createTBody();
+  draft.weeks_preview.forEach((week, index) => {
+    const row = body.insertRow();
+    row.insertCell().textContent = `${index + 1} · ${fmtDate(week.start)}`;
+    for (const [key] of sports) row.insertCell().textContent = fmtHM(week.minutes_by_sport[key]);
+    const total = row.insertCell();
+    total.textContent = fmtHM(week.total_minutes);
+    total.className = "plan-time";
+  });
+  draftPreview.append(heading, table);
+}
+
+function resetConfirmButton() {
+  confirmBtn.classList.remove("confirming");
+  confirmBtn.textContent = "Put this plan on the calendar";
+}
+
+function renderConfirm(draft) {
+  const summary = document.getElementById("confirm-summary");
+  resetConfirmButton();
+  const ready = draft.sessions_count > 0 && draft.errors.length === 0;
+  confirmBtn.disabled = !ready;
+  if (draft.errors.length) {
+    summary.textContent = `Fix the ${plural(draft.errors.length, "line")} flagged above first.`;
+  } else if (!draft.sessions_count) {
+    summary.textContent = "Write a draft above first.";
+  } else {
+    const replaced = draft.existing_planned
+      ? `${plural(draft.existing_planned, "session")} already planned from ${fmtDate(draft.replace_from)} to ${fmtDate(draft.end_date)} will be replaced.`
+      : "Nothing is planned on those dates yet.";
+    summary.textContent =
+      `${plural(draft.sessions_count, "session")}, ${fmtSpan(draft.start_date, draft.end_date)}. ${replaced} ` +
+      "Activities you already did are never touched.";
+  }
+}
+
+function applyDraft(draft, { fill = false } = {}) {
+  planDraft = draft;
+  if (fill) {
+    fillPlanStart(draft.start_date);
+    if (![...planWeeks.options].some((o) => o.value === String(draft.weeks))) {
+      const opt = document.createElement("option");
+      opt.value = String(draft.weeks);
+      opt.textContent = `${draft.weeks} weeks`;
+      planWeeks.appendChild(opt);
+    }
+    planWeeks.value = String(draft.weeks);
+    draftText.value = draft.text;
+    draftNotes.value = draft.notes;
+    draftDirty = false;
+  }
+  document.getElementById("plan-range").textContent = fmtSpan(draft.start_date, draft.end_date);
+  renderDraftErrors(draft.errors);
+  renderDraftPreview(draft);
+  renderConfirm(draft);
+}
+
+async function saveDraft({ quiet = false } = {}) {
+  try {
+    const draft = await api(`/api/plan/draft?today=${isoDate(new Date())}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        start_date: planStart.value,
+        weeks: Number(planWeeks.value),
+        text: draftText.value,
+        notes: draftNotes.value,
+      }),
+    });
+    draftDirty = false;
+    applyDraft(draft);
+    confirmView.classList.add("hidden");
+    if (!quiet) {
+      const problems = draft.errors.length ? `, ${plural(draft.errors.length, "line")} to fix` : "";
+      showStatus(draftStatus, `Saved: ${plural(draft.sessions_count, "session")}${problems}. Not on the calendar yet.`);
+      if (!draft.errors.length) draftStatus.classList.add("ok");
+    }
+    return draft;
+  } catch (err) {
+    if (err.status !== 401) showStatus(draftStatus, err.message, true);
+    return null;
+  }
+}
+
+async function loadPlanPage() {
+  for (const el of [draftStatus, confirmStatus, logStatus]) el.classList.add("hidden");
+  confirmView.classList.add("hidden");
+  try {
+    const [draft] = await Promise.all([api(`/api/plan/draft?today=${isoDate(new Date())}`), loadLog()]);
+    applyDraft(draft, { fill: true });
+  } catch (err) {
+    if (err.status !== 401) showStatus(draftStatus, err.message, true);
+  }
+}
+
+logWeeks.addEventListener("change", loadLog);
+for (const el of [draftText, draftNotes]) {
+  el.addEventListener("input", () => {
+    draftDirty = true;
+  });
+  // Saving when the box loses focus keeps the preview current without an extra click.
+  el.addEventListener("change", () => saveDraft());
+}
+for (const el of [planStart, planWeeks]) el.addEventListener("change", () => saveDraft());
+document.getElementById("draft-save").addEventListener("click", () => saveDraft());
+
+// The log, the weeks being planned and the line format, ready to paste into a Claude conversation.
+document.getElementById("log-copy").addEventListener("click", async () => {
+  const start = planDraft ? planDraft.start_date : planStart.value;
+  const parts = [
+    logEl.textContent,
+    "",
+    "HOW TO WRITE THE PLAN",
+    planDraft ? `Weeks to plan: ${fmtSpan(planDraft.start_date, planDraft.end_date)}.` : `Plan from the week of ${fmtLongDate(start)}.`,
+    "Give one session per line as: date | sport | duration | details",
+    'Date like "Tue Oct 13", sport swim / bike / run / strength, duration like 1:15. Two sessions on one day are two lines; rest days need no line.',
+  ];
+  if (draftNotes.value.trim()) parts.push("", "BLOCK NOTES", draftNotes.value.trim());
+  if (draftText.value.trim()) parts.push("", "CURRENT DRAFT", draftText.value.trim());
+  const text = parts.join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    showStatus(logStatus, "Copied. Paste it into a Claude conversation and ask for the plan.");
+    logStatus.classList.add("ok");
+  } catch (_) {
+    // No clipboard permission: select the log so it can be copied by hand.
+    const range = document.createRange();
+    range.selectNodeContents(logEl);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    showStatus(logStatus, "Couldn't copy automatically. The log is selected: press Cmd+C.", true);
   }
 });
 
-// --- Chat ---
-
-function appendChatMessage(role, content) {
-  const log = document.getElementById("chat-log");
-  const el = document.createElement("div");
-  el.className = `chat-msg ${role}`;
-  el.textContent = content;
-  log.appendChild(el);
-  log.scrollTop = log.scrollHeight;
-}
-
-async function loadChatHistory() {
-  if (!me || !me.ai_chat_enabled) return;
-  const data = await api("/api/chat/history");
-  const log = document.getElementById("chat-log");
-  log.innerHTML = "";
-  for (const m of data.messages) {
-    appendChatMessage(m.role, m.content);
+// Two clicks when sessions will be replaced, instead of a confirm() dialog.
+confirmBtn.addEventListener("click", async () => {
+  if (draftDirty && !(await saveDraft({ quiet: true }))) return;
+  if (!planDraft || planDraft.errors.length || !planDraft.sessions_count) return;
+  if (planDraft.existing_planned > 0 && !confirmBtn.classList.contains("confirming")) {
+    confirmBtn.classList.add("confirming");
+    confirmBtn.textContent = `Click again: replaces ${plural(planDraft.existing_planned, "planned session")}`;
+    setTimeout(resetConfirmButton, 5000);
+    return;
   }
-}
-
-document.getElementById("chat-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const input = document.getElementById("chat-input");
-  const message = input.value.trim();
-  if (!message) return;
-  input.value = "";
-  appendChatMessage("user", message);
-
+  confirmBtn.disabled = true;
   try {
-    const data = await api("/api/chat", { method: "POST", body: JSON.stringify({ message }) });
-    appendChatMessage("assistant", data.reply);
-    // The coach may have set or changed an objective.
-    const refresh = [loadObjectives()];
-    if (data.plan_changes && data.plan_changes.length > 0) refresh.push(loadCalendar());
-    await Promise.all(refresh);
+    const result = await api(`/api/plan/draft/confirm?today=${isoDate(new Date())}`, { method: "POST" });
+    const replaced = result.replaced ? `, replacing ${plural(result.replaced, "planned session")}` : "";
+    applyDraft(await api(`/api/plan/draft?today=${isoDate(new Date())}`));
+    showStatus(confirmStatus, `Done: ${plural(result.added, "session")} are on the calendar${replaced}.`);
+    confirmStatus.classList.add("ok");
+    confirmView.classList.remove("hidden");
   } catch (err) {
-    appendChatMessage("assistant", `Error: ${err.message}`);
+    if (err.status !== 401) showStatus(confirmStatus, err.message, true);
+    confirmBtn.disabled = false;
   }
+});
+
+confirmView.addEventListener("click", () => {
+  // The calendar shows 2 weeks either side of its centre: centre it so the plan starts near the top.
+  const weeksAhead = Math.round((new Date(planDraft.start_date + "T00:00:00") - thisMonday()) / (7 * 86400000));
+  weekOffset = Math.max(0, weeksAhead + 2);
+  showTab("calendar");
 });
 
 // --- Init ---
 
 async function loadAll() {
-  await Promise.all([loadCalendar(), loadObjectives(), loadNotes(), loadChatHistory(), loadAISettings()]);
+  await Promise.all([loadCalendar(), loadObjectives()]);
 }
 
-// --- Admin: manage users ---
+// --- Admin dashboard: connections of the last week + account management ---
 
-const adminDialog = document.getElementById("admin-dialog");
+const DASH_DAYS = 7;
 const usersBody = document.getElementById("users-body");
 const userStatus = document.getElementById("user-status");
+const createStatus = document.getElementById("create-status");
+const dashError = document.getElementById("dash-error");
 
 function randomPassword() {
   const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -1166,17 +1334,334 @@ function randomPassword() {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function fmtDateTime(iso) {
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// "5 min ago", "3 h ago", "Yesterday", "4 days ago", then the date.
+function fmtAgo(iso) {
+  const then = new Date(iso);
+  const minutes = Math.floor((Date.now() - then.getTime()) / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ago`;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const days = Math.ceil((startOfToday.getTime() - then.getTime()) / 86400000);
+  if (days <= 1) return "Yesterday";
+  if (days < 30) return `${days} days ago`;
+  return then.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function timeCell(iso, emptyText) {
+  const cell = document.createElement("td");
+  if (!iso) {
+    cell.textContent = emptyText;
+    cell.className = "subtle";
+  } else {
+    const time = document.createElement("time");
+    time.dateTime = iso;
+    time.textContent = fmtAgo(iso);
+    time.title = fmtDateTime(iso);
+    cell.appendChild(time);
+  }
+  return cell;
+}
+
+// Top of the axis: the smallest "clean" number at or above the data.
+function axisMax(value) {
+  for (const step of [2, 4, 6, 8, 10, 20, 30, 40, 50, 100, 200, 500, 1000]) if (value <= step) return step;
+  return Math.ceil(value / 1000) * 1000;
+}
+
+function renderLoginsChart(days) {
+  const chart = document.getElementById("logins-chart");
+  chart.innerHTML = "";
+  const peak = Math.max(...days.map((d) => d.logins));
+  if (peak === 0) {
+    const empty = document.createElement("p");
+    empty.className = "subtle chart-empty";
+    empty.textContent = "No logins in the last 7 days.";
+    chart.appendChild(empty);
+    return;
+  }
+  const top = axisMax(peak);
+  const todayIso = days[days.length - 1].date;
+
+  const axis = document.createElement("div");
+  axis.className = "bar-axis";
+  axis.setAttribute("aria-hidden", "true");
+  for (const tick of [top, top / 2, 0]) {
+    const label = document.createElement("span");
+    label.textContent = tick;
+    axis.appendChild(label);
+  }
+
+  const plot = document.createElement("div");
+  plot.className = "bar-plot";
+  plot.setAttribute("role", "list");
+  for (const day of days) {
+    const date = new Date(day.date + "T00:00:00");
+    const summary =
+      `${plural(day.logins, "login")}` + (day.failed ? ` · ${plural(day.failed, "failed attempt")}` : "");
+    const col = document.createElement("div");
+    col.className = "bar-col" + (day.date === todayIso ? " today" : "");
+    col.setAttribute("role", "listitem");
+    col.tabIndex = 0;
+    col.setAttribute(
+      "aria-label",
+      `${date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}: ${summary}`
+    );
+
+    const track = document.createElement("div");
+    track.className = "bar-track";
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.style.height = `${(day.logins / top) * 100}%`;
+    // Label sparingly: the busiest day and today; the rest is in the tooltip and the table below.
+    if (day.logins > 0 && (day.logins === peak || day.date === todayIso)) {
+      const value = document.createElement("span");
+      value.className = "bar-value";
+      value.textContent = day.logins;
+      bar.appendChild(value);
+    }
+    track.appendChild(bar);
+
+    const tip = document.createElement("div");
+    tip.className = "bar-tip";
+    const tipValue = document.createElement("strong");
+    tipValue.textContent = summary;
+    const tipLabel = document.createElement("span");
+    tipLabel.textContent = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    tip.append(tipValue, tipLabel);
+
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = day.date === todayIso ? "Today" : date.toLocaleDateString(undefined, { weekday: "short" });
+
+    col.append(track, tip, label);
+    plot.appendChild(col);
+  }
+  chart.append(axis, plot);
+}
+
+function renderActivity(activity) {
+  const t = activity.totals;
+  document.getElementById("stat-accounts").textContent = t.accounts;
+  document.getElementById("stat-active").textContent = t.active_accounts;
+  document.getElementById("stat-logins").textContent = t.logins;
+  document.getElementById("stat-failed").textContent = t.failed;
+  renderLoginsChart(activity.days);
+
+  const body = document.getElementById("events-body");
+  body.innerHTML = "";
+  for (const event of activity.recent) {
+    const row = document.createElement("tr");
+    const when = document.createElement("td");
+    const time = document.createElement("time");
+    time.dateTime = event.at;
+    time.textContent = fmtDateTime(event.at);
+    when.appendChild(time);
+    const account = document.createElement("td");
+    account.textContent = event.username;
+    const result = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = `result-badge ${event.success ? "ok" : "failed"}`;
+    badge.textContent = event.success ? "✓ Logged in" : "✕ Wrong password";
+    result.appendChild(badge);
+    row.append(when, account, result);
+    body.appendChild(row);
+  }
+  document.getElementById("events-empty").classList.toggle("hidden", activity.recent.length > 0);
+  body.closest(".table-scroll").classList.toggle("hidden", activity.recent.length === 0);
+}
+
+// Two clicks instead of confirm(): a native dialog would block tools driving the page.
+function confirmButton(label, armedLabel, ariaName, action) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn-link danger";
+  btn.textContent = label;
+  btn.setAttribute("aria-label", `${label} ${ariaName}`);
+  btn.addEventListener("click", async () => {
+    if (!btn.classList.contains("confirming")) {
+      btn.classList.add("confirming");
+      btn.textContent = armedLabel;
+      setTimeout(() => {
+        btn.classList.remove("confirming");
+        btn.textContent = label;
+      }, 4000);
+      return;
+    }
+    try {
+      await action();
+    } catch (err) {
+      showStatus(userStatus, err.message, true);
+    }
+  });
+  return btn;
+}
+
+function renderResetForm(row, u) {
+  const existing = usersBody.querySelector("tr.reset-row");
+  if (existing) existing.remove();
+
+  const formRow = document.createElement("tr");
+  formRow.className = "reset-row";
+  const cell = document.createElement("td");
+  cell.colSpan = 6;
+  const form = document.createElement("form");
+  form.className = "reset-form";
+  form.noValidate = true;
+  const label = document.createElement("label");
+  label.htmlFor = `reset-pw-${u.id}`;
+  label.textContent = `New password for ${u.username} (8+ characters)`;
+  const input = document.createElement("input");
+  input.id = `reset-pw-${u.id}`;
+  input.type = "text";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.value = randomPassword();
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.textContent = "Set password";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn-ghost";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => formRow.remove());
+  form.append(label, input, save, cancel);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pw = input.value;
+    if (pw.length < 8) return showStatus(userStatus, "The password needs 8+ characters.", true);
+    try {
+      await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ password: pw }) });
+      if (u.id === me.id) {
+        // Resetting your own password logs every session out, this one included.
+        clearSession();
+        showAuthView();
+        return;
+      }
+      await loadDashboard();
+      showStatus(userStatus, `Password for ${u.username} is now: ${pw}  (they are logged out everywhere)`);
+      userStatus.classList.add("ok");
+    } catch (err) {
+      showStatus(userStatus, err.message, true);
+    }
+  });
+  cell.appendChild(form);
+  formRow.appendChild(cell);
+  row.after(formRow);
+  input.focus();
+  input.select();
+}
+
+// What an account holds, in words: "45 activities, 42 nights of sleep and 25 planned sessions".
+function describeAccountData(data) {
+  const parts = [
+    [data.activities, "activity", "activities"],
+    [data.sleep_nights, "night of sleep", "nights of sleep"],
+    [data.planned_sessions, "planned session", "planned sessions"],
+    [data.objectives, "objective", "objectives"],
+  ]
+    .filter(([n]) => n > 0)
+    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+  if (!parts.length) return "";
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+// Deleting can't be undone, so it says what will be lost and needs the username typed.
+function renderDeleteForm(row, u) {
+  const existing = usersBody.querySelector("tr.reset-row");
+  if (existing) existing.remove();
+
+  const formRow = document.createElement("tr");
+  formRow.className = "reset-row delete-row";
+  const cell = document.createElement("td");
+  cell.colSpan = 6;
+  const form = document.createElement("form");
+  form.className = "reset-form";
+  form.noValidate = true;
+
+  const held = describeAccountData(u.data);
+  const warning = document.createElement("p");
+  warning.className = "delete-warning";
+  warning.textContent = held
+    ? `Deleting ${u.username} also deletes its ${held}. This can't be undone.`
+    : `${u.username} holds no training data. Deleting it can't be undone.`;
+
+  const label = document.createElement("label");
+  label.htmlFor = `delete-confirm-${u.id}`;
+  label.textContent = `Type ${u.username} to confirm`;
+  const input = document.createElement("input");
+  input.id = `delete-confirm-${u.id}`;
+  input.type = "text";
+  input.autocomplete = "off";
+  input.autocapitalize = "none";
+  input.spellcheck = false;
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.className = "btn-danger";
+  submit.textContent = "Delete account";
+  submit.disabled = true;
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn-ghost";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => formRow.remove());
+  input.addEventListener("input", () => {
+    submit.disabled = input.value.trim().toLowerCase() !== u.username;
+  });
+  form.append(warning, label, input, submit, cancel);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (submit.disabled) return;
+    try {
+      await api(`/api/admin/users/${u.id}?confirm=${encodeURIComponent(input.value.trim())}`, { method: "DELETE" });
+      await loadDashboard();
+      showStatus(userStatus, `Deleted ${u.username}${held ? ` and its ${held}` : ""}.`);
+    } catch (err) {
+      showStatus(userStatus, err.message, true);
+    }
+  });
+  cell.appendChild(form);
+  formRow.appendChild(cell);
+  row.after(formRow);
+  input.focus();
+}
+
 function renderUsers(users) {
   usersBody.innerHTML = "";
+  const admins = users.filter((u) => u.is_admin).length;
+  document.getElementById("stat-accounts-note").textContent =
+    `${plural(users.length - admins, "user")} · ${plural(admins, "admin")}`;
+
   for (const u of users) {
+    const isMe = u.id === me.id;
     const row = document.createElement("tr");
     const name = document.createElement("td");
-    name.textContent = u.username + (u.id === me.id ? " (you)" : "");
+    name.textContent = u.username + (isMe ? " (you)" : "");
     const role = document.createElement("td");
-    role.textContent = u.is_admin ? "Admin" : "Friend";
+    role.textContent = u.is_admin ? "Admin" : "User";
     if (!u.has_password) role.textContent += " · no password";
+    const lastLogin = timeCell(u.last_login_at, "Never");
     const garmin = document.createElement("td");
-    garmin.textContent = u.garmin_connected ? "Connected" : "—";
+    garmin.textContent = u.is_admin ? "–" : u.garmin_connected ? "Connected" : "Not connected";
+    const created = document.createElement("td");
+    created.textContent = u.created_at
+      ? new Date(u.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+      : "–";
     const actions = document.createElement("td");
     actions.className = "row-actions";
 
@@ -1185,64 +1670,54 @@ function renderUsers(users) {
     reset.className = "btn-link";
     reset.textContent = "Reset password";
     reset.setAttribute("aria-label", `Reset password for ${u.username}`);
-    reset.addEventListener("click", async () => {
-      const pw = prompt(`New password for ${u.username} (8+ characters):`, randomPassword());
-      if (pw == null) return;
-      try {
-        await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ password: pw }) });
-        showStatus(userStatus, `Password for ${u.username} changed to: ${pw}`);
-        userStatus.classList.add("ok");
-        if (u.id === me.id) {
-          clearSession();
-          adminDialog.close();
-          showAuthView();
-        } else {
-          loadUsers();
-        }
-      } catch (err) {
-        showStatus(userStatus, err.message, true);
-      }
-    });
+    reset.addEventListener("click", () => renderResetForm(row, u));
     actions.appendChild(reset);
 
-    if (u.id !== me.id) {
+    if (!isMe) {
+      const makeAdmin = !u.is_admin;
+      actions.appendChild(
+        confirmButton(
+          makeAdmin ? "Make admin" : "Make user",
+          makeAdmin ? "Click again: they lose the calendar view" : "Click again to remove admin rights",
+          u.username,
+          async () => {
+            await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_admin: makeAdmin }) });
+            await loadDashboard();
+            showStatus(userStatus, `${u.username} is now ${makeAdmin ? "an admin" : "a regular user"}.`);
+            userStatus.classList.add("ok");
+          }
+        )
+      );
       const del = document.createElement("button");
       del.type = "button";
       del.className = "btn-link danger";
       del.textContent = "Delete";
       del.setAttribute("aria-label", `Delete ${u.username}`);
-      del.addEventListener("click", async () => {
-        if (!confirm(`Delete ${u.username} and all their data (calendar, objectives, notes)? This can't be undone.`)) return;
-        try {
-          await api(`/api/admin/users/${u.id}`, { method: "DELETE" });
-          loadUsers();
-        } catch (err) {
-          showStatus(userStatus, err.message, true);
-        }
-      });
+      del.addEventListener("click", () => renderDeleteForm(row, u));
       actions.appendChild(del);
     }
 
-    row.append(name, role, garmin, actions);
+    row.append(name, role, lastLogin, garmin, created, actions);
     usersBody.appendChild(row);
   }
 }
 
-async function loadUsers() {
-  renderUsers((await api("/api/admin/users")).users);
+async function loadDashboard() {
+  dashError.classList.add("hidden");
+  try {
+    const tz = new Date().getTimezoneOffset();
+    const [activity, users] = await Promise.all([
+      api(`/api/admin/activity?days=${DASH_DAYS}&tz_offset=${tz}`),
+      api("/api/admin/users"),
+    ]);
+    renderActivity(activity);
+    renderUsers(users.users);
+  } catch (err) {
+    if (err.status !== 401) showStatus(dashError, `Couldn't load the dashboard: ${err.message}`, true);
+  }
 }
 
-document.getElementById("admin-btn").addEventListener("click", async () => {
-  userStatus.classList.add("hidden");
-  document.getElementById("new-password").value = randomPassword();
-  adminDialog.showModal();
-  try {
-    await loadUsers();
-  } catch (err) {
-    showStatus(userStatus, err.message, true);
-  }
-});
-document.getElementById("admin-close").addEventListener("click", () => adminDialog.close());
+document.getElementById("dash-refresh").addEventListener("click", loadDashboard);
 document.getElementById("gen-password").addEventListener("click", () => {
   document.getElementById("new-password").value = randomPassword();
 });
@@ -1252,21 +1727,21 @@ document.getElementById("user-form").addEventListener("submit", async (e) => {
   const username = document.getElementById("new-username").value.trim().toLowerCase();
   const password = document.getElementById("new-password").value;
   if (!/^[a-z0-9._@-]{3,64}$/.test(username))
-    return showStatus(userStatus, "Usernames are 3–64 characters: letters, digits, . _ - @", true);
-  if (password.length < 8) return showStatus(userStatus, "The password needs 8+ characters.", true);
+    return showStatus(createStatus, "Usernames are 3–64 characters: letters, digits, . _ - @", true);
+  if (password.length < 8) return showStatus(createStatus, "The password needs 8+ characters.", true);
   try {
     await api("/api/admin/users", {
       method: "POST",
       body: JSON.stringify({ username, password, is_admin: document.getElementById("new-admin").checked }),
     });
-    showStatus(userStatus, `Created ${username}. Send them: username ${username} · password ${password}`);
-    userStatus.classList.add("ok");
     document.getElementById("new-username").value = "";
     document.getElementById("new-admin").checked = false;
     document.getElementById("new-password").value = randomPassword();
-    await loadUsers();
+    await loadDashboard();
+    showStatus(createStatus, `Created ${username}. Send them: username ${username} · password ${password}`);
+    createStatus.classList.add("ok");
   } catch (err) {
-    showStatus(userStatus, err.message, true);
+    showStatus(createStatus, err.message, true);
   }
 });
 

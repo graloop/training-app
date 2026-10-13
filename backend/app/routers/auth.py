@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import accounts, models, schemas
-from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
 from ..security import create_access_token, hash_password, verify_password
@@ -17,7 +16,6 @@ def me_out(user: models.User) -> schemas.MeOut:
         is_admin=bool(user.is_admin),
         garmin_connected=bool(user.garmin_session_encrypted),
         garmin_email=user.garmin_email if user.garmin_session_encrypted else None,
-        ai_chat_enabled=get_settings().ai_chat_enabled,
     )
 
 
@@ -35,9 +33,11 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == username).first()
     if not verify_password(payload.password, user.hashed_password if user else None):
         accounts.record_failure(username)
+        accounts.record_login(db, user, success=False)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong username or password")
 
     accounts.clear_failures(username)
+    accounts.record_login(db, user, success=True)
     return schemas.TokenResponse(access_token=create_access_token(user.id, user.token_version))
 
 

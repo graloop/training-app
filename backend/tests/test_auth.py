@@ -88,7 +88,7 @@ def test_there_is_no_signup(client):
 
 
 def test_protected_routes_require_token(client):
-    for path in ["/api/calendar", "/api/objectives", "/api/auth/me", "/api/profile/notes", "/api/admin/users"]:
+    for path in ["/api/calendar", "/api/objectives", "/api/auth/me", "/api/admin/users", "/api/admin/activity"]:
         assert client.get(path).status_code == 401
     assert client.get("/api/calendar", headers={"Authorization": "Bearer garbage"}).status_code == 401
 
@@ -124,7 +124,7 @@ def test_admin_creates_lists_and_deletes_users(client):
 
     marie_auth = login(client, "marie.t", "marie-password")
     client.post("/api/objectives", json={"title": "Triathlon"}, headers=marie_auth)
-    assert client.delete(f"/api/admin/users/{marie['id']}", headers=admin).status_code == 204
+    assert client.delete(f"/api/admin/users/{marie['id']}", params={"confirm": "marie.t"}, headers=admin).status_code == 204
     assert client.get("/api/auth/me", headers=marie_auth).status_code == 401  # session dies with the account
     with SessionLocal() as db:
         assert db.query(models.Objective).count() == 0  # and so does the data
@@ -203,20 +203,11 @@ def test_each_user_connects_their_own_garmin(client):
 
 def test_users_are_isolated(client, auth):
     client.post("/api/objectives", json={"title": "mine"}, headers=auth)
-    client.put("/api/profile/notes", json={"notes": "secret"}, headers=auth)
     other = make_user(client, "other")
     assert client.get("/api/objectives", headers=other).json() == {"objectives": []}
-    assert client.get("/api/profile/notes", headers=other).json() == {"notes": ""}
 
 
-# --- Notes, security headers, AI chat flag ---------------------------------------------
-
-
-def test_profile_notes_round_trip(client, auth):
-    assert client.get("/api/profile/notes", headers=auth).json() == {"notes": ""}
-    client.put("/api/profile/notes", json={"notes": "  Free Tue/Thu evenings. Left knee sore.  "}, headers=auth)
-    assert client.get("/api/profile/notes", headers=auth).json() == {"notes": "Free Tue/Thu evenings. Left knee sore."}
-    assert client.put("/api/profile/notes", json={"notes": "x" * 5001}, headers=auth).status_code == 422
+# --- Security headers, no chatbot ---------------------------------------------------
 
 
 def test_security_headers_and_no_public_api_docs(client):
@@ -228,17 +219,22 @@ def test_security_headers_and_no_public_api_docs(client):
     assert client.get("/openapi.json").status_code == 404
 
 
-def test_ai_chat_is_off_by_default(client, auth, monkeypatch):
-    from app.config import Settings, get_settings
+def test_there_is_no_built_in_chatbot(client, auth):
+    """The app is driven from the page (by hand or with Claude in Chrome): no chat
+    or AI-key endpoints, no AI SDKs, nothing about it on the page."""
+    from pathlib import Path
 
-    assert Settings(_env_file=None, ai_chat_enabled=False).ai_chat_enabled is False
-    monkeypatch.delenv("AI_CHAT_ENABLED")
-    assert Settings(_env_file=None).ai_chat_enabled is False
+    backend = Path(__file__).resolve().parents[1]
+    for path in ["/api/chat", "/api/chat/history", "/api/ai-settings", "/api/ai-settings/test", "/api/profile/notes"]:
+        assert client.get(path, headers=auth).status_code == 404
+    assert client.post("/api/chat", json={"message": "hi"}, headers=auth).status_code in (404, 405)
+    assert "ai_chat_enabled" not in client.get("/api/auth/me", headers=auth).json()
 
-    monkeypatch.setattr(get_settings(), "ai_chat_enabled", False)
-    assert client.get("/api/auth/me", headers=auth).json()["ai_chat_enabled"] is False
-    assert client.post("/api/chat", json={"message": "hi"}, headers=auth).status_code == 404
-    assert client.get("/api/ai-settings", headers=auth).status_code == 404
+    requirements = (backend / "requirements.txt").read_text().lower()
+    assert "anthropic" not in requirements and "openai" not in requirements
+    page = "".join((backend / "frontend" / name).read_text().lower() for name in ("index.html", "app.js"))
+    for word in ("chat", "api key", "anthropic", "openai", "notes for"):
+        assert word not in page, word
 
 
 def test_frontend_is_revalidated_by_browsers(client):

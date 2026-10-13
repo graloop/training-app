@@ -50,16 +50,29 @@ def test_requires_login(client):
     assert client.post("/api/planned", json={}).status_code == 401
 
 
-def test_old_ai_settings_table_gets_new_columns(tmp_path, monkeypatch):
-    """A database created before the custom-provider columns existed is upgraded on startup."""
+def test_old_tables_get_new_columns(tmp_path, monkeypatch):
+    """A database created by an earlier version gains new nullable columns on startup."""
     from app import database
 
     engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
     with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE ai_settings (id INTEGER PRIMARY KEY, user_id INTEGER, provider VARCHAR(32), "
-                          "model VARCHAR(128), api_key_encrypted TEXT, updated_at DATETIME)"))
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, email VARCHAR(255), hashed_password VARCHAR(255))"))
     monkeypatch.setattr(database, "engine", engine)
     database.add_missing_columns()
     database.add_missing_columns()  # idempotent
-    cols = {c["name"] for c in inspect(engine).get_columns("ai_settings")}
-    assert {"base_url", "api_format"} <= cols
+    cols = {c["name"] for c in inspect(engine).get_columns("users")}
+    assert {"is_admin", "token_version", "last_login_at"} <= cols
+
+
+def test_chat_tables_from_older_versions_are_dropped(tmp_path, monkeypatch):
+    from app import database
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with engine.begin() as conn:
+        for name in ("chat_messages", "ai_settings", "coach_briefings", "planned_training"):
+            conn.execute(text(f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, user_id INTEGER)"))
+        conn.execute(text("INSERT INTO ai_settings (id, user_id) VALUES (1, 1)"))
+    monkeypatch.setattr(database, "engine", engine)
+    database.drop_obsolete_tables()
+    database.drop_obsolete_tables()  # idempotent
+    assert inspect(engine).get_table_names() == ["planned_training"]

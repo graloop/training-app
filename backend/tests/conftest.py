@@ -1,23 +1,19 @@
 import os
 import tempfile
-from types import SimpleNamespace
 
-# Configure the app before it's imported: settings, the engine and the
-# Anthropic key are all read at module import time.
+# Configure the app before it's imported: settings and the engine are read at
+# module import time.
 _TMP_DIR = tempfile.mkdtemp(prefix="trainer-tests-")
 os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TMP_DIR, 'test.db')}"
 os.environ["JWT_SECRET"] = "test-secret-" + "x" * 32
 os.environ["FERNET_KEY"] = "3m2Gd0b0x8l8ZLp9bXb1lVZ3n7rPq3QmY2V1n2r3c4s="
-os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test"
 os.environ["ADMIN_USERNAME"] = "admin"
 os.environ["ADMIN_PASSWORD"] = "admin-password"
-# The chat/AI tests exercise the optional coach chat; test_accounts checks it's off by default.
-os.environ["AI_CHAT_ENABLED"] = "true"
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import accounts, ai_coach, garmin_client
+from app import accounts, garmin_client
 from app.database import Base, engine
 from app.main import app
 
@@ -84,39 +80,3 @@ def make_user(client, username="athlete", password=USER_PASSWORD, garmin=True):
 @pytest.fixture
 def auth(client):
     return make_user(client)
-
-
-# --- Fake Anthropic client ---------------------------------------------------
-
-
-def text_response(text):
-    return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=text)])
-
-
-def tool_response(changes, tool_id="toolu_1", name="update_training_plan"):
-    block = SimpleNamespace(type="tool_use", id=tool_id, name=name, input={"changes": changes})
-    return SimpleNamespace(stop_reason="tool_use", content=[block])
-
-
-class FakeAnthropic:
-    """Replays scripted responses and records every messages.create call."""
-
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls = []
-        self.messages = SimpleNamespace(create=self._create)
-
-    def _create(self, **kwargs):
-        # Snapshot the messages list: the coach mutates it between calls.
-        self.calls.append({**kwargs, "messages": list(kwargs["messages"])})
-        return self.responses.pop(0)
-
-
-@pytest.fixture
-def fake_claude(monkeypatch):
-    def install(*responses):
-        fake = FakeAnthropic(responses)
-        monkeypatch.setattr(ai_coach.anthropic, "Anthropic", lambda **_: fake)
-        return fake
-
-    return install

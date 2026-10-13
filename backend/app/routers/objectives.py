@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_member
 
 router = APIRouter(prefix="/api/objectives", tags=["objectives"])
 
@@ -20,8 +20,8 @@ def _get_own(db: Session, user: models.User, objective_id: int) -> models.Object
 
 
 @router.get("", response_model=schemas.ObjectivesResponse)
-def list_objectives(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """Target events, added and edited on the page (or by the coach chat when it's enabled)."""
+def list_objectives(db: Session = Depends(get_db), user: models.User = Depends(get_current_member)):
+    """Target events, added and edited on the page."""
     rows = (
         db.query(models.Objective)
         .filter(models.Objective.user_id == user.id)
@@ -35,7 +35,7 @@ def list_objectives(db: Session = Depends(get_db), user: models.User = Depends(g
 def create_objective(
     payload: schemas.ObjectiveCreate,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_member),
 ):
     title = payload.title.strip()
     if not title:
@@ -57,7 +57,7 @@ def update_objective(
     objective_id: int,
     payload: schemas.ObjectiveUpdate,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_member),
 ):
     row = _get_own(db, user, objective_id)
     data = payload.model_dump(exclude_unset=True)
@@ -76,7 +76,7 @@ def update_objective(
 def delete_objective(
     objective_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_member),
 ):
     db.delete(_get_own(db, user, objective_id))
     db.commit()

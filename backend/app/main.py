@@ -1,15 +1,14 @@
 import os
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .accounts import bootstrap_admin
+from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
-from .database import Base, add_missing_columns, engine
-from .deps import require_ai_chat
-from .routers import admin, ai_settings, auth, calendar, chat, garmin, objectives, planned, profile
+from .database import Base, add_missing_columns, drop_obsolete_tables, engine
+from .routers import admin, auth, calendar, garmin, objectives, plan, planned
 
 settings = get_settings()
 
@@ -42,21 +41,20 @@ async def security_headers(request: Request, call_next):
 
 @app.on_event("startup")
 def on_startup():
+    drop_obsolete_tables()
     Base.metadata.create_all(bind=engine)
     add_missing_columns()
     bootstrap_admin()
+    seed_test_accounts()
 
 
 app.include_router(auth.router)
 app.include_router(admin.router)
-app.include_router(profile.router)
 app.include_router(garmin.router)
 app.include_router(calendar.router)
 app.include_router(objectives.router)
 app.include_router(planned.router)
-# The coach chat needs an AI provider API key; it's off unless AI_CHAT_ENABLED=true.
-app.include_router(chat.router, dependencies=[Depends(require_ai_chat)])
-app.include_router(ai_settings.router, dependencies=[Depends(require_ai_chat)])
+app.include_router(plan.router)
 
 
 @app.get("/api/health")

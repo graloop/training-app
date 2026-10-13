@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import get_current_user
+from ..deps import get_current_member
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -15,7 +15,7 @@ def get_calendar(
     start: datetime.date | None = Query(default=None),
     end: datetime.date | None = Query(default=None),
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_member),
 ):
     today = datetime.date.today()
     start = start or (today - datetime.timedelta(days=14))

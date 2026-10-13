@@ -1,7 +1,16 @@
 import datetime
-from typing import Any, Literal
+from typing import Annotated
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, EmailStr, Field
+
+
+def _as_utc(value: datetime.datetime) -> datetime.datetime:
+    # SQLite hands back naive datetimes; they are stored in UTC. Without the
+    # offset a browser would read them as local time.
+    return value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)
+
+
+UtcDatetime = Annotated[datetime.datetime, AfterValidator(_as_utc)]
 
 
 # --- Auth & accounts ---
@@ -28,12 +37,20 @@ class MeOut(BaseModel):
     is_admin: bool
     garmin_connected: bool
     garmin_email: str | None
-    ai_chat_enabled: bool
 
 
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)
     new_password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
+
+
+class AccountData(BaseModel):
+    """What deleting the account would remove."""
+
+    activities: int = 0
+    sleep_nights: int = 0
+    planned_sessions: int = 0
+    objectives: int = 0
 
 
 class AdminUserOut(BaseModel):
@@ -42,7 +59,9 @@ class AdminUserOut(BaseModel):
     is_admin: bool
     has_password: bool
     garmin_connected: bool
-    created_at: datetime.datetime | None
+    data: AccountData
+    created_at: UtcDatetime | None
+    last_login_at: UtcDatetime | None
 
 
 class AdminUserCreate(BaseModel):
@@ -60,10 +79,31 @@ class AdminUsersResponse(BaseModel):
     users: list[AdminUserOut]
 
 
-# --- Profile ---
+class LoginEventOut(BaseModel):
+    at: UtcDatetime
+    username: str
+    success: bool
 
-class ProfileNotes(BaseModel):
-    notes: str = Field(default="", max_length=5000)
+
+class ActivityDay(BaseModel):
+    date: datetime.date  # in the admin's own timezone
+    logins: int
+    failed: int
+
+
+class ActivityTotals(BaseModel):
+    accounts: int
+    active_accounts: int  # distinct accounts that logged in during the period
+    logins: int
+    failed: int
+
+
+class AdminActivity(BaseModel):
+    """Connections over the last `days` days, for the admin dashboard."""
+
+    days: list[ActivityDay]  # oldest first, always `days` entries ending today
+    totals: ActivityTotals
+    recent: list[LoginEventOut]  # newest first
 
 
 # --- Garmin ---
@@ -105,45 +145,6 @@ class ObjectiveUpdate(BaseModel):
 
 class ObjectivesResponse(BaseModel):
     objectives: list[ObjectiveOut]
-
-
-# --- AI settings ---
-
-class AIProviderOut(BaseModel):
-    id: str
-    label: str
-    default_model: str
-    key_url: str
-    custom: bool
-
-
-class AISettingsOut(BaseModel):
-    provider: str
-    model: str  # effective model (the provider default when none was chosen)
-    custom_model: bool
-    has_api_key: bool
-    api_key_hint: str | None  # last 4 characters, never the key itself
-    using_server_key: bool  # no personal key, falling back to the server's Anthropic key
-    base_url: str | None  # custom provider only
-    api_format: str | None  # custom provider only: "openai" | "anthropic"
-    providers: list[AIProviderOut]
-
-
-class AISettingsUpdate(BaseModel):
-    provider: str
-    model: str | None = None  # empty/None = provider default
-    api_key: str | None = None  # None = keep the stored key
-    clear_api_key: bool = False
-    base_url: str | None = None  # required for "custom"
-    api_format: Literal["openai", "anthropic"] | None = None  # "custom" only, default "openai"
-
-
-class AITestResult(BaseModel):
-    ok: bool
-    provider: str  # display label, e.g. "Custom AI (api.example.com)"
-    model: str
-    latency_ms: int
-    reply: str  # first characters of the model's answer
 
 
 # --- Calendar ---
@@ -218,35 +219,65 @@ class CalendarResponse(BaseModel):
     days: list[CalendarDay]
 
 
-# --- Chat ---
+# --- Plan page ---
 
-class ChatRequest(BaseModel):
+MAX_PLAN_WEEKS = 12
+
+
+class TrainingLog(BaseModel):
+    text: str
+    start: datetime.date
+    end: datetime.date
+    weeks: int
+
+
+class DraftIn(BaseModel):
+    start_date: datetime.date  # any day of the first week to plan
+    weeks: int = Field(ge=1, le=MAX_PLAN_WEEKS)
+    text: str = Field(default="", max_length=30000)
+    notes: str = Field(default="", max_length=20000)
+
+
+class DraftSessionOut(BaseModel):
+    line: int
+    date: datetime.date
+    activity_type: str
+    sport: str  # swim | bike | run | strength | other
+    minutes: float
+    details: str | None
+
+
+class DraftErrorOut(BaseModel):
+    line: int
+    text: str
     message: str
 
 
-class PlanChange(BaseModel):
-    action: Literal["create", "update", "delete"]
-    id: int | None = None
-    date: datetime.date | None = None
-    activity_type: str | None = None
-    planned_duration_minutes: float | None = None
-    notes: str | None = None
+class DraftWeekOut(BaseModel):
+    start: datetime.date
+    end: datetime.date
+    sessions: list[DraftSessionOut]
+    minutes_by_sport: dict[str, float]
+    total_minutes: float
 
 
-class ChatMessageOut(BaseModel):
-    id: int
-    role: str
-    content: str
-    created_at: datetime.datetime
+class DraftOut(BaseModel):
+    saved: bool  # false = nothing stored yet, these are the defaults
+    start_date: datetime.date
+    end_date: datetime.date
+    weeks: int
+    text: str
+    notes: str
+    sessions_count: int
+    errors: list[DraftErrorOut]
+    weeks_preview: list[DraftWeekOut]
+    replace_from: datetime.date  # confirming replaces planned sessions from this day to end_date
+    existing_planned: int  # sessions currently on the calendar in that span
+    confirmed_at: UtcDatetime | None
 
-    class Config:
-        from_attributes = True
 
-
-class ChatResponse(BaseModel):
-    reply: str
-    plan_changes: list[PlanChange] = []
-
-
-class ChatHistoryResponse(BaseModel):
-    messages: list[ChatMessageOut]
+class ConfirmResult(BaseModel):
+    added: int
+    replaced: int
+    start_date: datetime.date
+    end_date: datetime.date
