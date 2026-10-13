@@ -98,13 +98,6 @@
       </div>
     </section>
 
-    <section class="panel" aria-labelledby="objectives-title">
-      <div class="panel-header">
-        <h2 id="objectives-title">Objectives</h2>
-        <button id="objective-add" type="button" class="btn-ghost">+ Add objective</button>
-      </div>
-      <div id="objectives-list" class="objectives-list"></div>
-    </section>
     </div>
 
     <div id="tab-plan" class="hidden">
@@ -122,12 +115,25 @@
               <option value="8">8 weeks</option>
               <option value="12">12 weeks</option>
             </select>
+            <label for="log-detail" class="inline-label">Detail</label>
+            <select id="log-detail" aria-label="How much detail the training log shows">
+              <option value="full" selected>Full (zones, laps, recovery)</option>
+              <option value="summary">Summary (one line per session)</option>
+            </select>
             <button id="log-copy" type="button" class="btn-ghost">Copy log for Claude</button>
           </div>
         </div>
-        <p class="hint">What you did (from Garmin), your sleep, your objectives and what is already planned. This is what the plan is written from.</p>
+        <p class="hint">What you did (from Garmin, with the effort and feel you answered on the watch), your sleep and recovery, your zones and records, your objectives and what is already planned. This is what the plan is written from.</p>
         <p id="log-status" class="status hidden" role="status"></p>
         <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
+
+        <label for="about-text">About you: what Garmin doesn't know</label>
+        <textarea id="about-text" rows="4" maxlength="10000" placeholder="e.g. Free on weekday mornings and Sunday. Pool is closed on Saturdays. Exams the first week of December. Indoor trainer at home. Sore left knee after long runs."></textarea>
+        <p class="hint">Availability, upcoming constraints, injuries, equipment, benchmarks Garmin doesn't have. It is added to the log above.</p>
+        <div class="form-row">
+          <button id="about-save" type="button" class="btn-ghost">Save</button>
+          <span id="about-status" class="status hidden" role="status"></span>
+        </div>
       </section>
 
       <section class="panel" aria-labelledby="draft-title">
@@ -177,6 +183,15 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
         <p id="confirm-status" class="status hidden" role="status"></p>
       </section>
     </div>
+
+    <!-- Shown under both tabs: what you're training for. -->
+    <section class="panel" aria-labelledby="objectives-title">
+      <div class="panel-header">
+        <h2 id="objectives-title">Objectives</h2>
+        <button id="objective-add" type="button" class="btn-ghost">+ Add objective</button>
+      </div>
+      <div id="objectives-list" class="objectives-list"></div>
+    </section>
 
   </main>
 

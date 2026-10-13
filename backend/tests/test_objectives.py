@@ -56,3 +56,13 @@ def test_other_users_objectives_are_off_limits(client, auth):
     assert client.patch(f"/api/objectives/{obj['id']}", json={"title": "x"}, headers=other).status_code == 404
     assert client.delete(f"/api/objectives/{obj['id']}", headers=other).status_code == 404
     assert len(_objectives(client, auth)) == 1
+
+
+def test_objective_notes(client, auth):
+    obj = _add(client, auth, title="Spring race", notes="  Main race of the year.  ")
+    assert obj["notes"] == "Main race of the year."
+    assert _add(client, auth, title="Tune-up")["notes"] is None
+    res = client.patch(f"/api/objectives/{obj['id']}", json={"notes": "B race"}, headers=auth)
+    assert res.json()["notes"] == "B race" and res.json()["title"] == "Spring race"
+    assert client.patch(f"/api/objectives/{obj['id']}", json={"notes": ""}, headers=auth).json()["notes"] is None
+    assert client.patch(f"/api/objectives/{obj['id']}", json={"notes": "x" * 2001}, headers=auth).status_code == 422

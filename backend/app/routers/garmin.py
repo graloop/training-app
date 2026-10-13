@@ -3,7 +3,7 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from .. import garmin_client, models, schemas
+from .. import garmin_client, garmin_details, models, schemas
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_member
@@ -154,8 +154,24 @@ def sync(
 
     db.commit()
 
+    # Extras (effort/feel/laps per activity, the athlete profile). The activities
+    # and sleep above are already saved; a problem here only delays the extras.
+    details_synced = 0
+    try:
+        details_synced = garmin_details.enrich_activities(db, api, user)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        details_synced = 0
+    try:
+        garmin_details.refresh_profile(db, api, user)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+
     return schemas.GarminSyncResponse(
         activities_synced=activities_synced,
         sleep_records_synced=sleep_synced,
         lookback_days=lookback_days,
+        details_synced=details_synced,
     )

@@ -554,3 +554,4 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 .split-table { max-width: 560px; }
 .split-table td:not(:first-child), .split-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 #draft-confirm.confirming { background: var(--danger); }
+.objective-notes { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted); }

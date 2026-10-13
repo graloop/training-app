@@ -76,15 +76,34 @@ def _out(db: Session, user: models.User, draft: models.PlanDraft | None, today: 
 @router.get("/log", response_model=schemas.TrainingLog)
 def training_log(
     weeks: int = Query(default=6, ge=1, le=26),
+    detail: str = Query(default="full", pattern="^(full|summary)$"),
     today: datetime.date | None = Query(default=None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
-    """The last `weeks` weeks as text (sessions with pace/HR/load, sleep, weekly
-    totals, objectives, what's already planned): what a plan is written from."""
+    """The last `weeks` weeks as text (sessions with pace/HR/load/effort, sleep,
+    weekly totals, objectives, the athlete's profile, what's already planned):
+    what a plan is written from. `detail=full` adds zones, laps and recovery."""
     day = _today(today)
-    text, start = planning.build_log(db, user, weeks, day)
-    return schemas.TrainingLog(text=text, start=start, end=day, weeks=weeks)
+    text, start = planning.build_log(db, user, weeks, day, detail)
+    return schemas.TrainingLog(text=text, start=start, end=day, weeks=weeks, detail=detail)
+
+
+@router.get("/about", response_model=schemas.AthleteNotes)
+def get_about(user: models.User = Depends(get_current_member)):
+    return schemas.AthleteNotes(notes=user.athlete_notes or "")
+
+
+@router.put("/about", response_model=schemas.AthleteNotes)
+def save_about(
+    payload: schemas.AthleteNotes,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_member),
+):
+    """Availability, constraints and whatever Garmin doesn't know; shown in the log."""
+    user.athlete_notes = payload.notes.strip() or None
+    db.commit()
+    return schemas.AthleteNotes(notes=user.athlete_notes or "")
 
 
 @router.get("/draft", response_model=schemas.DraftOut)

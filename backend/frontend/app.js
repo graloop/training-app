@@ -506,12 +506,21 @@ function matchDay(day) {
   return { pairs, activities, planned };
 }
 
+// What was answered on the watch after the session: ", effort 7/10, felt strong".
+const FEEL_WORDS = { 0: "very weak", 25: "weak", 50: "normal", 75: "strong", 100: "very strong" };
+
+function effortText(a) {
+  const effort = a.perceived_effort ? `, effort ${a.perceived_effort}/10` : "";
+  const felt = a.feel != null ? `, felt ${FEEL_WORDS[a.feel] || `${a.feel}/100`}` : "";
+  return effort + felt;
+}
+
 function makeActivityEntry(className, a) {
   const detail = a.duration_seconds ? fmtHours(a.duration_seconds / 60) : "";
   const load = a.training_load != null ? Math.round(a.training_load) : null;
   const entry = makeEntry(className, a.activity_type, detail, load != null ? ` · load ${load}` : "");
   const te = a.aerobic_training_effect != null ? `, aerobic TE ${a.aerobic_training_effect.toFixed(1)}` : "";
-  entry.title = `Done (Garmin): ${a.name || sportLabel(a.activity_type)}, ${detail}${load != null ? `, training load ${load}` : ""}${te}`;
+  entry.title = `Done (Garmin): ${a.name || sportLabel(a.activity_type)}, ${detail}${load != null ? `, training load ${load}` : ""}${te}${effortText(a)}`;
   entry.setAttribute("role", "note");
   entry.setAttribute("aria-label", entry.title);
   return entry;
@@ -579,7 +588,7 @@ function renderCalendar(data) {
         const load = a.training_load != null ? ` · load ${Math.round(a.training_load)}` : "";
         entry.title =
           `✓ Done as planned: ${sportLabel(p.activity_type)}, planned ${fmtHours(p.planned_duration_minutes)}, ` +
-          `did ${fmtHours(a.duration_seconds / 60)}${load}${p.notes ? `. Plan: ${p.notes}` : ""}. Click to edit the plan.`;
+          `did ${fmtHours(a.duration_seconds / 60)}${load}${effortText(a)}${p.notes ? `. Plan: ${p.notes}` : ""}. Click to edit the plan.`;
         addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
         cell.appendChild(entry);
@@ -761,9 +770,11 @@ async function runSync() {
     const result = await api("/api/garmin/sync", { method: "POST" });
     showStatus(
       syncStatus,
-      `Synced ${result.activities_synced} activities and ${result.sleep_records_synced} sleep records.`
+      `Synced ${result.activities_synced} activities and ${result.sleep_records_synced} sleep records` +
+        (result.details_synced ? `, with effort, feel and laps for ${result.details_synced}.` : ".")
     );
     await loadCalendar();
+    if (currentTab === "plan") await loadLog();
   } catch (err) {
     if (err.status === 409) {
       syncStatus.classList.add("hidden");
@@ -834,6 +845,12 @@ function renderObjectiveView(card, obj) {
   target.textContent = obj.target_time || "Not set";
   if (!obj.target_time) target.className = "subtle";
   card.appendChild(objectiveField("Target time", target));
+  if (obj.notes) {
+    const notes = document.createElement("p");
+    notes.className = "objective-notes";
+    notes.textContent = obj.notes;
+    card.appendChild(notes);
+  }
 
   const actions = document.createElement("div");
   actions.className = "objective-actions";
@@ -878,6 +895,7 @@ function renderObjectiveEdit(card, obj) {
     ["Title", "text", "title", obj.title, "e.g. Montreal half marathon"],
     ["Event date", "date", "event_date", obj.event_date || "", ""],
     ["Target time", "text", "target_time", obj.target_time || "", "e.g. 1:45:00"],
+    ["Notes (priority, what matters most)", "text", "notes", obj.notes || "", "e.g. Main race of the year. The bike is my weak leg."],
   ];
   const inputs = {};
   for (const [label, type, key, value, placeholder] of fields) {
@@ -918,6 +936,7 @@ function renderObjectiveEdit(card, obj) {
       title: inputs.title.value.trim(),
       event_date: inputs.event_date.value || null,
       target_time: inputs.target_time.value.trim(),
+      notes: inputs.notes.value.trim(),
     });
     try {
       if (isNew) await api("/api/objectives", { method: "POST", body });
@@ -953,6 +972,7 @@ function renderObjectives(objectives) {
 async function loadObjectives() {
   const data = await api("/api/objectives");
   renderObjectives(data.objectives);
+  if (currentTab === "plan") loadLog(); // the log lists the objectives
 }
 
 document.getElementById("objective-add").addEventListener("click", () => {
@@ -963,7 +983,7 @@ document.getElementById("objective-add").addEventListener("click", () => {
   const card = document.createElement("div");
   card.className = "objective-card";
   objectivesList.prepend(card);
-  renderObjectiveEdit(card, { id: null, title: "", event_date: null, target_time: null });
+  renderObjectiveEdit(card, { id: null, title: "", event_date: null, target_time: null, notes: null });
 });
 
 // --- Calendar / Plan tabs ---
@@ -996,6 +1016,9 @@ for (const tab of TABS) document.getElementById(`tab-btn-${tab}`).addEventListen
 
 const logEl = document.getElementById("training-log");
 const logWeeks = document.getElementById("log-weeks");
+const logDetail = document.getElementById("log-detail");
+const aboutText = document.getElementById("about-text");
+const aboutStatus = document.getElementById("about-status");
 const logStatus = document.getElementById("log-status");
 const planStart = document.getElementById("plan-start");
 const planWeeks = document.getElementById("plan-weeks");
@@ -1058,7 +1081,9 @@ function fillPlanStart(selectedIso) {
 
 async function loadLog() {
   try {
-    const data = await api(`/api/plan/log?weeks=${logWeeks.value}&today=${isoDate(new Date())}`);
+    const data = await api(
+      `/api/plan/log?weeks=${logWeeks.value}&detail=${logDetail.value}&today=${isoDate(new Date())}`
+    );
     logEl.textContent = data.text;
     logStatus.classList.add("hidden");
   } catch (err) {
@@ -1233,10 +1258,15 @@ async function saveDraft({ quiet = false } = {}) {
 }
 
 async function loadPlanPage() {
-  for (const el of [draftStatus, confirmStatus, logStatus]) el.classList.add("hidden");
+  for (const el of [draftStatus, confirmStatus, logStatus, aboutStatus]) el.classList.add("hidden");
   confirmView.classList.add("hidden");
   try {
-    const [draft] = await Promise.all([api(`/api/plan/draft?today=${isoDate(new Date())}`), loadLog()]);
+    const [draft, about] = await Promise.all([
+      api(`/api/plan/draft?today=${isoDate(new Date())}`),
+      api("/api/plan/about"),
+      loadLog(),
+    ]);
+    aboutText.value = about.notes;
     applyDraft(draft, { fill: true });
   } catch (err) {
     if (err.status !== 401) showStatus(draftStatus, err.message, true);
@@ -1244,6 +1274,21 @@ async function loadPlanPage() {
 }
 
 logWeeks.addEventListener("change", loadLog);
+logDetail.addEventListener("change", loadLog);
+
+// "About you" is saved on its own and shows up in the log.
+async function saveAbout() {
+  try {
+    aboutText.value = (await api("/api/plan/about", { method: "PUT", body: JSON.stringify({ notes: aboutText.value }) })).notes;
+    showStatus(aboutStatus, "Saved. It is now part of the log.");
+    aboutStatus.classList.add("ok");
+    await loadLog();
+  } catch (err) {
+    if (err.status !== 401) showStatus(aboutStatus, err.message, true);
+  }
+}
+document.getElementById("about-save").addEventListener("click", saveAbout);
+aboutText.addEventListener("change", saveAbout);
 for (const el of [draftText, draftNotes]) {
   el.addEventListener("input", () => {
     draftDirty = true;

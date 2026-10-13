@@ -117,6 +117,7 @@ class GarminSyncResponse(BaseModel):
     activities_synced: int
     sleep_records_synced: int
     lookback_days: int
+    details_synced: int = 0  # activities whose effort/feel/laps were fetched this time
 
 
 # --- Objectives ---
@@ -126,6 +127,7 @@ class ObjectiveOut(BaseModel):
     title: str
     event_date: datetime.date | None
     target_time: str | None
+    notes: str | None
 
     class Config:
         from_attributes = True
@@ -135,12 +137,14 @@ class ObjectiveCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     event_date: datetime.date | None = None
     target_time: str | None = Field(default=None, max_length=32)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ObjectiveUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     event_date: datetime.date | None = None
     target_time: str | None = Field(default=None, max_length=32)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class ObjectivesResponse(BaseModel):
@@ -162,6 +166,8 @@ class ActivityOut(BaseModel):
     anaerobic_training_effect: float | None
     calories: float | None
     training_load: float | None
+    perceived_effort: int | None  # RPE 1-10, answered on the watch
+    feel: int | None  # 0 very weak .. 100 very strong
 
     class Config:
         from_attributes = True
@@ -229,6 +235,13 @@ class TrainingLog(BaseModel):
     start: datetime.date
     end: datetime.date
     weeks: int
+    detail: str  # "full" | "summary"
+
+
+class AthleteNotes(BaseModel):
+    """Availability, constraints and anything Garmin doesn't know, in the athlete's words."""
+
+    notes: str = Field(default="", max_length=10000)
 
 
 class DraftIn(BaseModel):

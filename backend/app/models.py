@@ -39,6 +39,12 @@ class User(Base):
     # Garmin password.
     garmin_session_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Zones, thresholds, records and race predictions as Garmin has them,
+    # refreshed on each sync (see garmin_details.normalize_profile).
+    garmin_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # The athlete's own words: availability, constraints, what Garmin doesn't know.
+    athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Set on every successful login; shown to the admin next to the account.
     last_login_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -70,6 +76,11 @@ class Activity(Base):
     anaerobic_training_effect: Mapped[float | None] = mapped_column(Float, nullable=True)
     calories: Mapped[float | None] = mapped_column(Float, nullable=True)
     training_load: Mapped[float | None] = mapped_column(Float, nullable=True)  # Garmin "activityTrainingLoad"
+    # Answered on the watch after the activity; fetched per activity (see garmin_details).
+    perceived_effort: Mapped[int | None] = mapped_column(Integer, nullable=True)  # RPE 1-10
+    feel: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0 very weak .. 100 very strong
+    laps: Mapped[list | None] = mapped_column(JSON, nullable=True)  # compact per-lap distance/time/HR
+    details_synced_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="activities")
@@ -123,6 +134,7 @@ class Objective(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     event_date: Mapped[datetime.date | None] = mapped_column(nullable=True)
     target_time: Mapped[str | None] = mapped_column(String(32), nullable=True)  # e.g. "1:45:00"
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # priority, what matters most
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

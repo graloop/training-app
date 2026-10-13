@@ -115,3 +115,31 @@ def fetch_sleep(api: Garmin, day: datetime.date) -> dict[str, Any] | None:
         return api.get_sleep_data(day.isoformat())
     except Exception:  # noqa: BLE001 - some days simply have no data
         return None
+
+
+def fetch_activity_summary(api: Garmin, activity_id: str) -> dict[str, Any]:
+    """One activity in full; its summaryDTO has the perceived effort and feel
+    answered on the watch, which the activity list doesn't include."""
+    return api.get_activity(activity_id)
+
+
+def fetch_activity_laps(api: Garmin, activity_id: str) -> list[dict[str, Any]]:
+    return (api.get_activity_splits(activity_id) or {}).get("lapDTOs") or []
+
+
+def fetch_profile(api: Garmin) -> dict[str, Any]:
+    """What Garmin knows about the athlete. Each part is optional: accounts and
+    watches differ, and one missing part must not lose the others."""
+    parts = {
+        "profile": lambda: api.get_user_profile(),
+        "hr_zones": lambda: api.connectapi("/biometric-service/heartRateZones"),
+        "records": lambda: api.get_personal_record(),
+        "predictions": lambda: api.get_race_predictions(),
+    }
+    result: dict[str, Any] = {}
+    for name, call in parts.items():
+        try:
+            result[name] = call()
+        except Exception:  # noqa: BLE001
+            result[name] = None
+    return result

@@ -45,6 +45,7 @@ def create_objective(
         title=title,
         event_date=payload.event_date,
         target_time=(payload.target_time or "").strip() or None,
+        notes=(payload.notes or "").strip() or None,
     )
     db.add(row)
     db.commit()
@@ -67,6 +68,8 @@ def update_objective(
         row.event_date = data["event_date"]
     if "target_time" in data:
         row.target_time = (data["target_time"] or "").strip() or None
+    if "notes" in data:
+        row.notes = (data["notes"] or "").strip() or None
     db.commit()
     db.refresh(row)
     return row

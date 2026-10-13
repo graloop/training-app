@@ -69,8 +69,175 @@ def _fmt_activity(a: models.Activity) -> str:
         parts.append(f"avg HR {round(a.avg_hr)}")
     if a.training_load is not None:
         parts.append(f"load {round(a.training_load)}")
+    felt = _fmt_effort(a)
+    if felt:
+        parts.append(felt)
     text = " · ".join(parts)
     return f"{text} — {a.name}" if a.name else text
+
+
+FEEL_WORDS = {0: "very weak", 25: "weak", 50: "normal", 75: "strong", 100: "very strong"}
+_EFFECT_WORDS = {
+    "RECOVERY": "recovery", "AEROBIC_BASE": "aerobic base", "TEMPO": "tempo", "LACTATE_THRESHOLD": "threshold",
+    "VO2MAX": "VO2max", "ANAEROBIC_CAPACITY": "anaerobic", "SPRINT": "sprint", "SPEED": "speed",
+}
+_FASTEST_PLAUSIBLE_PACE = 150  # s/km: anything quicker is a GPS glitch
+MAX_LAPS_SHOWN = 40
+
+
+def _fmt_effort(a: models.Activity) -> str:
+    """What the athlete answered on the watch: 'effort 7/10, felt strong'."""
+    parts = []
+    if a.perceived_effort:
+        parts.append(f"effort {a.perceived_effort}/10")
+    if a.feel is not None:
+        parts.append(f"felt {FEEL_WORDS.get(a.feel, f'{a.feel}/100')}")
+    return ", ".join(parts)
+
+
+def _fmt_seconds(seconds: float) -> str:
+    total = round(seconds)
+    if total >= 3600:
+        return f"{total // 3600}:{total % 3600 // 60:02d}:{total % 60:02d}"
+    return f"{total // 60}:{total % 60:02d}"
+
+
+def _fmt_lap(lap: dict, sport: str) -> str | None:
+    metres, seconds = lap.get("distance") or 0, lap.get("duration") or 0
+    if metres < 20 or seconds < 5:
+        return None  # a pause or a rest at the wall
+    distance = f"{metres / 1000:.2f} km" if sport == "run" and metres >= 1000 else f"{round(metres)} m"
+    pace = _fmt_pace(seconds / 60 / (metres / 100)) + " /100 m" if sport == "swim" else _fmt_pace(seconds / 60 / (metres / 1000)) + " /km"
+    hr = f", HR {round(lap['avg_hr'])}" if lap.get("avg_hr") else ""
+    return f"{distance} {_fmt_seconds(seconds)} ({pace}{hr})"
+
+
+def _detail_lines(a: models.Activity) -> list[str]:
+    """Extra lines for the full log, all from what Garmin already sent."""
+    raw = a.raw_json or {}
+    sport = sport_of(a.activity_type)
+    lines = []
+
+    body = []
+    if raw.get("maxHR"):
+        body.append(f"max HR {round(raw['maxHR'])}")
+    zones = [raw.get(f"hrTimeInZone_{i}") or 0 for i in range(1, 6)]
+    if sum(zones) >= 60:
+        body.append("HR zones " + " · ".join(f"Z{i} {round(s / 60)}" for i, s in enumerate(zones, start=1)) + " min")
+    label = raw.get("trainingEffectLabel")
+    if label and label != "UNKNOWN":
+        body.append(f"{_EFFECT_WORDS.get(label, label.lower().replace('_', ' '))} session")
+    if raw.get("differenceBodyBattery"):
+        body.append(f"body battery {raw['differenceBodyBattery']:+d}")
+    if body:
+        lines.append(" · ".join(body))
+
+    mechanics = []
+    if sport == "bike" and raw.get("avgPower"):
+        power = f"power {round(raw['avgPower'])} W"
+        if raw.get("normPower"):
+            power += f" (normalized {round(raw['normPower'])})"
+        if raw.get("max20MinPower"):
+            power += f", best 20 min {round(raw['max20MinPower'])} W"
+        mechanics.append(power)
+    cadence = raw.get("averageRunningCadenceInStepsPerMinute") if sport == "run" else raw.get("averageBikingCadenceInRevPerMinute") if sport == "bike" else None
+    if cadence:
+        mechanics.append(f"cadence {round(cadence)} {'spm' if sport == 'run' else 'rpm'}")
+    if (raw.get("elevationGain") or 0) >= 20:
+        mechanics.append(f"climb {round(raw['elevationGain'])} m")
+    if sport == "run":
+        best = []
+        for metres, name in ((400, "400 m"), (1000, "1 km"), (5000, "5 km"), (10000, "10 km")):
+            seconds = raw.get(f"fastestSplit_{metres}")
+            if seconds and seconds / (metres / 1000) >= _FASTEST_PLAUSIBLE_PACE:
+                best.append(f"{name} {_fmt_seconds(seconds)}")
+        if best:
+            mechanics.append("fastest " + ", ".join(best))
+    if mechanics:
+        lines.append(" · ".join(mechanics))
+
+    splits = {s.get("splitType"): s for s in raw.get("splitSummaries") or []}
+    work = splits.get("INTERVAL_ACTIVE")
+    if work and (work.get("noOfSplits") or 0) > 1 and work.get("distance") and work.get("duration"):
+        text = (f"intervals: {work['noOfSplits']} work reps, {work['distance'] / 1000:.2f} km in {_fmt_seconds(work['duration'])}"
+                f" ({_fmt_pace(work['duration'] / 60 / (work['distance'] / 1000))} /km)")
+        rest = splits.get("INTERVAL_RECOVERY")
+        if rest and rest.get("duration"):
+            text += f", recoveries {_fmt_seconds(rest['duration'])} in total"
+        lines.append(text)
+
+    laps = [_fmt_lap(lap, sport) for lap in a.laps or []]
+    laps = [lap for lap in laps if lap]
+    if len(laps) > 1:
+        shown = laps[:MAX_LAPS_SHOWN]
+        more = f" | +{len(laps) - len(shown)} more" if len(laps) > len(shown) else ""
+        lines.append("laps: " + " | ".join(shown) + more)
+    return lines
+
+
+def _fmt_night(night: models.SleepRecord | None, full: bool) -> str:
+    """' · sleep 80 (7:30, deep 1:30, REM 1:40) · RHR 50 · HRV 60 balanced · body battery +70 overnight'"""
+    if night is None:
+        return ""
+    parts = []
+    if night.sleep_score is not None:
+        text = f"sleep {round(night.sleep_score)}"
+        if full and night.total_sleep_seconds:
+            stages = [fmt_minutes(night.total_sleep_seconds / 60)]
+            if night.deep_sleep_seconds:
+                stages.append(f"deep {fmt_minutes(night.deep_sleep_seconds / 60)}")
+            if night.rem_sleep_seconds:
+                stages.append(f"REM {fmt_minutes(night.rem_sleep_seconds / 60)}")
+            text += f" ({', '.join(stages)})"
+        parts.append(text)
+    if night.resting_heart_rate is not None:
+        parts.append(f"RHR {round(night.resting_heart_rate)}")
+    if full:
+        raw = night.raw_json or {}
+        if raw.get("avgOvernightHrv"):
+            status = (raw.get("hrvStatus") or "").lower().replace("_", " ")
+            parts.append(f"HRV {round(raw['avgOvernightHrv'])}{' ' + status if status and status != 'none' else ''}")
+        if raw.get("bodyBatteryChange"):
+            parts.append(f"body battery {raw['bodyBatteryChange']:+d} overnight")
+    return "".join(f" · {p}" for p in parts)
+
+
+def _athlete_lines(user: models.User) -> list[str]:
+    """Zones, thresholds, records and predictions as Garmin has them."""
+    profile = user.garmin_profile or {}
+    if not profile:
+        return ["- nothing from Garmin yet (it arrives with the next sync)"]
+    lines = []
+    facts = []
+    for key, text in (("max_hr", "max HR {}"), ("lactate_threshold_hr", "threshold HR {}"), ("vo2max_running", "VO2max (run) {}"),
+                      ("vo2max_cycling", "VO2max (bike) {}"), ("ftp_watts", "FTP {} W"), ("weight_kg", "weight {} kg"),
+                      ("height_cm", "height {} cm")):
+        if profile.get(key):
+            facts.append(text.format(profile[key]))
+    if profile.get("threshold_pace_s_per_km"):
+        facts.insert(2, f"threshold pace {_fmt_seconds(profile['threshold_pace_s_per_km'])} /km")
+    if facts:
+        lines.append("- " + " · ".join(facts))
+    floors = profile.get("hr_zone_floors")
+    if floors:
+        zones = [f"Z{i} {low}–{floors[i] - 1}" for i, low in enumerate(floors[:-1], start=1)] + [f"Z5 {floors[-1]}+"]
+        lines.append("- HR zones: " + " · ".join(zones))
+    if profile.get("race_predictions"):
+        lines.append("- Garmin race predictions: " + " · ".join(f"{k} {_fmt_seconds(v)}" for k, v in profile["race_predictions"].items()))
+    records = []
+    for r in profile.get("records") or []:
+        if r["kind"] == "time":
+            value = _fmt_seconds(r["value"])
+        elif r["kind"] == "power":
+            value = f"{round(r['value'])} W"
+        else:
+            value = f"{r['value'] / 1000:.1f} km"
+        records.append(f"{r['label']} {value}" + (f" ({r['date'][:7]})" if r.get("date") else ""))
+    if records:
+        lines.append("- Personal records: " + " · ".join(records))
+    if profile.get("synced_on"):
+        lines.append(f"- (from Garmin, as of {profile['synced_on']})")
+    return lines
 
 
 def _fmt_planned(p: models.PlannedTraining, done: bool = False) -> str:
@@ -106,9 +273,12 @@ def _split(minutes_by_sport: dict[str, float]) -> str:
     return " · ".join(f"{s} {fmt_minutes(m)}" for s, m in minutes_by_sport.items() if m > 0)
 
 
-def build_log(db: Session, user: models.User, weeks: int, today: datetime.date) -> tuple[str, datetime.date]:
+def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, detail: str = "full") -> tuple[str, datetime.date]:
     """Plain-text log of the last `weeks` weeks (this week included) plus what
-    is already planned ahead. Returns (text, first day covered)."""
+    is already planned ahead. `detail` "full" adds per-session zones, laps and
+    recovery numbers; "summary" keeps one line per session.
+    Returns (text, first day covered)."""
+    full = detail == "full"
     start = monday_of(today) - datetime.timedelta(weeks=weeks - 1)
     week_end = monday_of(today) + datetime.timedelta(days=6)
 
@@ -152,7 +322,8 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date) 
         f"TRAINING LOG · {user.username}",
         f"Today is {DAY_NAMES[today.weekday()]} {MONTH_NAMES[today.month - 1]} {today.day}, {today.year}. "
         f"Covers {fmt_day(start)} to {fmt_day(today)} ({weeks} week{'s' if weeks != 1 else ''}), from Garmin.",
-        "Times are h:mm. \"plan\" lines are what was planned for that day.",
+        "Times are h:mm. \"plan\" lines are what was planned for that day. Effort (1-10) and \"felt\" are what "
+        "the athlete answered on the watch after the session.",
         "",
         "OBJECTIVES",
     ]
@@ -160,8 +331,14 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date) 
         for o in objectives:
             when = f"{o.event_date.isoformat()} ({(o.event_date - today).days} days away)" if o.event_date else "no date"
             lines.append(f"- {o.title} · {when} · target {o.target_time or 'not set'}")
+            if o.notes:
+                lines.append(f"  {' '.join(o.notes.split())}")
     else:
-        lines.append("- none yet")
+        lines.append("- none yet (add them under Objectives)")
+
+    lines += ["", "ATHLETE"] + _athlete_lines(user)
+    lines += ["", "ABOUT THE ATHLETE (their own notes)"]
+    lines += [line.rstrip() for line in user.athlete_notes.strip().splitlines()] if (user.athlete_notes or "").strip() else ["- nothing written yet"]
 
     week_start = start
     while week_start <= today:
@@ -200,18 +377,16 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date) 
                 break
             day_acts = acts_by_day.get(day, [])
             day_plans = plans_by_day.get(day, [])
-            label = fmt_day(day)
-            night = sleep.get(day)
-            if night and night.sleep_score is not None:
-                label += f" · sleep {round(night.sleep_score)}"
-            if night and night.resting_heart_rate is not None:
-                label += f" · RHR {round(night.resting_heart_rate)}"
+            label = fmt_day(day) + _fmt_night(sleep.get(day), full)
             if not day_acts and not day_plans:
                 lines.append(f"{label} · no training")
                 continue
             lines.append(label)
             matched = _matched_plans(day_plans, day_acts)
-            lines += [f"  done  {_fmt_activity(a)}" for a in day_acts]
+            for a in day_acts:
+                lines.append(f"  done  {_fmt_activity(a)}")
+                if full:
+                    lines += [f"        {extra}" for extra in _detail_lines(a)]
             lines += [f"  plan  {_fmt_planned(p, p.id in matched)}" for p in day_plans]
         week_start += datetime.timedelta(days=7)
 

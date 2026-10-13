@@ -360,3 +360,125 @@ def test_client_date_is_used_only_when_plausible(client, auth):
     assert client.get("/api/plan/log", params={"today": tomorrow.isoformat()}, headers=auth).json()["end"] == tomorrow.isoformat()
     far = TODAY + datetime.timedelta(days=30)
     assert client.get("/api/plan/log", params={"today": far.isoformat()}, headers=auth).json()["end"] == TODAY.isoformat()
+
+
+# --- Richer log: details, recovery, athlete profile, notes -------------------------
+
+
+def _seed_detailed(db):
+    user = db.query(models.User).filter_by(username="athlete").one()
+    monday = THIS_MONDAY - datetime.timedelta(days=7)
+    # All numbers below are invented for the test.
+    track_raw = {
+        "maxHR": 185.0, "hrTimeInZone_1": 120.0, "hrTimeInZone_2": 900.0, "hrTimeInZone_3": 2100.0, "hrTimeInZone_4": 900.0,
+        "hrTimeInZone_5": 780.0, "trainingEffectLabel": "VO2MAX", "differenceBodyBattery": -18, "avgPower": 377.0,
+        "averageRunningCadenceInStepsPerMinute": 172.4, "elevationGain": 12.0,
+        "fastestSplit_400": 40.0, "fastestSplit_1000": 210.0, "fastestSplit_5000": 1200.0,  # the 400 is a GPS glitch
+        "splitSummaries": [
+            {"splitType": "INTERVAL_ACTIVE", "noOfSplits": 6, "duration": 1440.0, "distance": 6000.0},
+            {"splitType": "INTERVAL_RECOVERY", "noOfSplits": 5, "duration": 900.0, "distance": 2500.0},
+            {"splitType": "RWD_RUN", "noOfSplits": 4, "duration": 4700.0, "distance": 15900.0},
+        ],
+    }
+    ride_raw = {"maxHR": 150.0, "hrTimeInZone_1": 2160.0, "hrTimeInZone_2": 300.0, "trainingEffectLabel": "RECOVERY",
+                "avgPower": 140.0, "normPower": 152.4, "max20MinPower": 160.0, "averageBikingCadenceInRevPerMinute": 70.0,
+                "elevationGain": 300.0}
+    db.add_all([
+        models.Activity(user_id=user.id, garmin_activity_id="t", activity_type="track_running", name="Track",
+                        start_time=datetime.datetime.combine(monday, datetime.time(7)), duration_seconds=4800,
+                        distance_meters=16000, avg_hr=150, training_load=200, perceived_effort=7, feel=75, raw_json=track_raw,
+                        laps=[{"distance": 4000, "duration": 1380.0, "avg_hr": 140}, {"distance": 1600, "duration": 384.0, "avg_hr": 175},
+                              {"distance": 0, "duration": 30.0}, {"distance": 400, "duration": 84.0, "avg_hr": 176}]),
+        models.Activity(user_id=user.id, garmin_activity_id="r", activity_type="virtual_ride", name="Zwift",
+                        start_time=datetime.datetime.combine(monday, datetime.time(18)), duration_seconds=2400,
+                        distance_meters=20000, avg_hr=110, perceived_effort=3, feel=50, raw_json=ride_raw),
+        models.Activity(user_id=user.id, garmin_activity_id="s", activity_type="lap_swimming", name="Pool",
+                        start_time=datetime.datetime.combine(monday + datetime.timedelta(days=1), datetime.time(6)),
+                        duration_seconds=3600, distance_meters=3000, raw_json=None,
+                        laps=[{"distance": 400, "duration": 400.0, "avg_hr": 140}, {"distance": 100, "duration": 96.0}]),
+        models.SleepRecord(user_id=user.id, date=monday, sleep_score=80, resting_heart_rate=50, total_sleep_seconds=27000,
+                           deep_sleep_seconds=5400, rem_sleep_seconds=6000,
+                           raw_json={"avgOvernightHrv": 60.0, "hrvStatus": "BALANCED", "bodyBatteryChange": 70}),
+        models.Objective(user_id=user.id, title="City half marathon", notes="Main race.\nRun matters most."),
+    ])
+    user.garmin_profile = {
+        "max_hr": 192, "lactate_threshold_hr": 170, "threshold_pace_s_per_km": 270, "vo2max_running": 52, "weight_kg": 70.5,
+        "hr_zone_floors": [96, 115, 134, 154, 173], "race_predictions": {"5 km": 1210, "half marathon": 5700},
+        "records": [{"label": "5 km", "kind": "time", "value": 1200.4, "date": "2024-05-01"},
+                    {"label": "best 20 min power", "kind": "power", "value": 250.8, "date": None},
+                    {"label": "longest ride", "kind": "distance", "value": 150000.0, "date": "2023-08-07"}],
+        "synced_on": "2026-01-02",
+    }
+    user.athlete_notes = "Free on weekday mornings.\nPool closed on Saturdays."
+    db.commit()
+    return monday
+
+
+def test_full_log_shows_details_recovery_and_the_athlete(client, auth):
+    with SessionLocal() as db:
+        monday = _seed_detailed(db)
+    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+
+    # what the athlete answered on the watch
+    assert "  done  run 1:20 · 16.0 km · 5:00 /km · avg HR 150 · load 200 · effort 7/10, felt strong — Track" in text
+    assert "· effort 3/10, felt normal — Zwift" in text
+    # heart rate, session type, body battery
+    assert "        max HR 185 · HR zones Z1 2 · Z2 15 · Z3 35 · Z4 15 · Z5 13 min · VO2max session · body battery -18" in text
+    # run mechanics: the glitched 400 m is dropped, climbs under 20 m too, running power isn't shown
+    assert "        cadence 172 spm · fastest 1 km 3:30, 5 km 20:00" in text
+    assert "400 m 0:40" not in text and "climb 12" not in text and "377" not in text
+    # structured intervals and the laps themselves (the 0 m pause is skipped)
+    assert "        intervals: 6 work reps, 6.00 km in 24:00 (4:00 /km), recoveries 15:00 in total" in text
+    assert ("        laps: 4.00 km 23:00 (5:45 /km, HR 140) | 1.60 km 6:24 (4:00 /km, HR 175) | 400 m 1:24 (3:30 /km, HR 176)"
+            in text)
+    # bike: power, cadence, climb
+    assert "        power 140 W (normalized 152), best 20 min 160 W · cadence 70 rpm · climb 300 m" in text
+    assert "        max HR 150 · HR zones Z1 36 · Z2 5 · Z3 0 · Z4 0 · Z5 0 min · recovery session" in text
+    # swim laps as pace per 100 m; an activity with no stored payload still prints
+    assert "        laps: 400 m 6:40 (1:40 /100 m, HR 140) | 100 m 1:36 (1:36 /100 m)" in text
+    # the night
+    assert f"{label(monday)} · sleep 80 (7:30, deep 1:30, REM 1:40) · RHR 50 · HRV 60 balanced · body battery +70 overnight" in text
+
+    athlete = text[text.index("\nATHLETE\n"):text.index("\nWEEK OF")]
+    assert "- max HR 192 · threshold HR 170 · threshold pace 4:30 /km · VO2max (run) 52 · weight 70.5 kg" in athlete
+    assert "- HR zones: Z1 96–114 · Z2 115–133 · Z3 134–153 · Z4 154–172 · Z5 173+" in athlete
+    assert "- Garmin race predictions: 5 km 20:10 · half marathon 1:35:00" in athlete
+    assert "- Personal records: 5 km 20:00 (2024-05) · best 20 min power 251 W · longest ride 150.0 km (2023-08)" in athlete
+    assert "ABOUT THE ATHLETE (their own notes)\nFree on weekday mornings.\nPool closed on Saturdays." in athlete
+    assert "- City half marathon · no date · target not set\n  Main race. Run matters most." in text
+
+
+def test_summary_log_keeps_one_line_per_session(client, auth):
+    with SessionLocal() as db:
+        monday = _seed_detailed(db)
+    full = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()
+    summary = client.get("/api/plan/log", params={"weeks": 2, "detail": "summary"}, headers=auth).json()
+    assert full["detail"] == "full" and summary["detail"] == "summary"
+    text = summary["text"]
+    assert "effort 7/10, felt strong — Track" in text            # the essentials stay
+    assert f"{label(monday)} · sleep 80 · RHR 50\n" in text         # the night in short
+    weekly = text[text.index("\nWEEK OF"):]  # the athlete block above keeps its HR zones
+    for detail_only in ("HR zones", "laps:", "intervals:", "cadence", "HRV", "normalized"):
+        assert detail_only not in weekly
+    assert "\nATHLETE\n" in text and len(text) < len(full["text"])
+    assert client.get("/api/plan/log", params={"detail": "everything"}, headers=auth).status_code == 422
+
+
+def test_log_before_any_details_or_profile(client, auth):
+    text = client.get("/api/plan/log", headers=auth).json()["text"]
+    assert "ATHLETE\n- nothing from Garmin yet (it arrives with the next sync)" in text
+    assert "ABOUT THE ATHLETE (their own notes)\n- nothing written yet" in text
+
+
+def test_about_notes_round_trip_and_privacy(client, auth):
+    assert client.get("/api/plan/about", headers=auth).json() == {"notes": ""}
+    res = client.put("/api/plan/about", json={"notes": "  Exams in December.  "}, headers=auth)
+    assert res.json() == {"notes": "Exams in December."}
+    assert "ABOUT THE ATHLETE (their own notes)\nExams in December." in client.get("/api/plan/log", headers=auth).json()["text"]
+    assert client.put("/api/plan/about", json={"notes": "x" * 10001}, headers=auth).status_code == 422
+    other = make_user(client, "other")
+    assert client.get("/api/plan/about", headers=other).json() == {"notes": ""}
+    assert "Exams" not in client.get("/api/plan/log", headers=other).json()["text"]
+    assert client.get("/api/plan/about", headers=admin_auth(client)).status_code == 403
+    client.put("/api/plan/about", json={"notes": ""}, headers=auth)
+    assert "- nothing written yet" in client.get("/api/plan/log", headers=auth).json()["text"]
