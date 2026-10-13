@@ -2,18 +2,20 @@ import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
 from .database import Base, add_missing_columns, drop_obsolete_tables, engine
 from .routers import admin, auth, calendar, garmin, objectives, plan, planned
+from .visitor import is_https
 
 settings = get_settings()
 
 docs = {} if settings.enable_api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 app = FastAPI(title="Training App", **docs)
+_API_DOCS_PATHS = ("/docs", "/redoc") if settings.enable_api_docs else ()
 
 if settings.cors_allow_origins.strip():
     origins = ["*"] if settings.cors_allow_origins.strip() == "*" else [
@@ -28,12 +30,54 @@ if settings.cors_allow_origins.strip():
     )
 
 
+# The page loads its script and stylesheet from this app and nothing else, so
+# a script that somehow got into the page can't run or send data elsewhere.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+)
+# How long a browser that has used https://APP_DOMAIN refuses plain http for
+# it. A month, not the usual year: long enough for friends who open the app
+# every week, short enough to undo if the domain is ever set up differently.
+HSTS_SECONDS = 30 * 24 * 3600
+# Names that only work on the server itself (health checks, `npm start`).
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _requested_host(request: Request) -> str:
+    host = request.headers.get("host", "").strip().lower()
+    if host.startswith("["):  # [::1]:8000
+        return host[1:].split("]")[0]
+    return host.split(":")[0]
+
+
+def _to_public_address(request: Request, domain: str):
+    if request.method not in ("GET", "HEAD"):
+        # Not redirected: the browser would repeat a password that already
+        # travelled unencrypted. The page itself was redirected before this.
+        return JSONResponse({"detail": f"This app is only available at https://{domain}"}, status_code=400)
+    target = f"https://{domain}{request.url.path}"
+    if request.url.query:
+        target += f"?{request.url.query}"
+    return RedirectResponse(target, status_code=307)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    response = await call_next(request)
+    domain = settings.app_domain
+    host = _requested_host(request)
+    on_public_address = bool(domain) and host == domain and is_https(request)
+    if domain and not on_public_address and host not in _LOCAL_HOSTS:
+        response = _to_public_address(request, domain)
+    else:
+        response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")  # a private app: keep it out of search engines
+    if not request.url.path.startswith(_API_DOCS_PATHS):  # Swagger UI loads its own scripts from a CDN
+        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+    if on_public_address:
+        response.headers.setdefault("Strict-Transport-Security", f"max-age={HSTS_SECONDS}")
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response

@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from .. import accounts, models, schemas
+from .. import accounts, models, schemas, visitor
 from ..database import get_db
 from ..deps import get_current_user
 from ..security import create_access_token, hash_password, verify_password
@@ -20,10 +20,11 @@ def me_out(user: models.User) -> schemas.MeOut:
 
 
 @router.post("/login", response_model=schemas.TokenResponse)
-def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
+def login(payload: schemas.LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Log in with an account the admin created. There is no sign-up."""
     username = accounts.normalize_username(payload.username)
-    wait = accounts.seconds_locked(username)
+    address = visitor.address(request)
+    wait = max(accounts.seconds_locked(username), accounts.seconds_address_blocked(address))
     if wait:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -32,7 +33,7 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
 
     user = db.query(models.User).filter(models.User.username == username).first()
     if not verify_password(payload.password, user.hashed_password if user else None):
-        accounts.record_failure(username)
+        accounts.record_failure(username, address)
         accounts.record_login(db, user, success=False)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong username or password")
 

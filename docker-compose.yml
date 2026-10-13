@@ -34,8 +34,27 @@ services:
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
       GARMIN_SYNC_LOOKBACK_DAYS: ${GARMIN_SYNC_LOOKBACK_DAYS:-90}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+      # The public name friends open, e.g. training.example.com. When set, the
+      # app only answers on https://<that name>; port 8010 then just sends
+      # people there. Leave empty to use the app on your own network only.
+      APP_DOMAIN: ${APP_DOMAIN:-}
     ports:
       - "8010:8000"
+
+  # Optional: makes the app reachable from the internet through a Cloudflare
+  # Tunnel, with nothing to open on your router. Only started when the stack
+  # has COMPOSE_PROFILES=tunnel; CLOUDFLARE_TUNNEL_TOKEN is the token Cloudflare
+  # shows when you create the tunnel. In Cloudflare, point the public name at
+  # http://backend:8000.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    depends_on:
+      - backend
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
 
 volumes:
   trainer_pgdata:

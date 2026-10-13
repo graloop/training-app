@@ -210,10 +210,12 @@ def test_delete_needs_the_username_typed_back(client, auth):
 # --- Failed logins can't fill the database -----------------------------------------
 
 
-def test_attempts_on_made_up_names_are_stored_up_to_a_cap(client):
+def test_attempts_on_made_up_names_are_stored_up_to_a_cap(client, proxied):
     admin = admin_auth(client)
-    for i in range(accounts.UNKNOWN_ATTEMPTS_KEPT_PER_HOUR + 15):
-        assert client.post("/api/auth/login", json={"username": f"guess{i}", "password": "x"}).status_code == 401
+    for i in range(accounts.UNKNOWN_ATTEMPTS_KEPT_PER_HOUR + 15):  # from many addresses: one alone is stopped sooner
+        res = proxied.post("/api/auth/login", json={"username": f"guess{i}", "password": "x"},
+                           headers={"CF-Connecting-IP": f"203.0.113.{i}"})
+        assert res.status_code == 401
     with SessionLocal() as db:
         assert db.query(models.LoginEvent).filter(models.LoginEvent.user_id.is_(None)).count() == accounts.UNKNOWN_ATTEMPTS_KEPT_PER_HOUR
     assert _activity(client, headers=admin)["totals"]["failed"] == accounts.UNKNOWN_ATTEMPTS_KEPT_PER_HOUR

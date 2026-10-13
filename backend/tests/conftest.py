@@ -47,6 +47,16 @@ def client():
         yield c
 
 
+PROXY_PEER = ("172.18.0.3", 40000)  # the reverse proxy / tunnel container on the stack's network
+
+
+@pytest.fixture
+def proxied(client):
+    """Requests arriving the way they do on the internet: from the proxy, with
+    the visitor described in headers (CF-Connecting-IP, X-Forwarded-Proto...)."""
+    return TestClient(app, client=PROXY_PEER)
+
+
 ADMIN = ("admin", "admin-password")
 USER_PASSWORD = "friend-password"
 

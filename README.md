@@ -13,8 +13,9 @@ adjust sessions — it edits the page like you would.
 
 - **Private accounts** — only people the admin created can log in (username
   + password, no sign-up). Everyone can change their own password in
-  ⚙️ Settings. Five wrong passwords lock that username for 15 minutes; a
-  password change or reset logs out every other session.
+  ⚙️ Settings. Five wrong passwords lock that username for 15 minutes, and
+  twenty from one address stop that address; a password change or reset logs
+  out every other session.
 - **Admin dashboard** — admin accounts are for monitoring and managing, not
   for training: instead of the calendar they get a dashboard with the
   connections of the last 7 days (logins per day, failed attempts, the list
@@ -119,7 +120,7 @@ There's no separate frontend server/container: FastAPI serves the API under
 .
 ├── package.json          npm wrapper — `npm start` runs scripts/dev.sh
 ├── scripts/dev.sh         local dev launcher (venv, .env, uvicorn --reload)
-├── docker-compose.yml     production stack: postgres + backend
+├── docker-compose.yml     production stack: postgres + backend (+ optional Cloudflare Tunnel)
 ├── .env.example           template for secrets/config (copy to .env)
 └── backend/
     ├── Dockerfile
@@ -134,6 +135,7 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── deps.py          auth dependencies: any user / regular member / admin
     │   ├── garmin_client.py wraps garth/garminconnect for login + sync
     │   ├── accounts.py       first-admin bootstrap, test accounts, login lockout, connection log
+    │   ├── visitor.py        visitor address and https, as reported by the proxy or tunnel
     │   ├── planning.py       training log text + draft plan parser (Plan page)
     │   └── routers/          auth, admin, garmin, calendar, objectives, planned, plan
     └── frontend/             index.html, app.js, styles.css (static, no build)
@@ -191,7 +193,7 @@ npm start
    | Variable            | What to put                                         |
    |---------------------|-----------------------------------------------------|
    | `ADMIN_USERNAME`    | the admin username you want (lowercase, e.g. `sam`) |
-   | `ADMIN_PASSWORD`    | the admin password you want — long and not reused   |
+   | `ADMIN_PASSWORD`    | the admin password you want — at least 12 characters, not reused |
    | `POSTGRES_PASSWORD` | any long random string                              |
    | `JWT_SECRET`        | `python -c "import secrets; print(secrets.token_hex(32))"` |
    | `FERNET_KEY`        | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
@@ -212,9 +214,10 @@ npm start
    generic `admin` / `user` test accounts from `npm start` are never created
    here.
 3. The stack publishes the app on port **8010** of the server (the app
-   itself listens on 8000 inside the container). Put your own reverse proxy
-   in front of it if you want TLS/a domain name — the compose file doesn't
-   include one.
+   itself listens on 8000 inside the container): open
+   `http://<server-ip>:8010` on your own network. To open it to friends
+   elsewhere, see [Letting friends reach it from outside your
+   home](#letting-friends-reach-it-from-outside-your-home).
 
 4. Log in as the admin: you land on the dashboard. Under **Create an
    account**, make one for yourself (your training account) and one for each
@@ -235,19 +238,84 @@ stored AI API keys) are deleted on the first start.
 
 ### Letting friends reach it from outside your home
 
-Put it behind your reverse proxy with HTTPS (e.g. a Nginx Proxy Manager host
-`trainer.yourdomain.com` → `http://<server>:8010`) — never expose the plain
-HTTP port. Then pick how friends get to the proxy:
+You need a domain name and HTTPS. The login page takes passwords (and, once,
+each person's Garmin password), so never forward the plain `http://` port
+8010 from your router to the internet.
 
-- **Public hostname** (easiest for friends): a public DNS record for the
-  hostname plus a port-forward of 443 to the proxy, or a Cloudflare Tunnel
-  (no port-forward, hides your home IP). Only the login page is public;
-  everything else needs an account.
-- **VPN only** (most private): give each friend a WireGuard peer and keep
-  the app LAN-only. More setup per friend.
+Whichever option you pick, set **`APP_DOMAIN`** in the stack to the name
+friends will open, for example `training.example.com`. The app then only
+answers on `https://training.example.com`: a visit to any other address, or
+over plain http, is sent there, and browsers are told to keep using HTTPS
+for it. On the server itself `http://localhost:8010` keeps working.
 
-Keep `ENABLE_API_DOCS=false` and `CORS_ALLOW_ORIGINS` empty when it's
-reachable from the internet (the defaults).
+**Option 1 — Cloudflare Tunnel (recommended).** Nothing to open on your
+router, your home IP address stays hidden, and Cloudflare provides the
+HTTPS certificate. The domain's DNS has to be managed by Cloudflare (the
+free plan is enough).
+
+1. In the Cloudflare dashboard go to **Networking → Tunnels → Create a
+   tunnel** (older layout: Zero Trust → Networks → Tunnels) and give it a
+   name. Cloudflare shows an install command: the long text after
+   `--token` is the tunnel token.
+2. Add these to the stack's environment variables and redeploy:
+
+   | Variable                  | Value                       |
+   |---------------------------|-----------------------------|
+   | `APP_DOMAIN`              | `training.example.com`      |
+   | `COMPOSE_PROFILES`        | `tunnel`                    |
+   | `CLOUDFLARE_TUNNEL_TOKEN` | the token from step 1       |
+
+   `COMPOSE_PROFILES=tunnel` starts one more container, `cloudflared`,
+   which connects out to Cloudflare. The tunnel then shows as healthy in
+   the dashboard.
+3. In the tunnel, **Routes → Add route → Published application** (older
+   layout: the *Public Hostname* tab): subdomain `training`, your domain,
+   service URL `http://backend:8000`.
+4. Open `https://training.example.com`.
+
+If no `cloudflared` container appears after redeploying, your Portainer
+doesn't pass `COMPOSE_PROFILES` on. Run the `docker run
+cloudflare/cloudflared …` command Cloudflare showed in step 1 instead, and
+use `http://<server-ip>:8010` as the service URL in step 3.
+
+For a second lock in front of the login page, add a **Cloudflare Access**
+application for the same name with a rule listing your friends' email
+addresses. They get a one-time code by email before the app is shown at
+all, so strangers never reach the login page.
+
+**Option 2 — your own reverse proxy.** If the server already runs Nginx
+Proxy Manager, Caddy or Traefik: add a host `training.example.com` →
+`http://<server-ip>:8010` with a Let's Encrypt certificate and HTTPS
+forced, create a public DNS record for the name that points at your home
+IP address, and forward port 443 (only) from the router to the proxy.
+Nobody sits between your friends and your server, but your home IP
+address is visible, it has to stay the same (or be kept up to date by a
+dynamic-DNS updater), and it doesn't work when your internet provider
+shares one address between several customers (CGNAT).
+
+**Option 3 — a private network.** With Tailscale or WireGuard each friend
+installs a VPN app and reaches the server's private address; nothing is
+public. The most private choice, with more setup per friend. Leave
+`APP_DOMAIN` empty.
+
+#### Giving friends access safely
+
+- Create each account from the dashboard with **Generate** and send the
+  username and password privately, one friend at a time. A generated
+  password saved in their browser is stronger than one they would pick.
+- Choose an admin username other than `admin`, and an `ADMIN_PASSWORD`
+  you use nowhere else. The admin can reset anyone's password, so that
+  one password protects everyone's data.
+- Look at the dashboard now and then: failed attempts and logins you
+  don't expect show up there. **Reset password** logs that person out
+  everywhere; **Delete** removes someone who has left.
+- Publish this app's name only. Portainer, the database and any other
+  service on the server stay off the tunnel and off the router.
+- Keep `ENABLE_API_DOCS=false` and `CORS_ALLOW_ORIGINS` empty (the
+  defaults).
+- Back up the database volume and the stack's variables. Without
+  `FERNET_KEY` the stored Garmin sessions can't be read and everyone has
+  to reconnect Garmin.
 
 ### Planning with Claude in Chrome
 
@@ -290,12 +358,15 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `POSTGRES_DB`                | docker-compose  | Postgres database name                                               |
 | `JWT_SECRET`                 | backend         | Signs session tokens — **required**                                  |
 | `ADMIN_USERNAME`             | backend         | First admin account, created on startup — **required** for the Docker stack |
-| `ADMIN_PASSWORD`             | backend         | Its password — **required** for the Docker stack; only used to *create* the account, change it later in the app |
+| `ADMIN_PASSWORD`             | backend         | Its password, at least 12 characters — **required** for the Docker stack; only used to *create* the account, change it later in the app |
 | `SEED_TEST_ACCOUNTS`         | `npm start` only | `true` (the `npm start` default) creates `admin`/`adminadmin` and `user`/`useruser` for local testing; never passed to Docker, refused on Postgres |
 | `ENABLE_API_DOCS`            | backend         | `true` serves Swagger UI at `/docs` (default `false`)                |
 | `FERNET_KEY`                 | backend         | Encrypts the stored Garmin session at rest — **required**            |
 | `GARMIN_SYNC_LOOKBACK_DAYS`  | backend         | How far back a sync looks (default 90); only missing days are requested |
 | `CORS_ALLOW_ORIGINS`         | backend         | Empty = same-origin only (default); comma-separated origins, or `*`  |
+| `APP_DOMAIN`                 | backend         | The public name friends open (e.g. `training.example.com`); when set the app only answers on `https://` that name. Empty (default) = no check |
+| `COMPOSE_PROFILES`           | docker-compose  | `tunnel` starts the optional Cloudflare Tunnel container             |
+| `CLOUDFLARE_TUNNEL_TOKEN`    | docker-compose  | Token of the Cloudflare Tunnel, only with `COMPOSE_PROFILES=tunnel`  |
 
 ## Data model
 
@@ -368,8 +439,19 @@ Interactive API docs are at `/docs` (Swagger UI) when `ENABLE_API_DOCS=true`.
   `FERNET_KEY`, which is on the same server) — so friends are trusting the
   admin with read access to their Garmin data. Back up `.env` and keep it
   private.
-- Responses carry `X-Frame-Options: DENY`, `nosniff` and `no-store` on the
-  API.
+- Guessing is limited twice: five wrong passwords lock a username for 15
+  minutes, and twenty wrong passwords from one address (whatever names it
+  tried) stop that address for as long. The visitor's address is read from
+  the headers Cloudflare or the reverse proxy adds. Someone who knows a
+  username can still keep it locked by sending it wrong passwords;
+  Cloudflare Access in front of the login page prevents that.
+- The app refuses to create the first admin with a password shorter than
+  12 characters (the container stops, with the reason in its log).
+- With `APP_DOMAIN` set, the app only answers on `https://` that name and
+  sends `Strict-Transport-Security` (30 days, that name only).
+- Responses carry `X-Frame-Options: DENY`, `nosniff`, `no-store` on the
+  API, `X-Robots-Tag: noindex`, and a `Content-Security-Policy` that only
+  lets the page load this app's own script and stylesheet.
 - Using the unofficial `garminconnect`/`garth` library (logging in with your
   real Garmin email/password against reverse-engineered endpoints) is
   against Garmin's ToS, though it's standard practice for self-hosted Garmin

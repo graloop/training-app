@@ -33,8 +33,18 @@ def bootstrap_admin() -> None:
         _ensure_admin(db, username, settings.admin_password)
 
 
+# The admin can reset anyone's password, so whoever guesses this one reaches
+# every friend's data.
+ADMIN_PASSWORD_MIN = 12
+
+
 def _ensure_admin(db: Session, username: str, password: str) -> None:
     user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None or not user.hashed_password:
+        if len(password) < ADMIN_PASSWORD_MIN:
+            raise RuntimeError(
+                f"ADMIN_PASSWORD is too short: use at least {ADMIN_PASSWORD_MIN} characters, then start the app again."
+            )
     if user is None:
         user = models.User(username=username, hashed_password=hash_password(password), is_admin=True, token_version=0)
         db.add(user)
@@ -120,42 +130,62 @@ def record_login(db: Session, user: models.User | None, success: bool) -> None:
 # In memory (one process, a handful of users): after MAX_FAILURES wrong
 # passwords for a username within WINDOW seconds, that username is locked
 # until the oldest failure falls out of the window.
+#
+# The same count is kept per visitor address, whatever names were tried: one
+# address guessing at every account, or at made-up names, is turned away
+# before its password is even checked. The limit is higher because friends in
+# the same house or on the same phone network share an address.
 
 MAX_FAILURES = 5
+MAX_ADDRESS_FAILURES = 20
 WINDOW_SECONDS = 15 * 60
 MAX_TRACKED_USERNAMES = 5000
 
 _failures: dict[str, list[float]] = {}
+_address_failures: dict[str, list[float]] = {}
 _lock = threading.Lock()
 
 
-def _recent(username: str, now: float) -> list[float]:
-    times = [t for t in _failures.get(username, []) if now - t < WINDOW_SECONDS]
-    _failures[username] = times
+def _recent(store: dict[str, list[float]], key: str, now: float) -> list[float]:
+    times = [t for t in store.get(key, []) if now - t < WINDOW_SECONDS]
+    store[key] = times
     return times
 
 
-def seconds_locked(username: str) -> int:
+def _seconds_over_limit(store: dict[str, list[float]], key: str, limit: int) -> int:
     now = time.monotonic()
     with _lock:
-        times = _recent(username, now)
-        if len(times) < MAX_FAILURES:
+        times = _recent(store, key, now)
+        if len(times) < limit:
             return 0
-        return int(WINDOW_SECONDS - (now - times[0])) + 1
+        return int(WINDOW_SECONDS - (now - times[-limit])) + 1
 
 
-def record_failure(username: str) -> None:
+def seconds_locked(username: str) -> int:
+    return _seconds_over_limit(_failures, username, MAX_FAILURES)
+
+
+def seconds_address_blocked(address: str) -> int:
+    return _seconds_over_limit(_address_failures, address, MAX_ADDRESS_FAILURES)
+
+
+def record_failure(username: str, address: str | None = None) -> None:
     now = time.monotonic()
     with _lock:
-        if len(_failures) > MAX_TRACKED_USERNAMES:
-            # Forget names whose failures have all aged out (guessing many
-            # different names must not grow this forever).
-            for name in [n for n, times in _failures.items() if not times or now - times[-1] >= WINDOW_SECONDS]:
-                del _failures[name]
-        _recent(username, now).append(now)
+        for store, key in ((_failures, username), (_address_failures, address)):
+            if key is None:
+                continue
+            if len(store) > MAX_TRACKED_USERNAMES:
+                # Forget names whose failures have all aged out (guessing many
+                # different names must not grow this forever).
+                for name in [n for n, times in store.items() if not times or now - times[-1] >= WINDOW_SECONDS]:
+                    del store[name]
+            _recent(store, key, now).append(now)
 
 
 def clear_failures(username: str) -> None:
+    """A good login or a password reset unlocks the username. The address keeps
+    its count: logging in to one account doesn't buy more guesses at others."""
     with _lock:
         _failures.pop(username, None)
 
@@ -163,3 +193,4 @@ def clear_failures(username: str) -> None:
 def reset_all_failures() -> None:  # tests
     with _lock:
         _failures.clear()
+        _address_failures.clear()

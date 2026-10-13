@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,6 +41,17 @@ class Settings(BaseSettings):
     # Swagger UI at /docs. Off by default so the API isn't advertised when the
     # app is reachable from the internet.
     enable_api_docs: bool = False
+
+    # The public name friends open, e.g. "training.example.com". When set, the
+    # app only answers on https://<that name>: a visit to any other address, or
+    # over plain http, is sent there. Empty = no such check (your own network).
+    app_domain: str = ""
+
+    @field_validator("app_domain")
+    @classmethod
+    def _bare_hostname(cls, value: str) -> str:
+        # Forgive a pasted URL: "https://Training.Example.com/" -> "training.example.com"
+        return value.strip().lower().split("://")[-1].split("/")[0].split(":")[0]
 
 
 @lru_cache
