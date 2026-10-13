@@ -2,6 +2,7 @@ import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -23,15 +24,23 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    # Login name chosen by the admin. Stored in the historical "email" column
+    # (accounts used to be keyed by Garmin email), so existing databases keep
+    # working without a migration.
+    username: Mapped[str] = mapped_column("email", String(255), unique=True, index=True, nullable=False)
+    # scrypt hash (see security.hash_password); "" = no password, can't log in.
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_admin: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    # Bumped on password change/reset: every token issued before stops working.
+    token_version: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
 
     garmin_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Encrypted (Fernet) blob of the garth session tokens. Never store the raw
     # Garmin password.
     garmin_session_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Legacy free-text goals (pre-structured objectives); still shown to the coach.
+    # Free-text "notes for the coach" (availability, injuries, preferences),
+    # edited on the page. Column name kept from the older free-text goals.
     objectives: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

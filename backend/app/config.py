@@ -24,7 +24,24 @@ class Settings(BaseSettings):
     # How many days of history to pull on each Garmin sync.
     garmin_sync_lookback_days: int = 30
 
-    cors_allow_origins: str = "*"
+    # Comma-separated origins allowed to call the API from another site.
+    # Empty = same-origin only (the frontend is served by this app, so that's
+    # all it needs). "*" allows any origin.
+    cors_allow_origins: str = ""
+
+    # First admin account, created on startup if it doesn't exist yet. The
+    # password is only used to *create* the account (or to give a password to
+    # an existing account that has none); change it in the app afterwards.
+    admin_username: str = ""
+    admin_password: str = ""
+
+    # The built-in coach chat calls an AI provider's API. Off by default: the
+    # app is meant to be edited directly (by hand or with Claude in Chrome).
+    ai_chat_enabled: bool = False
+
+    # Swagger UI at /docs. Off by default so the API isn't advertised when the
+    # app is reachable from the internet.
+    enable_api_docs: bool = False
 
 
 @lru_cache

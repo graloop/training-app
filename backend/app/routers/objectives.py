@@ -21,7 +21,7 @@ def _get_own(db: Session, user: models.User, objective_id: int) -> models.Object
 
 @router.get("", response_model=schemas.ObjectivesResponse)
 def list_objectives(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    """Objectives are created by the coach from the chat; the user edits or deletes them here."""
+    """Target events, added and edited on the page (or by the coach chat when it's enabled)."""
     rows = (
         db.query(models.Objective)
         .filter(models.Objective.user_id == user.id)
@@ -29,6 +29,27 @@ def list_objectives(db: Session = Depends(get_db), user: models.User = Depends(g
         .all()
     )
     return schemas.ObjectivesResponse(objectives=rows)
+
+
+@router.post("", response_model=schemas.ObjectiveOut, status_code=status.HTTP_201_CREATED)
+def create_objective(
+    payload: schemas.ObjectiveCreate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    title = payload.title.strip()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Give the objective a title")
+    row = models.Objective(
+        user_id=user.id,
+        title=title,
+        event_date=payload.event_date,
+        target_time=(payload.target_time or "").strip() or None,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 @router.patch("/{objective_id}", response_model=schemas.ObjectiveOut)

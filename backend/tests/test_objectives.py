@@ -1,4 +1,4 @@
-from conftest import login, text_response, tool_response
+from conftest import make_user, text_response, tool_response
 
 OBJ = "update_objectives"
 
@@ -78,9 +78,21 @@ def test_other_users_objectives_are_off_limits(client, auth, fake_claude):
     fake_claude(tool_response([{"action": "create", "title": "mine"}], name=OBJ), text_response("ok"))
     client.post("/api/chat", json={"message": "a"}, headers=auth)
     [obj] = _objectives(client, auth)
-    other = login(client, email="other@example.com")
+    other = make_user(client, "other")
     assert client.patch(f"/api/objectives/{obj['id']}", json={"title": "x"}, headers=other).status_code == 404
     assert client.delete(f"/api/objectives/{obj['id']}", headers=other).status_code == 404
     fake_claude(tool_response([{"action": "delete", "id": obj["id"]}], name=OBJ), text_response("ok"))
     client.post("/api/chat", json={"message": "b"}, headers=other)
     assert len(_objectives(client, auth)) == 1
+
+
+def test_user_creates_objective_by_hand(client, auth):
+    res = client.post("/api/objectives", json={"title": "  Ironman 70.3 Mont-Tremblant ", "event_date": "2027-06-20",
+                                               "target_time": " 5:30:00 "}, headers=auth)
+    assert res.status_code == 201
+    obj = res.json()
+    assert (obj["title"], obj["event_date"], obj["target_time"]) == ("Ironman 70.3 Mont-Tremblant", "2027-06-20",
+                                                                     "5:30:00")
+    assert client.post("/api/objectives", json={"title": "   "}, headers=auth).status_code == 422
+    assert client.post("/api/objectives", json={}, headers=auth).status_code == 422
+    assert [o["title"] for o in _objectives(client, auth)] == ["Ironman 70.3 Mont-Tremblant"]

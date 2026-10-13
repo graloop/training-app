@@ -3,42 +3,63 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AI Training Coach</title>
+  <title>Training Coach</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>AI Training Coach</h1>
+    <h1>Training Coach</h1>
     <div id="user-actions" class="hidden">
-      <span id="user-email"></span>
+      <span id="user-name"></span>
+      <button id="admin-btn" type="button" class="btn-ghost hidden">👥 Users</button>
       <div class="menu">
         <button id="settings-btn" class="btn-ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-menu">⚙️ Settings</button>
         <div id="settings-menu" class="menu-panel hidden" role="dialog" aria-label="Settings">
-          <h3>AI coach</h3>
-          <label for="ai-provider">Chatbot</label>
-          <select id="ai-provider"></select>
-          <div id="ai-custom-fields" class="menu-fields hidden">
-            <label for="ai-base-url">API URL</label>
-            <input id="ai-base-url" type="url" placeholder="https://example.com/v1" autocomplete="off" spellcheck="false" />
-            <label for="ai-format">API format</label>
-            <select id="ai-format">
-              <option value="openai">OpenAI-compatible (/chat/completions)</option>
-              <option value="anthropic">Anthropic-compatible (/v1/messages)</option>
-            </select>
-          </div>
-          <label for="ai-model">Model</label>
-          <input id="ai-model" type="text" autocomplete="off" spellcheck="false" />
-          <label for="ai-key">API key</label>
-          <input id="ai-key" type="password" autocomplete="off" spellcheck="false" />
-          <p class="hint"><span id="ai-key-state"></span> <a id="ai-key-link" target="_blank" rel="noopener">Get a key ↗</a></p>
+          <h3>Garmin</h3>
+          <p id="garmin-state" class="hint"></p>
           <div class="menu-actions">
-            <button id="ai-clear" type="button" class="btn-link">Remove key</button>
-            <span class="menu-buttons">
-              <button id="ai-test" type="button" class="btn-ghost" title="Check the server can reach this AI (nothing is saved)">Test</button>
-              <button id="ai-save" type="button">Save</button>
-            </span>
+            <button id="garmin-reconnect" type="button" class="btn-link">Reconnect Garmin</button>
+            <button id="garmin-disconnect" type="button" class="btn-link danger">Disconnect</button>
           </div>
-          <p id="ai-status" class="status hidden" role="status"></p>
+          <hr />
+          <h3>Change password</h3>
+          <form id="password-form" class="menu-fields" novalidate>
+            <label for="pw-current">Current password</label>
+            <input id="pw-current" type="password" autocomplete="current-password" />
+            <label for="pw-new">New password (8+ characters)</label>
+            <input id="pw-new" type="password" autocomplete="new-password" minlength="8" />
+            <button type="submit" class="btn-ghost">Change password</button>
+          </form>
+          <p id="pw-status" class="status hidden" role="status"></p>
+
+          <div id="ai-settings-section" class="menu-fields hidden">
+            <hr />
+            <h3>AI coach chat</h3>
+            <label for="ai-provider">Chatbot</label>
+            <select id="ai-provider"></select>
+            <div id="ai-custom-fields" class="menu-fields hidden">
+              <label for="ai-base-url">API URL</label>
+              <input id="ai-base-url" type="url" placeholder="https://example.com/v1" autocomplete="off" spellcheck="false" />
+              <label for="ai-format">API format</label>
+              <select id="ai-format">
+                <option value="openai">OpenAI-compatible (/chat/completions)</option>
+                <option value="anthropic">Anthropic-compatible (/v1/messages)</option>
+              </select>
+            </div>
+            <label for="ai-model">Model</label>
+            <input id="ai-model" type="text" autocomplete="off" spellcheck="false" />
+            <label for="ai-key">API key</label>
+            <input id="ai-key" type="password" autocomplete="off" spellcheck="false" />
+            <p class="hint"><span id="ai-key-state"></span> <a id="ai-key-link" target="_blank" rel="noopener">Get a key ↗</a></p>
+            <div class="menu-actions">
+              <button id="ai-clear" type="button" class="btn-link">Remove key</button>
+              <span class="menu-buttons">
+                <button id="ai-test" type="button" class="btn-ghost" title="Check the server can reach this AI (nothing is saved)">Test</button>
+                <button id="ai-save" type="button">Save</button>
+              </span>
+            </div>
+            <p id="ai-status" class="status hidden" role="status"></p>
+          </div>
           <hr />
           <button id="logout-btn" class="btn-link">Log out</button>
         </div>
@@ -48,26 +69,46 @@
 
   <main id="auth-view">
     <div class="auth-card">
-      <h2>Log in with Garmin Connect</h2>
-      <p class="hint">Use your Garmin Connect email and password. They're sent once to Garmin to log in and are never stored; only an encrypted session token is kept.</p>
+      <h2>Log in</h2>
+      <p class="hint">Use the username and password the admin gave you.</p>
       <form id="auth-form">
-        <label>Garmin email</label>
-        <input type="email" id="auth-email" required autocomplete="username" />
-        <label>Garmin password</label>
+        <label for="auth-username">Username</label>
+        <input type="text" id="auth-username" required autocomplete="username" autocapitalize="none" spellcheck="false" />
+        <label for="auth-password">Password</label>
         <input type="password" id="auth-password" required autocomplete="current-password" />
         <button type="submit" id="auth-submit">Log in</button>
-        <p id="auth-error" class="error hidden"></p>
+        <p id="auth-error" class="error hidden" role="alert"></p>
       </form>
     </div>
   </main>
 
   <main id="app-view" class="hidden">
-    <section class="panel">
+    <section id="garmin-panel" class="panel hidden" aria-labelledby="garmin-title">
+      <h2 id="garmin-title">Connect your Garmin account</h2>
+      <p id="garmin-reason" class="hint"></p>
+      <p class="hint">Your Garmin password is sent once to Garmin to log in and is never stored; only an encrypted session is kept on this server. Accounts with two-step verification (MFA) can't connect yet.</p>
+      <form id="garmin-form" class="inline-form">
+        <label for="garmin-email">Garmin email</label>
+        <input id="garmin-email" type="email" required autocomplete="off" />
+        <label for="garmin-password">Garmin password</label>
+        <input id="garmin-password" type="password" required autocomplete="off" />
+        <button type="submit" id="garmin-submit">Connect Garmin</button>
+        <p id="garmin-error" class="error hidden" role="alert"></p>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="calendar-title">
       <div class="panel-header">
-        <h2>Calendar</h2>
-        <button id="sync-btn">Sync with Garmin</button>
+        <h2 id="calendar-title">Calendar</h2>
+        <div class="calendar-nav">
+          <button id="cal-prev" type="button" class="btn-ghost" aria-label="Show 2 weeks earlier">← Earlier</button>
+          <button id="cal-today" type="button" class="btn-ghost">Today</button>
+          <button id="cal-next" type="button" class="btn-ghost" aria-label="Show 2 weeks later">Later →</button>
+          <button id="sync-btn" type="button">Sync with Garmin</button>
+        </div>
       </div>
-      <p id="sync-status" class="status hidden"></p>
+      <p id="cal-range" class="subtle"></p>
+      <p id="sync-status" class="status hidden" role="status"></p>
       <div class="calendar-scroll">
         <div id="calendar-grid" class="calendar-grid"></div>
       </div>
@@ -78,16 +119,32 @@
       </div>
     </section>
 
-    <section class="panel">
-      <h2>Objectives</h2>
+    <section class="panel" aria-labelledby="objectives-title">
+      <div class="panel-header">
+        <h2 id="objectives-title">Objectives</h2>
+        <button id="objective-add" type="button" class="btn-ghost">+ Add objective</button>
+      </div>
       <div id="objectives-list" class="objectives-list"></div>
     </section>
 
-    <section class="panel">
-      <h2>Coach chat <span id="chat-ai-label" class="subtle"></span></h2>
+    <section class="panel" aria-labelledby="notes-title">
+      <h2 id="notes-title">Notes for your coach</h2>
+      <p class="hint">Anything the coach should keep in mind: weekly availability, injuries, preferred rest day, season plan.</p>
+      <form id="notes-form">
+        <label for="notes-text" class="visually-hidden">Notes for your coach</label>
+        <textarea id="notes-text" rows="5" maxlength="5000" placeholder="e.g. Free Tue/Thu evenings and weekend mornings. Pool only Mon/Wed/Fri. Left knee sore after long runs."></textarea>
+        <div class="form-row">
+          <button type="submit">Save notes</button>
+          <span id="notes-status" class="status hidden" role="status"></span>
+        </div>
+      </form>
+    </section>
+
+    <section id="chat-panel" class="panel hidden" aria-labelledby="chat-title">
+      <h2 id="chat-title">Coach chat <span id="chat-ai-label" class="subtle"></span></h2>
       <div id="chat-log" class="chat-log"></div>
       <form id="chat-form" class="chat-form">
-        <input type="text" id="chat-input" placeholder="How are you feeling after today's run?" autocomplete="off" />
+        <input type="text" id="chat-input" placeholder="How are you feeling after today's run?" autocomplete="off" aria-label="Message to the coach" />
         <button type="submit">Send</button>
       </form>
     </section>
@@ -104,10 +161,12 @@
       <fieldset>
         <legend>Duration</legend>
         <div class="duration-inputs">
-          <label><input id="plan-hours" type="number" min="0" max="23" step="1" inputmode="numeric" /> h</label>
-          <label><input id="plan-minutes" type="number" min="0" max="59" step="5" inputmode="numeric" /> min</label>
+          <label><input id="plan-hours" type="number" min="0" max="23" step="1" inputmode="numeric" aria-label="Hours" /> h</label>
+          <label><input id="plan-minutes" type="number" min="0" max="59" step="5" inputmode="numeric" aria-label="Minutes" /> min</label>
         </div>
       </fieldset>
+      <label for="plan-notes">Workout details (optional)</label>
+      <textarea id="plan-notes" rows="3" maxlength="2000" placeholder="e.g. 15 min warm-up, 6 × 800 m at 10k pace with 2 min jog, 10 min cool-down"></textarea>
       <p id="plan-error" class="error hidden" role="alert"></p>
       <div class="dialog-actions">
         <button id="plan-delete" type="button" class="btn-link danger hidden">Delete</button>
@@ -116,6 +175,35 @@
         <button type="submit">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="admin-dialog" class="wide-dialog" aria-labelledby="admin-title">
+    <div class="dialog-body">
+      <div class="panel-header">
+        <h3 id="admin-title">Users</h3>
+        <button id="admin-close" type="button" class="btn-ghost">Close</button>
+      </div>
+      <p class="hint">Only people with an account here can log in. Give each friend their username and password; they can change the password in ⚙️ Settings.</p>
+      <table class="users-table">
+        <thead>
+          <tr><th scope="col">Username</th><th scope="col">Role</th><th scope="col">Garmin</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+        </thead>
+        <tbody id="users-body"></tbody>
+      </table>
+      <h4>Add a user</h4>
+      <form id="user-form" class="inline-form" novalidate>
+        <label for="new-username">New user's username</label>
+        <input id="new-username" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="e.g. marie" />
+        <label for="new-password">New user's password (8+ characters)</label>
+        <div class="input-with-button">
+          <input id="new-password" type="text" autocomplete="off" spellcheck="false" />
+          <button id="gen-password" type="button" class="btn-ghost">Generate</button>
+        </div>
+        <label class="checkbox"><input id="new-admin" type="checkbox" /> Admin (can manage users)</label>
+        <button type="submit">Create user</button>
+        <p id="user-status" class="status hidden" role="status"></p>
+      </form>
+    </div>
   </dialog>
 
   <script src="/app.js"></script>

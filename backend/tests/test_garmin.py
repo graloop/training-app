@@ -7,14 +7,16 @@ from app import garmin_client
 real_login_and_export_session = garmin_client.login_and_export_session
 
 
-def test_expired_garmin_session_sends_user_back_to_login(client, auth, monkeypatch):
+def test_expired_garmin_session_asks_to_reconnect_garmin(client, auth, monkeypatch):
     def expired(session):
         raise garmin_client.GarminAuthError("401 from Garmin")
 
     monkeypatch.setattr(garmin_client, "get_authenticated_client", expired)
     res = client.post("/api/garmin/sync", headers=auth)
-    assert res.status_code == 401  # the frontend treats this as "log in again"
-    assert "log in again" in res.json()["detail"]
+    # 409, not 401: the frontend shows "Connect Garmin" and keeps you logged in to the app.
+    assert res.status_code == 409
+    assert "reconnect Garmin" in res.json()["detail"]
+    assert client.get("/api/auth/me", headers=auth).status_code == 200
 
 
 def test_sync_stores_and_dedupes(client, auth, monkeypatch):
@@ -141,9 +143,9 @@ def test_failed_sync_keeps_the_chat(client, auth, monkeypatch, fake_claude):
 
 
 def test_sync_only_clears_own_chat(client, auth, monkeypatch, fake_claude):
-    from conftest import login
+    from conftest import make_user
 
-    other = login(client, email="other@example.com")
+    other = make_user(client, "other")
     from conftest import text_response
 
     fake_claude(text_response("yo"))
@@ -151,3 +153,20 @@ def test_sync_only_clears_own_chat(client, auth, monkeypatch, fake_claude):
     _stub_sync(monkeypatch)
     client.post("/api/garmin/sync", headers=auth)
     assert len(client.get("/api/chat/history", headers=other).json()["messages"]) == 2
+
+
+def test_login_errors_are_short_and_readable(monkeypatch):
+    class Rejecting:
+        def __init__(self, *a, **kw):
+            pass
+
+        def login(self, *a, **kw):
+            raise Exception("Error in request: 401 Client Error: Unauthorized for url: https://sso.garmin.com/" + "x" * 900)
+
+    monkeypatch.setattr(garmin_client.garth, "Client", Rejecting)
+    try:
+        real_login_and_export_session("a@example.com", "bad")
+    except garmin_client.GarminAuthError as exc:
+        assert str(exc) == "Garmin login failed: Garmin rejected that email or password."
+    else:
+        raise AssertionError("expected GarminAuthError")

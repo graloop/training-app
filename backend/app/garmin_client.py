@@ -68,9 +68,22 @@ def login_and_export_session(email: str, password: str) -> str:
 
     try:
         client.login(email, password, prompt_mfa=_refuse_mfa)
+    except GarminAuthError:
+        raise
     except Exception as exc:  # noqa: BLE001 - surface as a domain error
-        raise GarminAuthError(f"Garmin login failed: {exc}") from exc
+        raise GarminAuthError(_readable_login_error(exc)) from exc
     return _export_session(client)
+
+
+def _readable_login_error(exc: Exception) -> str:
+    """garth errors embed the full SSO URL; keep the message short and useful."""
+    text = str(exc)
+    if "401" in text or "403" in text:
+        return "Garmin login failed: Garmin rejected that email or password."
+    if "429" in text:
+        return "Garmin login failed: too many attempts, Garmin asks to wait a while before trying again."
+    text = text.split(" for url:")[0]
+    return f"Garmin login failed: {text[:200]}"
 
 
 def get_authenticated_client(session_data: str) -> Garmin:

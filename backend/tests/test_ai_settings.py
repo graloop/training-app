@@ -6,7 +6,7 @@ import anthropic
 import httpx
 import openai
 import pytest
-from conftest import login, text_response
+from conftest import make_user, text_response
 
 from app import ai_coach, models
 from app.database import SessionLocal
@@ -68,7 +68,7 @@ def test_unknown_provider_rejected(client, auth):
 
 def test_settings_are_per_user(client, auth):
     _put(client, auth, provider="gemini", api_key="AIza-1111")
-    other = login(client, email="other@example.com")
+    other = make_user(client, "other")
     assert client.get("/api/ai-settings", headers=other).json()["provider"] == "anthropic"
 
 

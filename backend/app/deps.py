@@ -3,6 +3,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from . import models
+from .config import get_settings
 from .database import get_db
 from .security import decode_access_token
 
@@ -16,12 +17,26 @@ def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    email = decode_access_token(credentials.credentials)
-    if email is None:
+    decoded = decode_access_token(credentials.credentials)
+    if decoded is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    user_id, token_version = decoded
 
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    user = db.get(models.User, user_id)
+    # A password change/reset bumps token_version, which logs out old sessions;
+    # a deleted account simply isn't found.
+    if user is None or (user.token_version or 0) != token_version:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired, please log in again")
 
     return user
+
+
+def get_current_admin(user: models.User = Depends(get_current_user)) -> models.User:
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admins only")
+    return user
+
+
+def require_ai_chat() -> None:
+    if not get_settings().ai_chat_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The AI chat is turned off on this server")

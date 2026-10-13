@@ -1,29 +1,45 @@
 const TOKEN_KEY = "at_token";
-const EMAIL_KEY = "at_email";
 
 function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch (_) {
+    return null;
+  }
 }
 
-function setSession(token, email) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(EMAIL_KEY, email);
+function setSession(token) {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch (_) {
+    /* private mode: the session lasts until the tab closes */
+  }
+  memoryToken = token;
 }
 
 function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(EMAIL_KEY);
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch (_) {
+    /* ignore */
+  }
+  memoryToken = null;
+  me = null;
 }
+
+let memoryToken = null; // fallback when localStorage is unavailable
+let me = null; // { id, username, is_admin, garmin_connected, garmin_email, ai_chat_enabled }
 
 async function api(path, options = {}) {
   const headers = options.headers || {};
   headers["Content-Type"] = "application/json";
-  const token = getToken();
+  const token = getToken() || memoryToken;
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(path, { ...options, headers });
   // A 401 without a token is a failed login, not an expired session.
   if (res.status === 401 && token) {
+    adminDialog.close();
     const message = "Your session expired, please log in again.";
     clearSession();
     showAuthView();
@@ -40,7 +56,10 @@ async function api(path, options = {}) {
     } catch (_) {
       /* ignore */
     }
-    throw new Error(detail);
+    if (typeof detail !== "string") detail = detail.map((d) => d.msg).join("; "); // validation errors
+    const error = new Error(detail);
+    error.status = res.status;
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -54,30 +73,48 @@ function showAuthView() {
   document.getElementById("user-actions").classList.add("hidden");
 }
 
-function showAppView() {
+async function showAppView({ sync = false } = {}) {
+  try {
+    me = await api("/api/auth/me");
+  } catch (err) {
+    if (err.status !== 401) {
+      showAuthView();
+      showStatus(document.getElementById("auth-error"), err.message, true);
+    }
+    return;
+  }
+  // Nothing from a previous session should linger (status lines, half-typed forms).
+  for (const el of document.querySelectorAll("#app-view .status, #app-view .error, #settings-menu .status"))
+    el.classList.add("hidden");
+  document.getElementById("garmin-password").value = "";
+  weekOffset = 0;
   document.getElementById("auth-view").classList.add("hidden");
   document.getElementById("app-view").classList.remove("hidden");
   document.getElementById("user-actions").classList.remove("hidden");
-  document.getElementById("user-email").textContent = localStorage.getItem(EMAIL_KEY) || "";
-  loadAll();
+  document.getElementById("user-name").textContent = me.username;
+  document.getElementById("admin-btn").classList.toggle("hidden", !me.is_admin);
+  document.getElementById("chat-panel").classList.toggle("hidden", !me.ai_chat_enabled);
+  document.getElementById("ai-settings-section").classList.toggle("hidden", !me.ai_chat_enabled);
+  renderGarminState();
+  await loadAll();
+  if (sync && me.garmin_connected) runSync();
 }
 
 document.getElementById("auth-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const email = document.getElementById("auth-email").value.trim();
+  const username = document.getElementById("auth-username").value.trim();
   const password = document.getElementById("auth-password").value;
   const errorEl = document.getElementById("auth-error");
   const submitBtn = document.getElementById("auth-submit");
   errorEl.classList.add("hidden");
   submitBtn.disabled = true;
-  submitBtn.textContent = "Logging in to Garmin...";
+  submitBtn.textContent = "Logging in…";
 
   try {
-    const data = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+    const data = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
     document.getElementById("auth-password").value = "";
-    setSession(data.access_token, email);
-    showAppView();
-    runSync();
+    setSession(data.access_token);
+    await showAppView({ sync: true });
   } catch (err) {
     errorEl.textContent = err.message;
     errorEl.classList.remove("hidden");
@@ -115,8 +152,9 @@ function setMenuOpen(open) {
   settingsBtn.setAttribute("aria-expanded", String(open));
   if (open) {
     aiStatus.classList.add("hidden");
+    document.getElementById("pw-status").classList.add("hidden");
     if (aiSettings) renderAISettings();
-    aiProvider.focus();
+    (me && me.ai_chat_enabled ? aiProvider : document.getElementById("pw-current")).focus();
   }
 }
 
@@ -244,9 +282,94 @@ aiClear.addEventListener("click", () =>
 );
 
 async function loadAISettings() {
+  if (!me || !me.ai_chat_enabled) return;
   aiSettings = await api("/api/ai-settings");
   renderAISettings();
 }
+
+// --- Garmin connection ---
+
+const garminPanel = document.getElementById("garmin-panel");
+const garminForm = document.getElementById("garmin-form");
+const garminError = document.getElementById("garmin-error");
+
+function renderGarminState(reason = "") {
+  const connected = me && me.garmin_connected && !reason;
+  garminPanel.classList.toggle("hidden", connected);
+  document.getElementById("garmin-reason").textContent =
+    reason || "Connect Garmin so your activities and sleep show up on the calendar.";
+  document.getElementById("garmin-state").textContent =
+    me && me.garmin_connected ? `Connected as ${me.garmin_email}.` : "Not connected.";
+  document.getElementById("garmin-disconnect").classList.toggle("hidden", !(me && me.garmin_connected));
+  syncBtn.disabled = !(me && me.garmin_connected);
+  syncBtn.title = me && me.garmin_connected ? "" : "Connect Garmin first";
+  if (!connected && me && me.garmin_email) document.getElementById("garmin-email").value = me.garmin_email;
+}
+
+function showGarminConnect(reason) {
+  renderGarminState(reason);
+  garminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  document.getElementById("garmin-password").focus({ preventScroll: true });
+}
+
+garminForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const submit = document.getElementById("garmin-submit");
+  garminError.classList.add("hidden");
+  submit.disabled = true;
+  submit.textContent = "Logging in to Garmin…";
+  try {
+    me = await api("/api/garmin/connect", {
+      method: "POST",
+      body: JSON.stringify({
+        garmin_email: document.getElementById("garmin-email").value.trim(),
+        garmin_password: document.getElementById("garmin-password").value,
+      }),
+    });
+    document.getElementById("garmin-password").value = "";
+    renderGarminState();
+    runSync();
+  } catch (err) {
+    showStatus(garminError, err.message, true);
+  } finally {
+    submit.disabled = false;
+    submit.textContent = "Connect Garmin";
+  }
+});
+
+document.getElementById("garmin-reconnect").addEventListener("click", () => {
+  setMenuOpen(false);
+  showGarminConnect("Log in to Garmin again to refresh the connection.");
+});
+
+document.getElementById("garmin-disconnect").addEventListener("click", async () => {
+  if (!confirm("Disconnect Garmin? Data already synced stays on the calendar.")) return;
+  me = await api("/api/garmin/connect", { method: "DELETE" });
+  setMenuOpen(false);
+  renderGarminState();
+});
+
+// --- Change own password ---
+
+document.getElementById("password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const status = document.getElementById("pw-status");
+  const current = document.getElementById("pw-current");
+  const next = document.getElementById("pw-new");
+  if (next.value.length < 8) return showStatus(status, "The new password needs 8+ characters.", true);
+  try {
+    const data = await api("/api/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: current.value, new_password: next.value }),
+    });
+    setSession(data.access_token);
+    current.value = next.value = "";
+    showStatus(status, "Password changed. Your other devices are logged out.");
+    status.classList.add("ok");
+  } catch (err) {
+    showStatus(status, err.message, true);
+  }
+});
 
 // --- Calendar ---
 
@@ -315,12 +438,16 @@ function addDays(d, n) {
   return copy;
 }
 
-// Whole Monday–Sunday weeks covering roughly 2 weeks back and 2 weeks ahead.
+// Whole Monday–Sunday weeks covering roughly 2 weeks back and 2 weeks ahead
+// of today, shifted by the Earlier/Later buttons (2 weeks per click).
+let weekOffset = 0;
+
 function calendarRange() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const from = addDays(today, -14);
-  const to = addDays(today, 14);
+  const center = addDays(today, weekOffset * 7);
+  const from = addDays(center, -14);
+  const to = addDays(center, 14);
   const start = addDays(from, -((from.getDay() + 6) % 7)); // back to Monday
   const end = addDays(to, (7 - to.getDay()) % 7); // forward to Sunday
   return { start: isoDate(start), end: isoDate(end) };
@@ -348,6 +475,7 @@ function makeSleepBadge(sleep) {
   badge.textContent = `😴 ${score}`;
   const hours = sleep.total_sleep_seconds ? ` · ${fmtHours(sleep.total_sleep_seconds / 60)} of sleep` : "";
   badge.title = `Sleep score ${score}${hours}`;
+  badge.setAttribute("aria-label", badge.title);
   return badge;
 }
 
@@ -358,6 +486,7 @@ function makeRestingHrBadge(sleep) {
   badge.className = "rhr-badge";
   badge.textContent = `❤️ ${bpm}`;
   badge.title = `Resting heart rate ${bpm} bpm`;
+  badge.setAttribute("aria-label", badge.title);
   return badge;
 }
 
@@ -501,13 +630,25 @@ function makeActivityEntry(className, a) {
   const detail = a.duration_seconds ? fmtHours(a.duration_seconds / 60) : "";
   const load = a.training_load != null ? Math.round(a.training_load) : null;
   const entry = makeEntry(className, a.activity_type, detail, load != null ? ` · load ${load}` : "");
-  if (load != null) entry.title = `${sportLabel(a.activity_type)} · ${detail} · training load ${load}`;
+  const te = a.aerobic_training_effect != null ? `, aerobic TE ${a.aerobic_training_effect.toFixed(1)}` : "";
+  entry.title = `Done (Garmin): ${a.name || sportLabel(a.activity_type)}, ${detail}${load != null ? `, training load ${load}` : ""}${te}`;
+  entry.setAttribute("role", "note");
+  entry.setAttribute("aria-label", entry.title);
   return entry;
+}
+
+function addNotes(entry, notes) {
+  if (!notes) return;
+  const el = document.createElement("span");
+  el.className = "entry-notes";
+  el.textContent = notes;
+  entry.appendChild(el);
 }
 
 function makeEditable(entry, date, planned) {
   entry.tabIndex = 0;
   entry.setAttribute("role", "button");
+  entry.setAttribute("aria-label", entry.title);
   entry.addEventListener("click", () => openPlanDialog(date, planned));
   entry.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -534,12 +675,14 @@ function renderCalendar(data) {
     for (const day of week) {
       const cell = document.createElement("div");
       cell.className = "day-cell" + (day.date === today ? " today" : "") + (day.date < today ? " past" : "");
+      cell.dataset.date = day.date;
 
       const head = document.createElement("div");
       head.className = "day-head";
       const dateEl = document.createElement("span");
       dateEl.className = "day-date";
       dateEl.textContent = fmtDate(day.date);
+      dateEl.title = day.date;
       head.appendChild(dateEl);
       const stats = document.createElement("span");
       stats.className = "day-stats";
@@ -556,7 +699,8 @@ function renderCalendar(data) {
         const load = a.training_load != null ? ` · load ${Math.round(a.training_load)}` : "";
         entry.title =
           `✓ Done as planned: ${sportLabel(p.activity_type)}, planned ${fmtHours(p.planned_duration_minutes)}, ` +
-          `did ${fmtHours(a.duration_seconds / 60)}${load}. Click to edit the plan.`;
+          `did ${fmtHours(a.duration_seconds / 60)}${load}${p.notes ? `. Plan: ${p.notes}` : ""}. Click to edit the plan.`;
+        addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
         cell.appendChild(entry);
       }
@@ -566,7 +710,10 @@ function renderCalendar(data) {
       for (const p of planned) {
         const detail = p.planned_duration_minutes ? fmtHours(p.planned_duration_minutes) : "";
         const entry = makeEntry("planned", p.activity_type, detail);
-        entry.title = `${sportLabel(p.activity_type)} · planned${p.source === "ai" ? " by the coach" : ""}. Click to edit.`;
+        entry.title =
+          `Planned ${sportLabel(p.activity_type)}, ${detail}${p.source === "ai" ? " (set by the coach)" : ""}` +
+          `${p.notes ? `: ${p.notes}` : ""}. Click to edit.`;
+        addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
         cell.appendChild(entry);
       }
@@ -575,7 +722,7 @@ function renderCalendar(data) {
       add.className = "add-btn";
       add.type = "button";
       add.title = "Plan a session";
-      add.setAttribute("aria-label", `Plan a session on ${fmtDate(day.date)}`);
+      add.setAttribute("aria-label", `Plan a session on ${fmtLongDate(day.date)} (${day.date})`);
       add.addEventListener("click", () => openPlanDialog(day.date));
       cell.appendChild(add);
 
@@ -589,6 +736,24 @@ async function loadCalendar() {
   const { start, end } = calendarRange();
   const data = await api(`/api/calendar?start=${start}&end=${end}`);
   renderCalendar(data);
+  document.getElementById("cal-range").textContent = `Showing ${fmtLongDate(start)} to ${fmtLongDate(end)}`;
+  document.getElementById("cal-today").disabled = weekOffset === 0;
+}
+
+function fmtLongDate(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+for (const [id, change] of [["cal-prev", -2], ["cal-next", 2], ["cal-today", null]]) {
+  document.getElementById(id).addEventListener("click", () => {
+    weekOffset = change === null ? 0 : weekOffset + change;
+    loadCalendar();
+  });
 }
 
 // --- Plan-a-session dialog ---
@@ -612,6 +777,7 @@ const planHours = document.getElementById("plan-hours");
 const planMinutes = document.getElementById("plan-minutes");
 const planError = document.getElementById("plan-error");
 const planDelete = document.getElementById("plan-delete");
+const planNotes = document.getElementById("plan-notes");
 let planTarget = null; // { date, existing }
 
 function renderSportOptions(extraType) {
@@ -649,6 +815,7 @@ function openPlanDialog(date, existing = null) {
   const minutes = existing ? Math.round(existing.planned_duration_minutes || 0) : 60;
   planHours.value = Math.floor(minutes / 60);
   planMinutes.value = minutes % 60;
+  planNotes.value = existing ? existing.notes || "" : "";
   const checked = planSports.querySelector(`input[value="${existing ? existing.activity_type : ""}"]`);
   if (checked) checked.checked = true;
 
@@ -665,7 +832,7 @@ planForm.addEventListener("submit", async (e) => {
   if (!sport) return showStatus(planError, "Pick a sport.", true);
   if (minutes <= 0) return showStatus(planError, "Set how long the session is.", true);
 
-  const body = { activity_type: sport.value, planned_duration_minutes: minutes };
+  const body = { activity_type: sport.value, planned_duration_minutes: minutes, notes: planNotes.value.trim() || null };
   try {
     if (planTarget.existing) {
       await api(`/api/planned/${planTarget.existing.id}`, { method: "PATCH", body: JSON.stringify(body) });
@@ -719,15 +886,20 @@ async function runSync() {
     // The server starts a fresh coach conversation on every sync.
     await Promise.all([loadCalendar(), loadChatHistory()]);
   } catch (err) {
-    showStatus(syncStatus, err.message, true);
+    if (err.status === 409) {
+      syncStatus.classList.add("hidden");
+      showGarminConnect(err.message);
+    } else {
+      showStatus(syncStatus, err.message, true);
+    }
   } finally {
-    syncBtn.disabled = false;
+    syncBtn.disabled = !(me && me.garmin_connected);
   }
 }
 
 syncBtn.addEventListener("click", runSync);
 
-// --- Objectives (set by the coach, editable here) ---
+// --- Objectives (added and edited here) ---
 
 const objectivesList = document.getElementById("objectives-list");
 
@@ -790,13 +962,25 @@ function renderObjectiveView(card, obj) {
   edit.type = "button";
   edit.className = "btn-link";
   edit.textContent = "Edit";
+  edit.setAttribute("aria-label", `Edit objective ${obj.title}`);
   edit.addEventListener("click", () => renderObjectiveEdit(card, obj));
   const del = document.createElement("button");
   del.type = "button";
   del.className = "btn-link danger";
   del.textContent = "Delete";
+  // Two clicks instead of confirm(): a native dialog would block tools driving the page.
   del.addEventListener("click", async () => {
-    if (!confirm(`Delete the objective "${obj.title}"?`)) return;
+    if (!del.classList.contains("confirming")) {
+      del.classList.add("confirming");
+      del.textContent = "Click again to delete";
+      del.setAttribute("aria-label", `Click again to confirm deleting objective ${obj.title}`);
+      setTimeout(() => {
+        del.classList.remove("confirming");
+        del.textContent = "Delete";
+        del.setAttribute("aria-label", `Delete objective ${obj.title}`);
+      }, 4000);
+      return;
+    }
     await api(`/api/objectives/${obj.id}`, { method: "DELETE" });
     await loadObjectives();
   });
@@ -805,6 +989,7 @@ function renderObjectiveView(card, obj) {
 }
 
 function renderObjectiveEdit(card, obj) {
+  const isNew = obj.id == null;
   card.innerHTML = "";
   const form = document.createElement("form");
   form.className = "objective-form";
@@ -817,7 +1002,7 @@ function renderObjectiveEdit(card, obj) {
   ];
   const inputs = {};
   for (const [label, type, key, value, placeholder] of fields) {
-    const id = `obj-${obj.id}-${key}`;
+    const id = `obj-${isNew ? "new" : obj.id}-${key}`;
     const l = document.createElement("label");
     l.htmlFor = id;
     l.textContent = label;
@@ -840,25 +1025,24 @@ function renderObjectiveEdit(card, obj) {
   cancel.type = "button";
   cancel.className = "btn-ghost";
   cancel.textContent = "Cancel";
-  cancel.addEventListener("click", () => renderObjectiveView(card, obj));
+  cancel.addEventListener("click", () => (isNew ? card.remove() : renderObjectiveView(card, obj)));
   const save = document.createElement("button");
   save.type = "submit";
-  save.textContent = "Save";
+  save.textContent = isNew ? "Save objective" : "Save";
   actions.append(cancel, save);
   form.append(error, actions);
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (!inputs.title.value.trim()) return showStatus(error, "Give the objective a title.", true);
+    const body = JSON.stringify({
+      title: inputs.title.value.trim(),
+      event_date: inputs.event_date.value || null,
+      target_time: inputs.target_time.value.trim(),
+    });
     try {
-      await api(`/api/objectives/${obj.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          title: inputs.title.value.trim(),
-          event_date: inputs.event_date.value || null,
-          target_time: inputs.target_time.value.trim(),
-        }),
-      });
+      if (isNew) await api("/api/objectives", { method: "POST", body });
+      else await api(`/api/objectives/${obj.id}`, { method: "PATCH", body });
       await loadObjectives();
     } catch (err) {
       showStatus(error, err.message, true);
@@ -874,8 +1058,8 @@ function renderObjectives(objectives) {
   if (!objectives.length) {
     const empty = document.createElement("p");
     empty.className = "subtle";
-    empty.textContent =
-      'No objective yet. Tell the coach about your next event, e.g. "My goal is the Montreal half marathon on April 20, aiming for 1:45:00."';
+    empty.className = "subtle objectives-empty";
+    empty.textContent = "No objective yet. Add your next event with + Add objective.";
     objectivesList.appendChild(empty);
     return;
   }
@@ -892,6 +1076,37 @@ async function loadObjectives() {
   renderObjectives(data.objectives);
 }
 
+document.getElementById("objective-add").addEventListener("click", () => {
+  const existing = objectivesList.querySelector("#obj-new-title");
+  if (existing) return existing.focus();
+  const empty = objectivesList.querySelector(".objectives-empty");
+  if (empty) empty.remove();
+  const card = document.createElement("div");
+  card.className = "objective-card";
+  objectivesList.prepend(card);
+  renderObjectiveEdit(card, { id: null, title: "", event_date: null, target_time: null });
+});
+
+// --- Notes for the coach ---
+
+const notesText = document.getElementById("notes-text");
+const notesStatus = document.getElementById("notes-status");
+
+async function loadNotes() {
+  notesText.value = (await api("/api/profile/notes")).notes;
+}
+
+document.getElementById("notes-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    notesText.value = (await api("/api/profile/notes", { method: "PUT", body: JSON.stringify({ notes: notesText.value }) })).notes;
+    showStatus(notesStatus, "Saved.");
+    notesStatus.classList.add("ok");
+  } catch (err) {
+    showStatus(notesStatus, err.message, true);
+  }
+});
+
 // --- Chat ---
 
 function appendChatMessage(role, content) {
@@ -904,6 +1119,7 @@ function appendChatMessage(role, content) {
 }
 
 async function loadChatHistory() {
+  if (!me || !me.ai_chat_enabled) return;
   const data = await api("/api/chat/history");
   const log = document.getElementById("chat-log");
   log.innerHTML = "";
@@ -935,10 +1151,129 @@ document.getElementById("chat-form").addEventListener("submit", async (e) => {
 // --- Init ---
 
 async function loadAll() {
-  await Promise.all([loadCalendar(), loadObjectives(), loadChatHistory(), loadAISettings()]);
+  await Promise.all([loadCalendar(), loadObjectives(), loadNotes(), loadChatHistory(), loadAISettings()]);
 }
 
-if (getToken()) {
+// --- Admin: manage users ---
+
+const adminDialog = document.getElementById("admin-dialog");
+const usersBody = document.getElementById("users-body");
+const userStatus = document.getElementById("user-status");
+
+function randomPassword() {
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(14));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+function renderUsers(users) {
+  usersBody.innerHTML = "";
+  for (const u of users) {
+    const row = document.createElement("tr");
+    const name = document.createElement("td");
+    name.textContent = u.username + (u.id === me.id ? " (you)" : "");
+    const role = document.createElement("td");
+    role.textContent = u.is_admin ? "Admin" : "Friend";
+    if (!u.has_password) role.textContent += " · no password";
+    const garmin = document.createElement("td");
+    garmin.textContent = u.garmin_connected ? "Connected" : "—";
+    const actions = document.createElement("td");
+    actions.className = "row-actions";
+
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "btn-link";
+    reset.textContent = "Reset password";
+    reset.setAttribute("aria-label", `Reset password for ${u.username}`);
+    reset.addEventListener("click", async () => {
+      const pw = prompt(`New password for ${u.username} (8+ characters):`, randomPassword());
+      if (pw == null) return;
+      try {
+        await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ password: pw }) });
+        showStatus(userStatus, `Password for ${u.username} changed to: ${pw}`);
+        userStatus.classList.add("ok");
+        if (u.id === me.id) {
+          clearSession();
+          adminDialog.close();
+          showAuthView();
+        } else {
+          loadUsers();
+        }
+      } catch (err) {
+        showStatus(userStatus, err.message, true);
+      }
+    });
+    actions.appendChild(reset);
+
+    if (u.id !== me.id) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn-link danger";
+      del.textContent = "Delete";
+      del.setAttribute("aria-label", `Delete ${u.username}`);
+      del.addEventListener("click", async () => {
+        if (!confirm(`Delete ${u.username} and all their data (calendar, objectives, notes)? This can't be undone.`)) return;
+        try {
+          await api(`/api/admin/users/${u.id}`, { method: "DELETE" });
+          loadUsers();
+        } catch (err) {
+          showStatus(userStatus, err.message, true);
+        }
+      });
+      actions.appendChild(del);
+    }
+
+    row.append(name, role, garmin, actions);
+    usersBody.appendChild(row);
+  }
+}
+
+async function loadUsers() {
+  renderUsers((await api("/api/admin/users")).users);
+}
+
+document.getElementById("admin-btn").addEventListener("click", async () => {
+  userStatus.classList.add("hidden");
+  document.getElementById("new-password").value = randomPassword();
+  adminDialog.showModal();
+  try {
+    await loadUsers();
+  } catch (err) {
+    showStatus(userStatus, err.message, true);
+  }
+});
+document.getElementById("admin-close").addEventListener("click", () => adminDialog.close());
+document.getElementById("gen-password").addEventListener("click", () => {
+  document.getElementById("new-password").value = randomPassword();
+});
+
+document.getElementById("user-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const username = document.getElementById("new-username").value.trim().toLowerCase();
+  const password = document.getElementById("new-password").value;
+  if (!/^[a-z0-9._@-]{3,64}$/.test(username))
+    return showStatus(userStatus, "Usernames are 3–64 characters: letters, digits, . _ - @", true);
+  if (password.length < 8) return showStatus(userStatus, "The password needs 8+ characters.", true);
+  try {
+    await api("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({ username, password, is_admin: document.getElementById("new-admin").checked }),
+    });
+    showStatus(userStatus, `Created ${username}. Send them: username ${username} · password ${password}`);
+    userStatus.classList.add("ok");
+    document.getElementById("new-username").value = "";
+    document.getElementById("new-admin").checked = false;
+    document.getElementById("new-password").value = randomPassword();
+    await loadUsers();
+  } catch (err) {
+    showStatus(userStatus, err.message, true);
+  }
+});
+
+// --- Init ---
+
+memoryToken = getToken();
+if (memoryToken) {
   showAppView();
 } else {
   showAuthView();

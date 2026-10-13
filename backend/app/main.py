@@ -1,41 +1,62 @@
 import os
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from .accounts import bootstrap_admin
 from .config import get_settings
 from .database import Base, add_missing_columns, engine
-from .routers import ai_settings, auth, calendar, chat, garmin, objectives, planned
+from .deps import require_ai_chat
+from .routers import admin, ai_settings, auth, calendar, chat, garmin, objectives, planned, profile
 
 settings = get_settings()
 
-app = FastAPI(title="AI Training Coach")
+docs = {} if settings.enable_api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+app = FastAPI(title="Training Coach", **docs)
 
-origins = ["*"] if settings.cors_allow_origins == "*" else settings.cors_allow_origins.split(",")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if settings.cors_allow_origins.strip():
+    origins = ["*"] if settings.cors_allow_origins.strip() == "*" else [
+        o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=origins != ["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    if request.url.path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
     add_missing_columns()
+    bootstrap_admin()
 
 
 app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(profile.router)
 app.include_router(garmin.router)
 app.include_router(calendar.router)
 app.include_router(objectives.router)
-app.include_router(chat.router)
-app.include_router(ai_settings.router)
 app.include_router(planned.router)
+# The coach chat needs an AI provider API key; it's off unless AI_CHAT_ENABLED=true.
+app.include_router(chat.router, dependencies=[Depends(require_ai_chat)])
+app.include_router(ai_settings.router, dependencies=[Depends(require_ai_chat)])
 
 
 @app.get("/api/health")

@@ -4,11 +4,17 @@ from typing import Any, Literal
 from pydantic import BaseModel, EmailStr, Field
 
 
-# --- Auth ---
+# --- Auth & accounts ---
+
+# Lowercase letters, digits and . _ - @ (so older accounts named after their
+# Garmin email still fit).
+USERNAME_PATTERN = r"^[a-z0-9._@-]{3,64}$"
+PASSWORD_MIN, PASSWORD_MAX = 8, 256
+
 
 class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+    username: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=256)
 
 
 class TokenResponse(BaseModel):
@@ -16,7 +22,56 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class MeOut(BaseModel):
+    id: int
+    username: str
+    is_admin: bool
+    garmin_connected: bool
+    garmin_email: str | None
+    ai_chat_enabled: bool
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
+
+
+class AdminUserOut(BaseModel):
+    id: int
+    username: str
+    is_admin: bool
+    has_password: bool
+    garmin_connected: bool
+    created_at: datetime.datetime | None
+
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(pattern=USERNAME_PATTERN)
+    password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
+    is_admin: bool = False
+
+
+class AdminUserUpdate(BaseModel):
+    password: str | None = Field(default=None, min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
+    is_admin: bool | None = None
+
+
+class AdminUsersResponse(BaseModel):
+    users: list[AdminUserOut]
+
+
+# --- Profile ---
+
+class ProfileNotes(BaseModel):
+    notes: str = Field(default="", max_length=5000)
+
+
 # --- Garmin ---
+
+class GarminConnectRequest(BaseModel):
+    garmin_email: EmailStr
+    garmin_password: str = Field(min_length=1, max_length=256)
+
 
 class GarminSyncResponse(BaseModel):
     activities_synced: int
@@ -34,6 +89,12 @@ class ObjectiveOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ObjectiveCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    event_date: datetime.date | None = None
+    target_time: str | None = Field(default=None, max_length=32)
 
 
 class ObjectiveUpdate(BaseModel):

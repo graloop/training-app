@@ -1,6 +1,6 @@
 import datetime
 
-from conftest import login
+from conftest import make_user
 from sqlalchemy import create_engine, inspect, text
 
 TOMORROW = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
@@ -40,7 +40,7 @@ def test_validation(client, auth):
 def test_cannot_touch_other_users_sessions(client, auth):
     row = client.post("/api/planned", json={"date": TOMORROW, "activity_type": "running",
                                             "planned_duration_minutes": 30}, headers=auth).json()
-    other = login(client, email="other@example.com")
+    other = make_user(client, "other")
     assert client.patch(f"/api/planned/{row['id']}", json={"planned_duration_minutes": 5}, headers=other).status_code == 404
     assert client.delete(f"/api/planned/{row['id']}", headers=other).status_code == 404
     assert len(_day(client, auth, TOMORROW)) == 1

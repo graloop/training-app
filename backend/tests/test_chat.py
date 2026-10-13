@@ -41,14 +41,14 @@ def test_tool_call_creates_updates_deletes(client, auth, fake_claude):
 
 
 def test_tool_cannot_touch_other_users_sessions(client, auth, fake_claude):
-    from conftest import login
+    from conftest import make_user
 
     tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
     fake_claude(tool_response([{"action": "create", "date": tomorrow, "activity_type": "running"}]), text_response("ok"))
     client.post("/api/chat", json={"message": "plan"}, headers=auth)
     [row] = _planned(client, auth)
 
-    other = login(client, email="other@example.com")
+    other = make_user(client, "other")
     fake_claude(tool_response([{"action": "delete", "id": row["id"]}]), text_response("ok"))
     res = client.post("/api/chat", json={"message": "delete"}, headers=other).json()
     assert res["plan_changes"] == []
@@ -70,7 +70,7 @@ def test_system_prompt_includes_context(client, auth, fake_claude):
     from app.database import SessionLocal
 
     with SessionLocal() as db:
-        db.add(models.Objective(user_id=db.query(models.User).one().id, title="Montreal half",
+        db.add(models.Objective(user_id=db.query(models.User).filter_by(username="athlete").one().id, title="Montreal half",
                                 event_date=datetime.date(2027, 4, 20), target_time="1:45:00"))
         db.commit()
     fake = fake_claude(text_response("hi"))

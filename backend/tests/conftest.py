@@ -9,11 +9,15 @@ os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(_TMP_DIR, 'test.db')}"
 os.environ["JWT_SECRET"] = "test-secret-" + "x" * 32
 os.environ["FERNET_KEY"] = "3m2Gd0b0x8l8ZLp9bXb1lVZ3n7rPq3QmY2V1n2r3c4s="
 os.environ["ANTHROPIC_API_KEY"] = "sk-ant-test"
+os.environ["ADMIN_USERNAME"] = "admin"
+os.environ["ADMIN_PASSWORD"] = "admin-password"
+# The chat/AI tests exercise the optional coach chat; test_accounts checks it's off by default.
+os.environ["AI_CHAT_ENABLED"] = "true"
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import ai_coach, garmin_client
+from app import accounts, ai_coach, garmin_client
 from app.database import Base, engine
 from app.main import app
 
@@ -22,6 +26,7 @@ from app.main import app
 def fresh_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    accounts.reset_all_failures()
     yield
 
 
@@ -46,15 +51,39 @@ def client():
         yield c
 
 
-def login(client, email="athlete@example.com", password=GARMIN_PASSWORD):
-    res = client.post("/api/auth/login", json={"email": email, "password": password})
+ADMIN = ("admin", "admin-password")
+USER_PASSWORD = "friend-password"
+
+
+def login(client, username, password=USER_PASSWORD):
+    res = client.post("/api/auth/login", json={"username": username, "password": password})
     assert res.status_code == 200, res.text
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 
+def admin_auth(client):
+    return login(client, *ADMIN)
+
+
+def make_user(client, username="athlete", password=USER_PASSWORD, garmin=True):
+    """Admin creates the account, the friend logs in and (optionally) connects
+    Garmin as <username>@example.com. Returns the friend's auth headers."""
+    res = client.post("/api/admin/users", json={"username": username, "password": password}, headers=admin_auth(client))
+    assert res.status_code == 201, res.text
+    headers = login(client, username, password)
+    if garmin:
+        res = client.post(
+            "/api/garmin/connect",
+            json={"garmin_email": f"{username}@example.com", "garmin_password": GARMIN_PASSWORD},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+    return headers
+
+
 @pytest.fixture
 def auth(client):
-    return login(client)
+    return make_user(client)
 
 
 # --- Fake Anthropic client ---------------------------------------------------

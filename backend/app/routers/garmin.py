@@ -7,10 +7,40 @@ from .. import garmin_client, models, schemas
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_user
-from ..security import decrypt_text
+from ..security import decrypt_text, encrypt_text
+from .auth import me_out
 
 router = APIRouter(prefix="/api/garmin", tags=["garmin"])
 settings = get_settings()
+
+
+@router.post("/connect", response_model=schemas.MeOut)
+def connect(
+    payload: schemas.GarminConnectRequest,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Link (or re-link) this user's own Garmin Connect account. The Garmin
+    password is sent once to Garmin and never stored; only the resulting
+    session is kept, encrypted."""
+    garmin_email = payload.garmin_email.lower()
+    try:
+        session_data = garmin_client.login_and_export_session(garmin_email, payload.garmin_password)
+    except garmin_client.GarminAuthError as exc:
+        # 400, not 401: a failed *Garmin* login must not log the user out of this app.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    user.garmin_email = garmin_email
+    user.garmin_session_encrypted = encrypt_text(session_data)
+    db.commit()
+    return me_out(user)
+
+
+@router.delete("/connect", response_model=schemas.MeOut)
+def disconnect(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Forget the stored Garmin session. Already-synced data stays."""
+    user.garmin_session_encrypted = None
+    db.commit()
+    return me_out(user)
 
 
 @router.post("/sync", response_model=schemas.GarminSyncResponse)
@@ -18,21 +48,18 @@ def sync(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    # 409 (not 401) when Garmin isn't usable: the frontend shows the
+    # "Connect Garmin" form instead of logging the user out of the app.
     if not user.garmin_session_encrypted:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No Garmin session stored. Log in again.",
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Connect your Garmin account first.")
 
-    # Logging in is what (re)connects Garmin, so an unusable session is
-    # reported as 401 and the frontend sends the user back to the login form.
     try:
         session_data = decrypt_text(user.garmin_session_encrypted)
         api = garmin_client.get_authenticated_client(session_data)
     except (ValueError, garmin_client.GarminAuthError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Garmin session expired, please log in again: {exc}",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Your Garmin session expired, please reconnect Garmin. ({exc})",
         ) from exc
 
     lookback_days = settings.garmin_sync_lookback_days

@@ -155,8 +155,8 @@ def _build_system_prompt(db: Session, user: models.User) -> str:
         return f"- id={o.id} {o.title}, event date {o.event_date or 'unknown'}, target time {o.target_time or 'not set'}"
 
     objectives_block = "\n".join(fmt_objective(o) for o in objectives) or "(none yet)"
-    if user.objectives:  # free-text goals from before objectives were structured
-        objectives_block += f"\nEarlier free-text notes from the athlete: {user.objectives}"
+    if user.objectives:  # the athlete's free-text "notes for the coach"
+        objectives_block += f"\nThe athlete's notes for the coach: {user.objectives}"
 
     return f"""You are an experienced, encouraging endurance training coach helping a real \
 athlete through a chat interface embedded in their training calendar app.

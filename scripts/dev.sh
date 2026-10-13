@@ -35,10 +35,12 @@ text = path.read_text()
 text = text.replace("JWT_SECRET=change-me", f"JWT_SECRET={secrets.token_hex(32)}")
 text = text.replace("POSTGRES_PASSWORD=change-me", f"POSTGRES_PASSWORD={secrets.token_hex(16)}")
 text = text.replace("FERNET_KEY=", f"FERNET_KEY={Fernet.generate_key().decode()}")
+admin_password = secrets.token_urlsafe(12)
+text = text.replace("ADMIN_PASSWORD=\n", f"ADMIN_PASSWORD={admin_password}\n")
 path.write_text(text)
+print(f"Admin login: admin / {admin_password}  (also in .env as ADMIN_PASSWORD)")
 PY
-  echo "Generated JWT_SECRET / FERNET_KEY / POSTGRES_PASSWORD in .env."
-  echo "Add your AI API key in the app's ⚙️ Settings menu (or ANTHROPIC_API_KEY in .env)."
+  echo "Generated JWT_SECRET / FERNET_KEY / POSTGRES_PASSWORD / ADMIN_PASSWORD in .env."
 fi
 
 set -a
@@ -51,8 +53,8 @@ set +a
 # you want to point local dev at a real Postgres instance.
 export DATABASE_URL="${DATABASE_URL:-sqlite:///./dev.db}"
 
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  echo "Note: no server-wide ANTHROPIC_API_KEY in .env — each user adds their own key in the app's ⚙️ Settings menu."
+if [ -z "${ADMIN_PASSWORD:-}" ]; then
+  echo "Note: ADMIN_PASSWORD is empty in .env, so no admin account is created. Set it and restart."
 fi
 
 echo "Starting AI Training Coach at http://localhost:8000"

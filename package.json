@@ -2,7 +2,7 @@
   "name": "ai-trainer-with-garmin-data",
   "private": true,
   "version": "1.0.0",
-  "description": "AI Training Coach \u2014 FastAPI backend with a Garmin-synced calendar and Claude-powered coaching chat.",
+  "description": "Training Coach \u2014 self-hosted Garmin-synced training calendar with admin-created accounts for a few friends.",
   "scripts": {
     "start": "bash scripts/dev.sh",
     "dev": "bash scripts/dev.sh",
