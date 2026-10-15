@@ -33,8 +33,18 @@ def test_validation(client, auth):
         {"date": TOMORROW, "activity_type": "running", "planned_duration_minutes": 2000},
         {"date": TOMORROW, "activity_type": "", "planned_duration_minutes": 30},
         {"date": "not-a-date", "activity_type": "running", "planned_duration_minutes": 30},
+        {"date": TOMORROW, "activity_type": "running", "planned_duration_minutes": 30, "notes": "x" * 30001},
     ]:
         assert client.post("/api/planned", json=body, headers=auth).status_code == 422
+
+
+def test_notes_fit_a_long_draft_line(client, auth):
+    # A confirmed draft line's details become the notes, and editing the session sends them back.
+    body = {"date": TOMORROW, "activity_type": "running", "planned_duration_minutes": 30, "notes": "x" * 30000}
+    row = client.post("/api/planned", json=body, headers=auth).json()
+    res = client.patch(f"/api/planned/{row['id']}", json={"planned_duration_minutes": 40, "notes": body["notes"]}, headers=auth)
+    assert res.status_code == 200
+    assert client.patch(f"/api/planned/{row['id']}", json={"notes": "x" * 30001}, headers=auth).status_code == 422
 
 
 def test_cannot_touch_other_users_sessions(client, auth):

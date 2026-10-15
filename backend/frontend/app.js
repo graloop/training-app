@@ -53,8 +53,10 @@ async function api(path, options = {}) {
       const body = await res.json();
       detail = body.detail || detail;
     } catch (_) {
-      /* ignore */
+      // Not the app's answer: Cloudflare's own page when the server is off or took too long (502, 504, 524...).
+      if (res.status >= 500) detail = `The server didn't answer (error ${res.status}). Try again in a minute.`;
     }
+    if (!detail) detail = `Error ${res.status}`;
     if (typeof detail !== "string") detail = detail.map((d) => d.msg).join("; "); // validation errors
     const error = new Error(detail);
     error.status = res.status;
@@ -1026,6 +1028,10 @@ function showTab(name, { load = true } = {}) {
     if (tab === name) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
   }
+  // Objectives sit under the calendar, and on the Plan tab above the plan that works towards them.
+  const objectivesPanel = document.getElementById("objectives-panel");
+  if (name === "plan") document.getElementById("plan-panel").before(objectivesPanel);
+  else document.getElementById("app-view").appendChild(objectivesPanel);
   try {
     history.replaceState(null, "", name === "plan" ? "#plan" : location.pathname);
   } catch (_) {
@@ -1038,7 +1044,7 @@ function showTab(name, { load = true } = {}) {
 
 for (const tab of TABS) document.getElementById(`tab-btn-${tab}`).addEventListener("click", () => showTab(tab));
 
-// --- Plan page: training log, draft plan, confirm ---
+// --- Plan page: preview and confirm, then the draft, then the training log Claude reads ---
 
 const logEl = document.getElementById("training-log");
 const logWeeks = document.getElementById("log-weeks");
@@ -1139,7 +1145,15 @@ function renderDraftErrors(errors) {
 
 function renderDraftPreview(draft) {
   draftPreview.innerHTML = "";
-  if (!draft.sessions_count) return;
+  if (!draft.sessions_count) {
+    const empty = document.createElement("p");
+    empty.className = "plan-empty";
+    empty.textContent = draft.errors.length
+      ? "None of the draft's lines can be read yet."
+      : "No plan for these weeks yet. Ask Claude in Chrome to write one, or type the sessions in the draft below.";
+    draftPreview.appendChild(empty);
+    return;
+  }
   const today = isoDate(new Date());
 
   draft.weeks_preview.forEach((week, index) => {
@@ -1223,9 +1237,9 @@ function renderConfirm(draft) {
   const ready = draft.sessions_count > 0 && draft.errors.length === 0;
   confirmBtn.disabled = !ready;
   if (draft.errors.length) {
-    summary.textContent = `Fix the ${plural(draft.errors.length, "line")} flagged above first.`;
+    summary.textContent = `Fix the ${plural(draft.errors.length, "line")} flagged in the draft below first.`;
   } else if (!draft.sessions_count) {
-    summary.textContent = "Write a draft above first.";
+    summary.textContent = "Nothing to put on the calendar yet.";
   } else {
     const replaced = draft.existing_planned
       ? `${plural(draft.existing_planned, "session")} already planned from ${fmtDate(draft.replace_from)} to ${fmtDate(draft.end_date)} will be replaced.`
@@ -1295,7 +1309,7 @@ async function loadPlanPage() {
     aboutText.value = about.notes;
     applyDraft(draft, { fill: true });
   } catch (err) {
-    if (err.status !== 401) showStatus(draftStatus, err.message, true);
+    if (err.status !== 401) showStatus(confirmStatus, err.message, true);
   }
 }
 
@@ -1347,7 +1361,11 @@ for (const el of [draftText, draftNotes]) {
   el.addEventListener("change", () => saveDraft());
 }
 for (const el of [planStart, planWeeks]) el.addEventListener("change", () => saveDraft());
-document.getElementById("draft-save").addEventListener("click", () => saveDraft());
+document.getElementById("draft-save").addEventListener("click", async () => {
+  const draft = await saveDraft();
+  // The preview is above the draft: bring it into view, unless there are lines to fix right here.
+  if (draft && !draft.errors.length) document.getElementById("plan-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 // The log, the weeks being planned and the line format, ready to paste into a Claude conversation.
 document.getElementById("log-copy").addEventListener("click", async () => {

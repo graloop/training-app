@@ -84,6 +84,37 @@ def test_https_is_only_believed_from_the_proxy(client, public):
     assert direct.get("/", headers=VIA_HTTPS, follow_redirects=False).status_code == 307
 
 
+def _raw_get(path, host="192.0.2.10:8010"):
+    """A request as the server receives it, before any client tidies the path."""
+    import asyncio
+
+    messages = []
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET", "scheme": "http",
+        "path": path, "raw_path": path.encode(), "query_string": b"", "root_path": "",
+        "headers": [(b"host", host.encode())], "client": ("172.18.0.3", 40000), "server": ("192.0.2.10", 8010),
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        messages.append(message)
+
+    asyncio.run(main.app(scope, receive, send))
+    start = next(m for m in messages if m["type"] == "http.response.start")
+    return start["status"], {k.decode(): v.decode() for k, v in start["headers"]}
+
+
+def test_the_redirect_always_points_at_the_public_name(public):
+    from urllib.parse import urlsplit
+
+    for path in ("@evil.example", "@evil.example/x", "//evil.example/x", "/ok"):
+        status, headers = _raw_get(path)
+        assert status == 307, path
+        assert urlsplit(headers["location"]).hostname == DOMAIN, (path, headers["location"])
+
+
 def test_cloudflare_in_front_of_a_reverse_proxy(proxied, public):
     """The proxy reports its own hop from Cloudflare (http) in X-Forwarded-Proto;
     redirecting on that alone would loop forever."""
@@ -94,6 +125,17 @@ def test_cloudflare_in_front_of_a_reverse_proxy(proxied, public):
 
 
 # --- Headers every page carries ----------------------------------------------------
+
+
+def test_range_requests_get_the_whole_file(client):
+    """Starlette 0.46 can be made to burn CPU with a crafted Range header
+    (CVE-2025-62727), and the page never asks for part of a file."""
+    whole = client.get("/app.js")
+    crafted = "bytes=" + ",".join(f"{i}-{i + 1}" for i in range(0, 4000, 2))
+    for value in ("bytes=0-9", crafted):
+        res = client.get("/app.js", headers={"Range": value})
+        assert res.status_code == 200 and res.content == whole.content
+        assert "content-range" not in res.headers
 
 
 def test_pages_only_run_their_own_script(client):

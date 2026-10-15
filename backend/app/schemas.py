@@ -210,17 +210,22 @@ class PlannedTrainingOut(BaseModel):
         from_attributes = True
 
 
+# A confirmed draft line's details become the session's notes, so they get
+# the same room as a whole draft (DraftIn.text).
+PLANNED_NOTES_MAX = 30000
+
+
 class PlannedTrainingCreate(BaseModel):
     date: datetime.date
     activity_type: str = Field(min_length=1, max_length=64)
     planned_duration_minutes: float = Field(gt=0, le=24 * 60)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=PLANNED_NOTES_MAX)
 
 
 class PlannedTrainingUpdate(BaseModel):
     activity_type: str | None = Field(default=None, min_length=1, max_length=64)
     planned_duration_minutes: float | None = Field(default=None, gt=0, le=24 * 60)
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=PLANNED_NOTES_MAX)
 
 
 class CalendarDay(BaseModel):

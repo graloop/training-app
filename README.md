@@ -56,8 +56,24 @@ adjust sessions — it edits the page like you would.
   logged in.
 - **Plan page** — the **Plan** tab is where future weeks get planned, by
   hand or with Claude in Chrome, without touching the calendar until you
-  confirm:
-  1. **Training log** — the last 2 to 12 weeks as plain text. Per session:
+  confirm. What a person reads comes first, what Claude reads comes last.
+  From top to bottom:
+  1. **Objectives**, then the **Plan preview** — pick the first week to
+     plan (any week up to about six months ahead) and how many weeks. The
+     draft is shown as a table per week with a weekly split.
+  2. **Put this plan on the calendar**, right under the preview — adds the
+     draft's sessions and replaces whatever was planned from today to the
+     end of those weeks, so re-planning never duplicates. Done activities
+     are never touched.
+  3. **Draft plan** — the text the preview is made from, one session per
+     line: `Tue Oct 13 | run | 1:15 | Track: 2×6×400 m`. Any line the page
+     can't read is flagged under the box (a wrong weekday for the date, a
+     date outside the chosen weeks, an unreadable duration). Block notes
+     (goal, zones, rules of thumb) are saved with the draft.
+  4. **About you** — what Garmin doesn't know (availability, constraints,
+     injuries, equipment). It is added to the training log.
+  5. **Training log**, at the bottom because it is written for Claude — the
+     last 2 to 12 weeks as plain text. Per session:
      duration, distance, pace, average HR, load, and the **perceived effort
      and feel you answered on the watch**. In *Full* detail also time in each
      HR zone, max HR, Garmin's session type and training effect, bike power,
@@ -73,25 +89,13 @@ adjust sessions — it edits the page like you would.
      against its targets) and **earlier weeks** as one line of totals each,
      up to a year back. A session shows "effort not answered" when the watch
      prompt was skipped and "not synced yet" when its details haven't been
-     fetched. An
-     **About you** box adds what Garmin doesn't know (availability,
-     constraints, injuries, equipment). *Summary* detail keeps one line per
-     session. **Copy log for Claude** copies it with the line format, for a
-     normal Claude conversation.
-  2. **Draft plan** — pick the first week to plan (any week up to about six
-     months ahead) and how many weeks, then write one session per line:
-     `Tue Oct 13 | run | 1:15 | Track: 2×6×400 m`. The page shows the draft as
-     a table per week with a weekly split, and flags any line it can't read
-     (a wrong weekday for the date, a date outside the chosen weeks, an
-     unreadable duration). Block notes (goal, zones, rules of thumb) are
-     saved with the draft.
-  3. **Put it on the calendar** — adds the draft's sessions and replaces
-     whatever was planned from today to the end of those weeks, so
-     re-planning never duplicates. Done activities are never touched.
+     fetched. *Summary* detail keeps one line per session. **Copy log for
+     Claude** copies it with the line format, for a normal Claude
+     conversation.
 - **Objectives** — **+ Add objective** records a target event (title, event
   date, target time, and notes such as its priority) as a card with a
-  countdown; edit or delete it from the card. Shown under both tabs and
-  listed in the training log.
+  countdown; edit or delete it from the card. Shown under the calendar and
+  at the top of the Plan tab, and listed in the training log.
 - **Sleep & recovery** — each day shows its Garmin sleep score (top right,
   coloured good / fair / poor) and resting heart rate (❤️ bpm); each week's
   column shows the average sleep score and average resting heart rate.
@@ -270,8 +274,14 @@ free plan is enough).
    the dashboard.
 3. In the tunnel, **Routes → Add route → Published application** (older
    layout: the *Public Hostname* tab): subdomain `training`, your domain,
-   service URL `http://backend:8000`.
+   service URL `http://backend:8000`. Leave the other settings as they are;
+   in particular *HTTP Host Header* must stay empty, or every visit is sent
+   back to the same address in a loop.
 4. Open `https://training.example.com`.
+
+If the page stays blank, check that Cloudflare's **Rocket Loader** (Speed
+settings) is off: it rewrites the page's scripts, which the page's
+security policy then blocks.
 
 If no `cloudflared` container appears after redeploying, your Portainer
 doesn't pass `COMPOSE_PROFILES` on. Run the `docker run
@@ -322,10 +332,11 @@ public. The most private choice, with more setup per friend. Leave
 Open the app in Chrome, log in, open the Claude extension and ask in plain
 words, for example:
 
-- On the **Plan** tab: "Read my training log and my block notes, then plan
-  the next 4 weeks in the draft box, one session per line in the format
-  shown. Save and preview, and tell me the weekly totals." Then discuss,
-  let it adjust the draft, and confirm yourself when you're happy.
+- On the **Plan** tab: "Read my training log at the bottom of the page and
+  my block notes, then plan the next 4 weeks in the draft box, one session
+  per line in the format shown. Save and preview, and tell me the weekly
+  totals." Then discuss, let it adjust the draft, and press **Put this
+  plan on the calendar** yourself when you're happy.
 - "Read my objectives and the last two weeks, then plan next week
   with 3 runs, 2 swims and a long ride. Put the workout details in each
   session."
@@ -403,7 +414,7 @@ New nullable columns are added to existing databases on startup
 
 | Endpoint                | Method | Notes                                                       |
 |--------------------------|--------|---------------------------------------------------------------|
-| `/api/auth/login`        | POST   | Username/password → JWT (429 after 5 failures in 15 min)      |
+| `/api/auth/login`        | POST   | Username/password → JWT (429 after 5 failures for a username, or 20 from one address, in 15 min) |
 | `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status                    |
 | `/api/auth/password`     | POST   | Change your own password; returns a new token                 |
 | `/api/admin/users`       | GET/POST | Admin: list users / create a user                            |
@@ -458,24 +469,20 @@ Interactive API docs are at `/docs` (Swagger UI) when `ENABLE_API_DOCS=true`.
   dashboards (Home Assistant, Grafana, etc.). Acceptable for a personal
   project; know the tradeoff.
 
-## Known limitations / things to verify against a real Garmin account
+## Known limitations
 
-The Garmin integration (`backend/app/garmin_client.py`) has **not** been
-exercised against a live Garmin login — there was no real account available
-to test against while building this. It was validated locally with `garth`
-0.4.x, which exposes both the string-based (`dumps()`/`loads()`) and
-directory-based (`dump()`/`load()`) session APIs; the code tries the former
-and falls back to the latter for older library versions. Before relying on
-it in production:
+The Garmin side has been used with real accounts (login, resumed sessions,
+activities, sleep, recovery, effort and feel, laps), through `garth` 0.4.x
+and `garminconnect` 0.2.x. What to know:
 
-- Confirm a real login actually round-trips a resumable session end to end.
-- Garmin accounts with MFA/2FA enabled can't connect yet —
+- Garmin accounts with two-step verification (MFA) can't connect yet —
   `/api/garmin/connect` returns an "MFA not supported" error for those.
-- The shape of `get_activities_by_date` / `get_sleep_data` responses (field
-  names like `activityType.typeKey`, `dailySleepDTO.sleepScores.overall.value`)
-  is based on documented/observed `garminconnect` output but should be
-  spot-checked against a real payload, since Garmin's undocumented API can
-  drift between library versions.
+- Garmin's API is unofficial and undocumented, so a change on Garmin's side
+  can break part of the sync until the libraries catch up.
 - Garmin sessions do eventually expire; `/api/garmin/sync` surfaces expiry
   as a 409 and the page shows the "Connect your Garmin account" form, but
   there's no proactive refresh.
+- FastAPI is held at 0.115, which pins an older Starlette. Its published
+  advisories don't apply to how this app uses it (no forms or uploads, not
+  on Windows, Range headers dropped); upgrading both is the next
+  maintenance step.

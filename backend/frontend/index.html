@@ -101,11 +101,74 @@
     </div>
 
     <div id="tab-plan" class="hidden">
-      <p class="hint plan-intro">Plan future weeks here, by hand or with Claude in Chrome: read the training log, write the draft, check the preview, then put it on the calendar. Nothing changes on the calendar until you confirm.</p>
+      <p class="hint plan-intro">What you are training for, and the plan for the coming weeks. Ask Claude in Chrome to write the plan, or type it in the draft further down. Nothing changes on the calendar until you press <strong>Put this plan on the calendar</strong>.</p>
+
+      <!-- The Objectives panel is moved here, above the preview, while this tab is open (see showTab). -->
+
+      <section id="plan-panel" class="panel" aria-labelledby="preview-title">
+        <div class="panel-header">
+          <h2 id="preview-title">Plan preview</h2>
+          <div class="plan-weeks">
+            <label for="plan-start">Starting the week of</label>
+            <select id="plan-start"></select>
+            <label for="plan-weeks">for</label>
+            <select id="plan-weeks" aria-label="Number of weeks to plan">
+              <option value="1">1 week</option>
+              <option value="2">2 weeks</option>
+              <option value="3">3 weeks</option>
+              <option value="4" selected>4 weeks</option>
+              <option value="5">5 weeks</option>
+              <option value="6">6 weeks</option>
+              <option value="8">8 weeks</option>
+              <option value="12">12 weeks</option>
+            </select>
+            <span id="plan-range" class="subtle"></span>
+          </div>
+        </div>
+        <div id="draft-preview"></div>
+
+        <p id="confirm-summary" class="hint"></p>
+        <div class="form-row">
+          <button id="draft-confirm" type="button">Put this plan on the calendar</button>
+          <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
+        </div>
+        <p id="confirm-status" class="status hidden" role="status"></p>
+      </section>
+
+      <section class="panel" aria-labelledby="draft-title">
+        <h2 id="draft-title">Draft plan</h2>
+        <p class="hint">The text the preview above is made from. Claude in Chrome writes it here, and you can edit it yourself.</p>
+
+        <label for="draft-text">Draft sessions, one per line: <code>date | sport | duration | details</code></label>
+        <textarea id="draft-text" rows="12" spellcheck="false" placeholder="Tue Oct 13 | run | 1:15 | Track: 2×6×400 m at 5K effort, 200 m jog between
+Wed Oct 14 | swim | 1:00 | 8×100 m steady, 20 s rest
+Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
+        <p id="draft-format" class="hint">Format: one session per line, written as <code>date | sport | duration | details</code>. Date like <code>Tue Oct 13</code> or <code>2026-10-13</code>. Sport: swim, bike, run or strength. Duration like <code>1:15</code> or <code>45 min</code>. Details are optional (the workout itself). Two sessions on one day are two lines. Lines starting with <code>#</code> are comments, and rest days need no line.</p>
+
+        <label for="draft-notes">Block notes (goal, zones, weekly rhythm, rules of thumb)</label>
+        <textarea id="draft-notes" rows="5" placeholder="e.g. Goal: a spring half marathon. Easy runs stay conversational. One rest day a week, long run on Sunday."></textarea>
+
+        <div class="form-row">
+          <button id="draft-save" type="button">Save and preview</button>
+          <span id="draft-status" class="status hidden" role="status"></span>
+        </div>
+
+        <div id="draft-errors" class="draft-errors hidden" role="alert"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="about-title">
+        <h2 id="about-title">About you: what Garmin doesn't know</h2>
+        <p class="hint">Availability, upcoming constraints, injuries, equipment, benchmarks Garmin doesn't have. Claude reads it with the training log below.</p>
+        <textarea id="about-text" aria-labelledby="about-title" rows="4" maxlength="10000" placeholder="e.g. Free on weekday mornings and Sunday. Pool is closed on Saturdays. Exams the first week of December. Indoor trainer at home. Sore left knee after long runs."></textarea>
+        <div class="form-row">
+          <button id="about-save" type="button" class="btn-ghost">Save</button>
+          <span id="about-status" class="status hidden" role="status"></span>
+        </div>
+      </section>
 
       <section class="panel" aria-labelledby="log-title">
         <div class="panel-header">
-          <h2 id="log-title">1 · Training log</h2>
+          <h2 id="log-title">Training log <span class="subtle">for Claude</span></h2>
           <div class="calendar-nav">
             <label for="log-weeks" class="inline-label">Show the last</label>
             <select id="log-weeks" aria-label="How many weeks of training log to show">
@@ -124,7 +187,7 @@
             <button id="log-copy" type="button" class="btn-ghost">Copy log for Claude</button>
           </div>
         </div>
-        <p class="hint">What you did (from Garmin, with the effort and feel you answered on the watch), your sleep and recovery, your zones and records, your objectives and what is already planned. This is what the plan is written from.</p>
+        <p class="hint">You don't need to read this: it is what Claude reads to write your plan. What you did (from Garmin, with the effort and feel you answered on the watch), your sleep and recovery, your zones and records, your objectives and what is already planned.</p>
         <p id="log-status" class="status hidden" role="status"></p>
         <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
         <div class="form-row import-row">
@@ -138,66 +201,11 @@
           <button id="import-btn" type="button" class="btn-ghost">Import older activities</button>
           <span id="import-status" class="status hidden" role="status"></span>
         </div>
-
-        <label for="about-text">About you: what Garmin doesn't know</label>
-        <textarea id="about-text" rows="4" maxlength="10000" placeholder="e.g. Free on weekday mornings and Sunday. Pool is closed on Saturdays. Exams the first week of December. Indoor trainer at home. Sore left knee after long runs."></textarea>
-        <p class="hint">Availability, upcoming constraints, injuries, equipment, benchmarks Garmin doesn't have. It is added to the log above.</p>
-        <div class="form-row">
-          <button id="about-save" type="button" class="btn-ghost">Save</button>
-          <span id="about-status" class="status hidden" role="status"></span>
-        </div>
-      </section>
-
-      <section class="panel" aria-labelledby="draft-title">
-        <h2 id="draft-title">2 · Draft plan</h2>
-        <div class="plan-weeks">
-          <label for="plan-start">Plan starting the week of</label>
-          <select id="plan-start"></select>
-          <label for="plan-weeks">for</label>
-          <select id="plan-weeks" aria-label="Number of weeks to plan">
-            <option value="1">1 week</option>
-            <option value="2">2 weeks</option>
-            <option value="3">3 weeks</option>
-            <option value="4" selected>4 weeks</option>
-            <option value="5">5 weeks</option>
-            <option value="6">6 weeks</option>
-            <option value="8">8 weeks</option>
-            <option value="12">12 weeks</option>
-          </select>
-          <span id="plan-range" class="subtle"></span>
-        </div>
-
-        <label for="draft-text">Draft sessions, one per line: <code>date | sport | duration | details</code></label>
-        <textarea id="draft-text" rows="12" spellcheck="false" placeholder="Tue Oct 13 | run | 1:15 | Track: 2×6×400 m at 5K effort, 200 m jog between
-Wed Oct 14 | swim | 1:00 | 8×100 m steady, 20 s rest
-Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
-        <p id="draft-format" class="hint">Format: one session per line, written as <code>date | sport | duration | details</code>. Date like <code>Tue Oct 13</code> or <code>2026-10-13</code>. Sport: swim, bike, run or strength. Duration like <code>1:15</code> or <code>45 min</code>. Details are optional (the workout itself). Two sessions on one day are two lines. Lines starting with <code>#</code> are comments, and rest days need no line.</p>
-
-        <label for="draft-notes">Block notes (goal, zones, weekly rhythm, rules of thumb)</label>
-        <textarea id="draft-notes" rows="5" placeholder="e.g. Goal: a spring half marathon. Easy runs stay conversational. One rest day a week, long run on Sunday."></textarea>
-
-        <div class="form-row">
-          <button id="draft-save" type="button">Save and preview</button>
-          <span id="draft-status" class="status hidden" role="status"></span>
-        </div>
-
-        <div id="draft-errors" class="draft-errors hidden" role="alert"></div>
-        <div id="draft-preview"></div>
-      </section>
-
-      <section class="panel" aria-labelledby="confirm-title">
-        <h2 id="confirm-title">3 · Put it on the calendar</h2>
-        <p id="confirm-summary" class="hint"></p>
-        <div class="form-row">
-          <button id="draft-confirm" type="button">Put this plan on the calendar</button>
-          <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
-        </div>
-        <p id="confirm-status" class="status hidden" role="status"></p>
       </section>
     </div>
 
-    <!-- Shown under both tabs: what you're training for. -->
-    <section class="panel" aria-labelledby="objectives-title">
+    <!-- What you're training for: under the calendar, and at the top of the Plan tab. -->
+    <section id="objectives-panel" class="panel" aria-labelledby="objectives-title">
       <div class="panel-header">
         <h2 id="objectives-title">Objectives</h2>
         <button id="objective-add" type="button" class="btn-ghost">+ Add objective</button>

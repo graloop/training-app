@@ -55,7 +55,8 @@ def _to_public_address(request: Request, domain: str):
         # Not redirected: the browser would repeat a password that already
         # travelled unencrypted. The page itself was redirected before this.
         return JSONResponse({"detail": f"This app is only available at https://{domain}"}, status_code=400)
-    target = f"https://{domain}{request.url.path}"
+    # Always "/..." after the name, so nothing in the request can change which site it points to.
+    target = f"https://{domain}/{request.url.path.lstrip('/')}"
     if request.url.query:
         target += f"?{request.url.query}"
     return RedirectResponse(target, status_code=307)
@@ -108,7 +109,14 @@ def health():
 
 class RevalidatingStaticFiles(StaticFiles):
     """Make browsers re-check the frontend on every load (a cheap 304 when
-    unchanged), so an updated app.js/styles.css is never hidden by the cache."""
+    unchanged), so an updated app.js/styles.css is never hidden by the cache.
+    Range headers are dropped: the page never needs part of a file, and a
+    crafted one makes this Starlette version burn CPU (CVE-2025-62727)."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            scope = {**scope, "headers": [(k, v) for k, v in scope["headers"] if k != b"range"]}
+        await super().__call__(scope, receive, send)
 
     def file_response(self, *args, **kwargs):
         response = super().file_response(*args, **kwargs)
