@@ -258,3 +258,12 @@ def test_index_links_versioned_assets(client):
         assert f'"/{asset}?v={version}"' in html
     assert re.search(r'src="/app\.js\?v=\d+"', client.get("/index.html").text)
     assert client.get("/app.js?v=123").status_code == 200  # the query string is ignored when serving
+
+
+def test_every_page_shows_the_logo_author_and_version(client):
+    from app.version import VERSION
+
+    html = client.get("/").text
+    assert 'class="logo" role="img" aria-label="graloop"' in html
+    assert f"Created by Julien Tremblay · Version {VERSION}</footer>" in html
+    assert "__APP_VERSION__" not in html and "__APP_VERSION__" not in client.get("/index.html").text

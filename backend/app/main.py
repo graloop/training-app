@@ -9,12 +9,13 @@ from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
 from .database import Base, add_missing_columns, drop_obsolete_tables, engine
 from .routers import admin, auth, calendar, garmin, objectives, plan, planned, share
+from .version import VERSION
 from .visitor import is_https
 
 settings = get_settings()
 
 docs = {} if settings.enable_api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
-app = FastAPI(title="Training App", **docs)
+app = FastAPI(title="Training App", version=VERSION, **docs)
 _API_DOCS_PATHS = ("/docs", "/redoc") if settings.enable_api_docs else ()
 
 if settings.cors_allow_origins.strip():
@@ -132,12 +133,14 @@ _FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fronte
 @app.get("/index.html", include_in_schema=False)
 def index():
     """index.html with ?v=<mtime> on its assets: any change to app.js or
-    styles.css gives a new URL, so no browser can keep running a stale copy."""
+    styles.css gives a new URL, so no browser can keep running a stale copy.
+    The footer gets the app's version."""
     with open(os.path.join(_FRONTEND_DIR, "index.html"), encoding="utf-8") as f:
         html = f.read()
     for asset in ("app.js", "styles.css"):
         version = int(os.path.getmtime(os.path.join(_FRONTEND_DIR, asset)))
         html = html.replace(f'"/{asset}"', f'"/{asset}?v={version}"')
+    html = html.replace("__APP_VERSION__", VERSION)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 

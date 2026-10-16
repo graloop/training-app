@@ -34,6 +34,22 @@ body {
 }
 
 .topbar h1 { font-size: 1.1rem; margin: 0; }
+.brand { display: flex; align-items: center; gap: 10px; }
+/* The graloop logo: the "oo" is an infinity loop drawn in the accent colour. */
+.logo {
+  display: inline-block;
+  padding: 4px 9px 5px;
+  border-radius: 7px;
+  background: #0f1115;
+  color: #f3f1ec;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.logo svg { height: 0.5em; width: 0.97em; margin: 0 0.03em 0 0.01em; vertical-align: baseline; stroke: var(--accent); }
+.site-footer { padding: 8px 16px 28px; text-align: center; font-size: 0.8rem; color: var(--muted); }
 
 #user-actions { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 
