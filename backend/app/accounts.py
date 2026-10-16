@@ -138,11 +138,13 @@ def record_login(db: Session, user: models.User | None, success: bool) -> None:
 
 MAX_FAILURES = 5
 MAX_ADDRESS_FAILURES = 20
+MAX_SHARE_FAILURES = 10  # wrong name/share code pairs per account, so codes can't be guessed
 WINDOW_SECONDS = 15 * 60
 MAX_TRACKED_USERNAMES = 5000
 
 _failures: dict[str, list[float]] = {}
 _address_failures: dict[str, list[float]] = {}
+_share_failures: dict[str, list[float]] = {}
 _lock = threading.Lock()
 
 
@@ -167,6 +169,16 @@ def seconds_locked(username: str) -> int:
 
 def seconds_address_blocked(address: str) -> int:
     return _seconds_over_limit(_address_failures, address, MAX_ADDRESS_FAILURES)
+
+
+def seconds_share_blocked(user_id: int) -> int:
+    return _seconds_over_limit(_share_failures, str(user_id), MAX_SHARE_FAILURES)
+
+
+def record_share_failure(user_id: int) -> None:
+    now = time.monotonic()
+    with _lock:
+        _recent(_share_failures, str(user_id), now).append(now)
 
 
 def record_failure(username: str, address: str | None = None) -> None:
@@ -194,3 +206,4 @@ def reset_all_failures() -> None:  # tests
     with _lock:
         _failures.clear()
         _address_failures.clear()
+        _share_failures.clear()

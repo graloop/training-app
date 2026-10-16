@@ -21,6 +21,37 @@ def _today(client_today: datetime.date | None) -> datetime.date:
     return server
 
 
+def weeks_preview(sessions: list[planning.DraftSession], start: datetime.date, weeks: int) -> list[schemas.DraftWeekOut]:
+    """The sessions as a table per week with minutes per sport (Plan and Import tabs)."""
+    preview = []
+    for i in range(weeks):
+        week_start = start + datetime.timedelta(days=i * 7)
+        week_end = week_start + datetime.timedelta(days=6)
+        week = [
+            schemas.DraftSessionOut(
+                line=s.line, date=s.date, activity_type=s.activity_type, sport=planning.sport_of(s.activity_type),
+                minutes=s.minutes, details=s.details,
+            )
+            for s in sessions if week_start <= s.date <= week_end
+        ]
+        by_sport = {sport: 0.0 for sport in planning.SPORTS}
+        for s in week:
+            by_sport[s.sport] += s.minutes
+        preview.append(schemas.DraftWeekOut(
+            start=week_start, end=week_end, sessions=week, minutes_by_sport=by_sport,
+            total_minutes=sum(by_sport.values()),
+        ))
+    return preview
+
+
+def planned_between(db: Session, user: models.User, first: datetime.date, last: datetime.date):
+    return db.query(models.PlannedTraining).filter(
+        models.PlannedTraining.user_id == user.id,
+        models.PlannedTraining.date >= first,
+        models.PlannedTraining.date <= last,
+    )
+
+
 def _out(db: Session, user: models.User, draft: models.PlanDraft | None, today: datetime.date) -> schemas.DraftOut:
     start = draft.start_date if draft else planning.monday_of(today) + datetime.timedelta(days=7)
     weeks = draft.weeks if draft else DEFAULT_WEEKS
@@ -28,35 +59,8 @@ def _out(db: Session, user: models.User, draft: models.PlanDraft | None, today: 
     text = draft.text if draft else ""
     parsed = planning.parse_draft(text, start, end, today)
 
-    def session_out(s: planning.DraftSession) -> schemas.DraftSessionOut:
-        return schemas.DraftSessionOut(
-            line=s.line, date=s.date, activity_type=s.activity_type, sport=planning.sport_of(s.activity_type),
-            minutes=s.minutes, details=s.details,
-        )
-
-    preview = []
-    for i in range(weeks):
-        week_start = start + datetime.timedelta(days=i * 7)
-        week_end = week_start + datetime.timedelta(days=6)
-        sessions = [session_out(s) for s in parsed.sessions if week_start <= s.date <= week_end]
-        by_sport = {sport: 0.0 for sport in planning.SPORTS}
-        for s in sessions:
-            by_sport[s.sport] += s.minutes
-        preview.append(schemas.DraftWeekOut(
-            start=week_start, end=week_end, sessions=sessions, minutes_by_sport=by_sport,
-            total_minutes=sum(by_sport.values()),
-        ))
-
     replace_from = max(start, today)
-    existing = (
-        db.query(models.PlannedTraining)
-        .filter(
-            models.PlannedTraining.user_id == user.id,
-            models.PlannedTraining.date >= replace_from,
-            models.PlannedTraining.date <= end,
-        )
-        .count()
-    )
+    existing = planned_between(db, user, replace_from, end).count()
     return schemas.DraftOut(
         saved=draft is not None,
         start_date=start,
@@ -66,7 +70,7 @@ def _out(db: Session, user: models.User, draft: models.PlanDraft | None, today: 
         notes=(draft.notes or "") if draft else "",
         sessions_count=len(parsed.sessions),
         errors=[schemas.DraftErrorOut(line=e.line, text=e.text, message=e.message) for e in parsed.errors],
-        weeks_preview=preview,
+        weeks_preview=weeks_preview(parsed.sessions, start, weeks),
         replace_from=replace_from,
         existing_planned=existing,
         confirmed_at=draft.confirmed_at if draft else None,
@@ -162,15 +166,7 @@ def confirm_draft(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The draft has no sessions")
 
     replace_from = max(draft.start_date, day)
-    replaced = (
-        db.query(models.PlannedTraining)
-        .filter(
-            models.PlannedTraining.user_id == user.id,
-            models.PlannedTraining.date >= replace_from,
-            models.PlannedTraining.date <= end,
-        )
-        .delete()
-    )
+    replaced = planned_between(db, user, replace_from, end).delete()
     for s in parsed.sessions:
         db.add(models.PlannedTraining(
             user_id=user.id, date=s.date, activity_type=s.activity_type, planned_duration_minutes=s.minutes,

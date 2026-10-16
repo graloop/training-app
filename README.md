@@ -92,6 +92,17 @@ adjust sessions — it edits the page like you would.
      fetched. *Summary* detail keeps one line per session. **Copy log for
      Claude** copies it with the line format, for a normal Claude
      conversation.
+- **Import tab** — copy a friend's planned sessions. Everyone has a **share
+  code** shown on the tab, next to their name (**New code** makes the old one
+  stop working). With someone's name and code you pick their weeks (past or
+  future, 1 to 12) and the weeks of yours to put them on (the same weeks by
+  default, so a friend's block from last month can become your next weeks),
+  check the preview, then **Import to plan** (it becomes your Plan draft, to
+  adjust before confirming) or **Import to calendar** (on your calendar now,
+  replacing what was planned on those days, like confirming a plan). Only
+  planned sessions are shared: never Garmin activities, sleep or health
+  data. Ten wrong name/code pairs in 15 minutes pause importing for that
+  account, so codes can't be guessed.
 - **Objectives** — **+ Add objective** records a target event (title, event
   date, target time, and notes such as its priority) as a card with a
   countdown; edit or delete it from the card. Shown under the calendar and
@@ -141,7 +152,8 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── accounts.py       first-admin bootstrap, test accounts, login lockout, connection log
     │   ├── visitor.py        visitor address and https, as reported by the proxy or tunnel
     │   ├── planning.py       training log text + draft plan parser (Plan page)
-    │   └── routers/          auth, admin, garmin, calendar, objectives, planned, plan
+    │   ├── sharing.py        share codes, someone's planned sessions as draft lines (Import tab)
+    │   └── routers/          auth, admin, garmin, calendar, objectives, planned, plan, share
     └── frontend/             index.html, app.js, styles.css (static, no build)
 ```
 
@@ -430,6 +442,11 @@ New nullable columns are added to existing databases on startup
 | `/api/plan/about`        | GET/PUT | "About you": free text added to the log                       |
 | `/api/plan/draft`        | GET/PUT | The draft plan (first week, number of weeks, session lines, notes), returned parsed with errors and weekly totals |
 | `/api/plan/draft/confirm`| POST   | Put the draft on the calendar, replacing planned sessions from today to the draft's last day |
+| `/api/share`             | GET    | Your username and share code (created on first use) |
+| `/api/share/code`        | POST   | A new share code; the old one stops working |
+| `/api/share/import/preview` | POST | `{username, share_code, source_start, weeks, target_start}`: their planned sessions moved onto your weeks, as a weekly preview. Changes nothing |
+| `/api/share/import/plan` | POST   | Same body: make them your Plan draft (block notes kept) |
+| `/api/share/import/calendar` | POST | Same body: put them on your calendar, replacing your planned sessions from today to the last imported day |
 | `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
 | `/api/planned/{id}`      | PATCH/DELETE | Edit or remove a planned session                       |
 

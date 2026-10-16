@@ -44,6 +44,9 @@ class User(Base):
     garmin_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The athlete's own words: availability, constraints, what Garmin doesn't know.
     athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # With their username, lets someone else copy this account's planned sessions
+    # (Import tab). Created on first use; a new one stops the old one working.
+    share_code: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
 
     # Set on every successful login; shown to the admin next to the account.
     last_login_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -59,6 +59,7 @@
     <nav class="tabs" aria-label="Sections">
       <button id="tab-btn-calendar" type="button" class="tab active" aria-current="page">Calendar</button>
       <button id="tab-btn-plan" type="button" class="tab">Plan</button>
+      <button id="tab-btn-import" type="button" class="tab">Import</button>
     </nav>
 
     <div id="tab-calendar">
@@ -200,6 +201,73 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
           </select>
           <button id="import-btn" type="button" class="btn-ghost">Import older activities</button>
           <span id="import-status" class="status hidden" role="status"></span>
+        </div>
+      </section>
+    </div>
+
+    <div id="tab-import" class="hidden">
+      <p class="hint plan-intro">Copy a friend's planned sessions. Ask them for their name and share code, pick the weeks, check the preview, then put it in your plan to adjust it, or straight on your calendar.</p>
+
+      <section class="panel" aria-labelledby="share-title">
+        <h2 id="share-title">Your share code</h2>
+        <p class="hint">Give your name and this code to someone who wants to copy your plan. They see only your planned sessions (sport, duration, details), never your Garmin activities, sleep or health data. <strong>New code</strong> stops the old one working.</p>
+        <div class="share-card">
+          <div class="share-item"><span class="subtle">Name</span><strong id="share-username"></strong></div>
+          <div class="share-item"><span class="subtle">Share code</span><strong id="share-code" class="share-code"></strong></div>
+          <div class="share-actions">
+            <button id="share-copy" type="button" class="btn-ghost">Copy</button>
+            <button id="share-new" type="button" class="btn-ghost">New code</button>
+          </div>
+        </div>
+        <p id="share-status" class="status hidden" role="status"></p>
+      </section>
+
+      <section id="friend-panel" class="panel" aria-labelledby="friend-title">
+        <h2 id="friend-title">Import someone's plan</h2>
+        <form id="friend-form" novalidate>
+          <div class="friend-fields">
+            <div>
+              <label for="friend-username">Their name</label>
+              <input id="friend-username" type="text" required autocomplete="off" autocapitalize="none" spellcheck="false" />
+            </div>
+            <div>
+              <label for="friend-code">Their share code</label>
+              <input id="friend-code" type="text" required autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" />
+            </div>
+          </div>
+          <div class="plan-weeks">
+            <label for="friend-source">Their weeks starting</label>
+            <select id="friend-source"></select>
+            <label for="friend-weeks">for</label>
+            <select id="friend-weeks" aria-label="Number of weeks to import">
+              <option value="1">1 week</option>
+              <option value="2">2 weeks</option>
+              <option value="3">3 weeks</option>
+              <option value="4" selected>4 weeks</option>
+              <option value="5">5 weeks</option>
+              <option value="6">6 weeks</option>
+              <option value="8">8 weeks</option>
+              <option value="12">12 weeks</option>
+            </select>
+            <label for="friend-target">onto my weeks starting</label>
+            <select id="friend-target"></select>
+          </div>
+          <div class="form-row">
+            <button id="friend-preview-btn" type="submit">Preview</button>
+            <span id="friend-form-status" class="status hidden" role="status"></span>
+          </div>
+        </form>
+
+        <div id="friend-result" class="hidden">
+          <div id="friend-preview"></div>
+          <p id="friend-summary" class="hint"></p>
+          <div class="form-row">
+            <button id="friend-to-plan" type="button" class="btn-ghost">Import to plan</button>
+            <button id="friend-to-calendar" type="button">Import to calendar</button>
+            <button id="friend-view" type="button" class="btn-ghost hidden">View on the calendar</button>
+          </div>
+          <p class="hint friend-choices"><strong>Import to plan</strong> makes it your draft on the Plan tab, to adjust before it goes on the calendar. <strong>Import to calendar</strong> puts it on your calendar now.</p>
+          <p id="friend-status" class="status hidden" role="status"></p>
         </div>
       </section>
     </div>

@@ -558,4 +558,20 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 .split-table td:not(:first-child), .split-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 #draft-confirm.confirming { background: var(--danger); }
 #draft-confirm:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* --- Import tab --- */
+.share-card { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+.share-item { display: flex; flex-direction: column; gap: 2px; }
+.share-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.2rem; letter-spacing: 0.08em; }
+.share-actions { display: flex; gap: 8px; }
+#share-new.confirming, #friend-to-plan.confirming { background: var(--danger); color: white; }
+#friend-to-calendar.confirming { background: var(--danger); }
+.friend-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 280px)); gap: 8px 16px; }
+.friend-fields input { width: 100%; box-sizing: border-box; }
+#friend-form .plan-weeks { margin-top: 4px; }
+#friend-result { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 4px; }
+#friend-result .form-row { margin-top: 12px; flex-wrap: wrap; }
+#friend-to-plan:disabled, #friend-to-calendar:disabled { opacity: 0.45; cursor: not-allowed; }
+.friend-choices { margin-top: 10px; }
+#friend-summary { margin-top: 16px; }
 .objective-notes { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted); }

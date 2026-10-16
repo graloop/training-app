@@ -310,3 +310,36 @@ class ConfirmResult(BaseModel):
     replaced: int
     start_date: datetime.date
     end_date: datetime.date
+
+
+# --- Import tab: copying someone else's planned sessions ---
+
+
+class ShareInfo(BaseModel):
+    username: str
+    share_code: str
+
+
+class ImportRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=255)  # theirs
+    share_code: str = Field(min_length=1, max_length=32)  # theirs
+    source_start: datetime.date  # any day of their first week
+    weeks: int = Field(ge=1, le=MAX_PLAN_WEEKS)
+    target_start: datetime.date | None = None  # any day of your first week; default: the same weeks
+
+
+class ImportPreview(BaseModel):
+    from_username: str
+    source_start: datetime.date
+    source_end: datetime.date
+    start_date: datetime.date  # your weeks
+    end_date: datetime.date
+    weeks: int
+    text: str  # as draft lines, what "Import to plan" puts in your draft
+    sessions_count: int
+    skipped_past: int  # their sessions that land on your days already past
+    errors: list[DraftErrorOut] = []
+    weeks_preview: list[DraftWeekOut]
+    replace_from: datetime.date
+    existing_planned: int  # your planned sessions "Import to calendar" replaces
+    draft_sessions: int  # sessions in your Plan draft, replaced by "Import to plan"
