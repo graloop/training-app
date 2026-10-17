@@ -433,6 +433,10 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
     <form id="plan-form" novalidate>
       <h3 id="plan-title">Plan a session</h3>
       <p id="plan-date" class="subtle"></p>
+      <div id="plan-move-field" class="move-field hidden">
+        <label for="plan-move-date">Move to</label>
+        <input id="plan-move-date" type="date" required />
+      </div>
       <fieldset>
         <legend>Sport</legend>
         <div id="plan-sports" class="sport-options"></div>
@@ -449,6 +453,7 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
       <p id="plan-error" class="error hidden" role="alert"></p>
       <div class="dialog-actions">
         <button id="plan-delete" type="button" class="btn-link danger hidden">Delete</button>
+        <button id="plan-move" type="button" class="btn-link hidden">Move to another day</button>
         <span class="spacer"></span>
         <button id="plan-cancel" type="button" class="btn-ghost">Cancel</button>
         <button type="submit">Save</button>

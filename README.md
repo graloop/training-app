@@ -34,7 +34,7 @@ adjust sessions — it edits the page like you would.
 - **Plan sessions yourself** — the **+** in the bottom-right of each day
   opens a small window to plan a swim, ride, run or strength session, its
   duration and the workout details (shown under the session).
-  **← Earlier / Later →** move the calendar 2 weeks at a time. Click a planned session to edit or delete it. When a planned
+  **← Earlier / Later →** move the calendar 2 weeks at a time. Click a planned session to edit it, delete it or move it to another day. When a planned
   session is done (same day, same sport) the two merge into one green
   entry: dark green "done as planned" when the time is within 15% of the
   plan, light green with a dashed border "done, other duration" otherwise.
@@ -542,7 +542,7 @@ New nullable columns are added to existing databases on startup
 | `/api/share/import/plan` | POST   | Same body: make them your Plan draft (block notes kept) |
 | `/api/share/import/calendar` | POST | Same body: put them on your calendar, replacing your planned sessions from today to the last imported day |
 | `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
-| `/api/planned/{id}`      | PATCH/DELETE | Edit or remove a planned session                       |
+| `/api/planned/{id}`      | PATCH/DELETE | Edit (a new `date` moves it), or remove a planned session |
 
 The Garmin, calendar, objectives and planned endpoints are for regular
 accounts; an admin account gets a 403 there. The `/api/admin/*` endpoints are

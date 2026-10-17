@@ -27,6 +27,21 @@ def test_create_update_delete(client, auth):
     assert _day(client, auth, TOMORROW) == []
 
 
+def test_move_to_another_day(client, auth):
+    later = (datetime.date.today() + datetime.timedelta(days=3)).isoformat()
+    row = client.post("/api/planned", json={"date": TOMORROW, "activity_type": "running",
+                                            "planned_duration_minutes": 45, "notes": "tempo"}, headers=auth).json()
+    res = client.patch(f"/api/planned/{row['id']}", json={"date": later}, headers=auth)
+    assert res.status_code == 200 and res.json()["date"] == later
+    assert _day(client, auth, TOMORROW) == []
+    moved = _day(client, auth, later)[0]
+    assert (moved["activity_type"], moved["planned_duration_minutes"], moved["notes"]) == ("running", 45, "tempo")
+
+    for bad in (None, "not-a-date"):
+        assert client.patch(f"/api/planned/{row['id']}", json={"date": bad}, headers=auth).status_code == 422
+    assert _day(client, auth, later)[0]["id"] == row["id"]
+
+
 def test_validation(client, auth):
     for body in [
         {"date": TOMORROW, "activity_type": "running", "planned_duration_minutes": 0},

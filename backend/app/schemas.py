@@ -1,7 +1,7 @@
 import datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 def _as_utc(value: datetime.datetime) -> datetime.datetime:
@@ -255,9 +255,19 @@ class PlannedTrainingCreate(BaseModel):
 
 
 class PlannedTrainingUpdate(BaseModel):
+    """Only the fields sent are changed. A new `date` moves the session to that day."""
+
+    date: datetime.date | None = None
     activity_type: str | None = Field(default=None, min_length=1, max_length=64)
     planned_duration_minutes: float | None = Field(default=None, gt=0, le=24 * 60)
     notes: str | None = Field(default=None, max_length=PLANNED_NOTES_MAX)
+
+    @field_validator("date")
+    @classmethod
+    def _date_not_cleared(cls, value: datetime.date | None) -> datetime.date:
+        if value is None:
+            raise ValueError("a planned session always has a day")
+        return value
 
 
 class CalendarDay(BaseModel):
