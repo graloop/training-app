@@ -13,7 +13,7 @@ os.environ["ADMIN_PASSWORD"] = "admin-password"
 import pytest
 from fastapi.testclient import TestClient
 
-from app import accounts, garmin_client
+from app import accounts, autosync, garmin_client
 from app.database import Base, engine
 from app.main import app
 
@@ -23,6 +23,7 @@ def fresh_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     accounts.reset_all_failures()
+    autosync.reset_jobs()
     yield
 
 

@@ -230,7 +230,12 @@ document.getElementById("garmin-reconnect").addEventListener("click", () => {
 
 document.getElementById("garmin-disconnect").addEventListener("click", async () => {
   if (!confirm("Disconnect Garmin? Data already synced stays on the calendar.")) return;
-  me = await api("/api/garmin/connect", { method: "DELETE" });
+  try {
+    me = await api("/api/garmin/connect", { method: "DELETE" });
+  } catch (err) {
+    if (err.status !== 401) alert(`Couldn't disconnect Garmin: ${err.message}`);
+    return;
+  }
   setMenuOpen(false);
   renderGarminState();
 });
@@ -654,7 +659,13 @@ function renderCalendar(data) {
 
 async function loadCalendar() {
   const { start, end } = calendarRange();
-  const data = await api(`/api/calendar?start=${start}&end=${end}`);
+  let data;
+  try {
+    data = await api(`/api/calendar?start=${start}&end=${end}`);
+  } catch (err) {
+    if (err.status !== 401) showStatus(syncStatus, `Couldn't load the calendar: ${err.message}`, true);
+    return;
+  }
   renderCalendar(data);
   document.getElementById("cal-range").textContent = `Showing ${fmtLongDate(start)} to ${fmtLongDate(end)}`;
   document.getElementById("cal-today").disabled = weekOffset === 0;
@@ -795,41 +806,59 @@ function showStatus(el, text, isError = false) {
   el.classList.toggle("status", !isError);
 }
 
-// A first sync has weeks of sleep, recovery data and session details to fetch.
-// The server does it in batches; keep going until nothing is waiting.
-const MAX_SYNC_ROUNDS = 8;
+// The sync runs on the server (a first one has weeks of sleep, recovery data
+// and session details to fetch, in batches): start it, then ask how it goes.
+const SYNC_POLL_MS = 1500;
+const SYNC_GIVE_UP_MS = 30 * 60 * 1000; // stop asking; the server keeps going
 let syncing = false;
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function syncProgressText(job) {
+  if (job.state === "waiting") return "Waiting for the background sync of your account to finish…";
+  if (job.rounds === 0) return "Syncing with Garmin…";
+  return `Fetching older days and session details (step ${job.rounds + 1})…`;
+}
+
+async function refreshAfterSync() {
+  await loadCalendar();
+  if (currentTab === "history") await loadHistoryPage();
+  if (currentTab === "athlete") await loadAthletePage();
+}
 
 async function runSync(statusEl = syncStatus) {
   if (!(statusEl instanceof Element)) statusEl = syncStatus; // called as a click handler
   if (syncing) return;
   syncing = true;
   for (const btn of [syncBtn, logSyncBtn]) btn.disabled = true;
-  const totals = { activities: 0, days: 0, details: 0 };
-  let result = null;
   try {
-    for (let round = 1; round <= MAX_SYNC_ROUNDS; round++) {
-      showStatus(
-        statusEl,
-        round === 1 ? "Syncing with Garmin…" : `Fetching older days and session details (step ${round})…`
-      );
-      result = await api("/api/garmin/sync", { method: "POST" });
-      totals.activities = Math.max(totals.activities, result.activities_synced);
-      totals.days += result.days_synced;
-      totals.details += result.details_synced;
-      await loadCalendar();
-      if (currentTab === "history") await loadHistoryPage();
-      if (currentTab === "athlete") await loadAthletePage();
-      if (!result.more_to_sync) break;
+    let job = await api("/api/garmin/sync/start", { method: "POST" });
+    let roundsShown = job.rounds;
+    const giveUpAt = Date.now() + SYNC_GIVE_UP_MS;
+    while ((job.state === "waiting" || job.state === "running") && Date.now() < giveUpAt) {
+      showStatus(statusEl, syncProgressText(job));
+      await wait(SYNC_POLL_MS);
+      job = await api("/api/garmin/sync/status");
+      // The calendar fills in batch by batch; the History tab is rebuilt once, at the end.
+      if (job.rounds > roundsShown && job.state === "running") {
+        roundsShown = job.rounds;
+        await loadCalendar();
+      }
+    }
+    if (job.state === "failed") throw new Error(job.error || "The sync failed.");
+    await refreshAfterSync();
+    if (job.state !== "done") {
+      showStatus(statusEl, "The sync is still running on the server. Refresh the page in a few minutes.");
+      return;
     }
     showStatus(
       statusEl,
-      `Synced ${totals.activities} ${totals.activities === 1 ? "activity" : "activities"}, ` +
-        `${plural(totals.days, "day")} of sleep and recovery` +
-        (totals.details ? `, effort, feel and laps for ${plural(totals.details, "session")}` : "") +
-        (result.more_to_sync ? ". Older data is still waiting: sync again to continue." : ".")
+      `Synced ${job.activities_synced} ${job.activities_synced === 1 ? "activity" : "activities"}, ` +
+        `${plural(job.days_synced, "day")} of sleep and recovery` +
+        (job.details_synced ? `, effort, feel and laps for ${plural(job.details_synced, "session")}` : "") +
+        (job.more_to_sync ? ". Older data is still waiting: sync again to continue." : ".")
     );
-    if (!result.more_to_sync) statusEl.classList.add("ok");
+    if (!job.more_to_sync) statusEl.classList.add("ok");
   } catch (err) {
     if (err.status === 409) {
       statusEl.classList.add("hidden");
@@ -890,8 +919,8 @@ function renderObjectiveView(card, obj) {
   if (obj.event_date) {
     date.textContent = fmtEventDate(obj.event_date);
     const countdown = document.createElement("span");
-    countdown.className = "subtle";
-    countdown.textContent = ` · ${daysUntil(obj.event_date)}`;
+    countdown.className = "objective-countdown";
+    countdown.textContent = daysUntil(obj.event_date);
     date.appendChild(countdown);
   } else {
     date.textContent = "Not set";
@@ -907,7 +936,7 @@ function renderObjectiveView(card, obj) {
     const notes = document.createElement("p");
     notes.className = "objective-notes";
     notes.textContent = obj.notes;
-    card.appendChild(notes);
+    card.appendChild(objectiveField("Notes", notes));
   }
 
   const actions = document.createElement("div");
@@ -935,7 +964,15 @@ function renderObjectiveView(card, obj) {
       }, 4000);
       return;
     }
-    await api(`/api/objectives/${obj.id}`, { method: "DELETE" });
+    try {
+      await api(`/api/objectives/${obj.id}`, { method: "DELETE" });
+    } catch (err) {
+      if (err.status !== 401) {
+        del.textContent = `Couldn't delete: ${err.message}`;
+        del.classList.remove("confirming");
+      }
+      return;
+    }
     await loadObjectives();
   });
   actions.append(edit, del);
@@ -1028,7 +1065,18 @@ function renderObjectives(objectives) {
 }
 
 async function loadObjectives() {
-  const data = await api("/api/objectives");
+  let data;
+  try {
+    data = await api("/api/objectives");
+  } catch (err) {
+    if (err.status === 401) return;
+    objectivesList.innerHTML = "";
+    const failed = document.createElement("p");
+    failed.className = "error";
+    failed.textContent = `Couldn't load the objectives: ${err.message}`;
+    objectivesList.appendChild(failed);
+    return;
+  }
   renderObjectives(data.objectives);
 }
 

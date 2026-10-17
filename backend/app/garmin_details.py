@@ -5,10 +5,11 @@ only once; nothing here is allowed to fail the sync."""
 import datetime
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import Text, cast, func, or_
 from sqlalchemy.orm import Session
 
 from . import garmin_client, models
+from .security import decrypt_text, encrypt_text
 from .planning import sport_of
 
 MAX_ACTIVITIES_PER_SYNC = 40  # a first sync catches up over one or two runs
@@ -185,6 +186,26 @@ def multisport_legs(db: Session, api: Any, user: models.User, limit: int = MAX_M
 # --- One sync ---------------------------------------------------------------------
 
 
+def save_session(db: Session, api: Any, user: models.User) -> bool:
+    """Garmin hands out a fresh login token when the stored one expires. Keep
+    it, so the next sync doesn't have to ask for one again."""
+    try:
+        session = garmin_client.export_session(api)
+    except Exception:  # noqa: BLE001 - the old session still works, just more slowly
+        return False
+    if not session:
+        return False
+    try:
+        unchanged = decrypt_text(user.garmin_session_encrypted or "") == session
+    except ValueError:
+        unchanged = False
+    if unchanged:
+        return False
+    user.garmin_session_encrypted = encrypt_text(session)
+    db.commit()
+    return True
+
+
 def sync_user(db: Session, api: Any, user: models.User, today: datetime.date, lookback_days: int) -> dict[str, Any]:
     """One batch for one account (the fields of schemas.GarminSyncResponse): activities, then missing days, activity
     details, multisport legs and the profile. Only the activity list can fail
@@ -207,9 +228,9 @@ def sync_user(db: Session, api: Any, user: models.User, today: datetime.date, lo
     except Exception:  # noqa: BLE001
         db.rollback()
         details_synced = 0
-    for step in (multisport_legs, refresh_profile):
+    for step in (lambda: multisport_legs(db, api, user), lambda: refresh_profile(db, api, user, today)):
         try:
-            step(db, api, user)
+            step()
             db.commit()
         except Exception:  # noqa: BLE001
             db.rollback()
@@ -292,7 +313,11 @@ def normalize_profile(raw: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
-def refresh_profile(db: Session, api: Any, user: models.User) -> bool:
+def refresh_profile(db: Session, api: Any, user: models.User, today: datetime.date | None = None) -> bool:
+    """Garmin's zones, records and predictions: four requests, so asked at most
+    once a day (`today` given), however many syncs run that day."""
+    if today is not None and (user.garmin_profile or {}).get("synced_on") == today.isoformat():
+        return False
     profile = normalize_profile(garmin_client.fetch_profile(api))
     if profile is None:
         return False  # keep whatever was stored before
@@ -407,6 +432,30 @@ def save_activities(db: Session, user: models.User, raw_activities: list[dict[st
     return saved
 
 
+# What is kept of Garmin's sleep answer. The rest (about 100 KB a night of
+# minute-by-minute movement, heart rate, stress and breathing) is never read.
+SLEEP_KEPT = ("dailySleepDTO", "restingHeartRate", "avgOvernightHrv", "hrvStatus", "bodyBatteryChange")
+SLEEP_TRIM_ABOVE = 8000  # characters: a night stored whole by an older version
+
+
+def slim_sleep(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return raw
+    return {key: raw[key] for key in SLEEP_KEPT if key in raw}
+
+
+def trim_stored_sleep(db: Session, batch: int = 100) -> int:
+    """Shrink nights an older version stored whole. Returns how many were trimmed."""
+    ids = [row_id for (row_id,) in db.query(models.SleepRecord.id).filter(
+        func.length(cast(models.SleepRecord.raw_json, Text)) > SLEEP_TRIM_ABOVE)]
+    for i in range(0, len(ids), batch):
+        for row in db.query(models.SleepRecord).filter(models.SleepRecord.id.in_(ids[i:i + batch])):
+            row.raw_json = slim_sleep(row.raw_json)
+        db.commit()
+        db.expunge_all()
+    return len(ids)
+
+
 def save_sleep(db: Session, user: models.User, day: datetime.date, raw_sleep: dict[str, Any] | None,
                existing: models.SleepRecord | None) -> bool:
     dto = (raw_sleep or {}).get("dailySleepDTO") or {}
@@ -422,7 +471,7 @@ def save_sleep(db: Session, user: models.User, day: datetime.date, raw_sleep: di
     row.light_sleep_seconds = dto.get("lightSleepSeconds")
     row.sleep_score = overall.get("value") if isinstance(overall, dict) else None
     row.resting_heart_rate = (raw_sleep or {}).get("restingHeartRate")
-    row.raw_json = raw_sleep
+    row.raw_json = slim_sleep(raw_sleep)
     return True
 
 

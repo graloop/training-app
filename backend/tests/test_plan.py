@@ -473,7 +473,7 @@ def test_log_before_any_details_or_profile(client, auth):
     text = client.get("/api/plan/log", headers=auth).json()["text"]
     assert "ATHLETE (from Garmin)\n- nothing from Garmin yet: press Sync with Garmin" in text
     assert "TRAINING STATUS (Garmin)\n- nothing from Garmin yet: press Sync with Garmin" in text
-    assert "EARLIER WEEKS (totals only)\n- no earlier activities stored" in text
+    assert "no effort, laps or recovery)\n- no earlier activities stored" in text
     assert text.count("· not synced (no Garmin data yet)") == 6 and "no training" not in text  # nothing synced at all
     assert _RULES + "\n- nothing written yet" in text
     assert "(Athlete tab)" in text
@@ -640,7 +640,7 @@ def test_recovery_per_day_and_week_and_garmin_training_status(client, auth):
     assert header.endswith("· sleep avg 80 · resting HR avg 50 · readiness avg 62")
     assert ("  stress avg 40 · at week end acute load 600 (7 days) vs chronic 500 (4 weeks): ratio 1.2, optimal"
             " · Garmin status productive") in full
-    status = full[full.index("TRAINING STATUS (Garmin)"):full.index("EARLIER WEEKS")]
+    status = full[full.index("TRAINING STATUS (Garmin)"):full.index("EARLIER HISTORY")]
     assert f"- as of {label(monday + datetime.timedelta(days=6))}: productive · acute load 600 (7 days) vs chronic 500 (4 weeks): ratio 1.2, optimal · VO2max 51.4" in status
     assert ("- load by intensity over 4 weeks: low aerobic 1200 (target 500–1100) · high aerobic 300 (target 600–1200)"
             " · anaerobic 250 (target 200–600) → aerobic high shortage") in status
@@ -654,14 +654,44 @@ def test_earlier_weeks_give_the_long_term_picture(client, auth):
     with SessionLocal() as db:
         monday = _seed_phase3(db)
     text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
-    earlier = text[text.index("EARLIER WEEKS (totals only)"):text.index("\nWEEK OF")].splitlines()
-    w20, w18 = monday - datetime.timedelta(weeks=20), monday - datetime.timedelta(weeks=18)
+    earlier = text[text.index("EARLIER HISTORY"):text.index("\nWEEK OF")].splitlines()
+    w20, w18, w60 = (monday - datetime.timedelta(weeks=n) for n in (20, 18, 60))
     name = lambda d: f"Week of {planning.MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"  # noqa: E731
-    assert earlier[1] == f"{name(w20)} · 3:00 (bike 2:00 · run 1:00) · 2 sessions · load 200"
-    assert earlier[2] == f"{name(w20 + datetime.timedelta(weeks=1))} · no training recorded"  # a gap shows as a gap
-    assert earlier[3] == f"{name(w18)} · 0:30 (swim 0:30) · 1 session"
-    assert len([line for line in earlier if line.startswith("Week of")]) == 20  # every week from the first stored one up to the detailed part
-    assert not any("600" in line or "0:10" in line for line in earlier)  # the session over a year old is left out
+    weeks = [line for line in earlier if line.startswith("Week of")]
+    # every week from the first stored one (60 weeks back) up to the detailed part, gaps included
+    assert weeks[0] == f"{name(w60)} · 0:10 (run 0:10) · 1 session"
+    assert len(weeks) == 60 - 1 + 1
+    i = earlier.index(f"{name(w20)} · 3:00 (bike 2:00 · run 1:00) · 2 sessions · load 200")
+    # the year before the detailed part lists each session, without "effort not synced"
+    assert earlier[i + 1] == f"  {label(w20)} · bike 2:00 · load 120"
+    assert earlier[i + 2] == f"  {label(w20 + datetime.timedelta(days=2))} · run 1:00 · load 80"
+    assert earlier[i + 3] == f"{name(w20 + datetime.timedelta(weeks=1))} · no training recorded"
+    assert f"{name(w18)} · 0:30 (swim 0:30) · 1 session" in earlier
+    assert not any("effort" in line for line in earlier[1:])  # (the heading says there is none)
+    # 60 weeks back is before the sessions part: totals only
+    assert earlier[earlier.index(weeks[0]) + 1].startswith("Week of")
+
+
+def test_history_older_than_two_years_comes_by_month(client, auth):
+    today = datetime.date.today()
+    old = today - datetime.timedelta(days=3 * 365)
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        for i, (kind, hours) in enumerate((("running", 1), ("cycling", 2), ("lap_swimming", 1))):
+            db.add(models.Activity(user_id=user.id, garmin_activity_id=f"o{i}", activity_type=kind, duration_seconds=hours * 3600,
+                                   training_load=50, start_time=datetime.datetime.combine(old.replace(day=3 + i), datetime.time(8))))
+        recent = today - datetime.timedelta(weeks=30)
+        db.add(models.Activity(user_id=user.id, garmin_activity_id="r", activity_type="running", duration_seconds=3600,
+                               start_time=datetime.datetime.combine(recent, datetime.time(8))))
+        db.commit()
+    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    earlier = text[text.index("EARLIER HISTORY"):text.index("\nWEEK OF")].splitlines()
+    month = f"Month of {planning.MONTH_NAMES[old.month - 1]} {old.year}"
+    assert f"{month} · 4:00 (swim 1:00 · bike 2:00 · run 1:00) · 3 sessions · load 150" in earlier
+    assert earlier[1].startswith("By month, before ") and earlier[2].startswith(month)
+    months = [line for line in earlier if line.startswith("Month of")]
+    assert 12 <= len(months) <= 14  # every month up to two years ago, empty ones included
+    assert any(line.startswith("By week, every session listed from") for line in earlier)
 
 
 def test_days_before_the_first_synced_data_are_not_called_rest_days(client, auth):
@@ -675,3 +705,18 @@ def test_days_before_the_first_synced_data_are_not_called_rest_days(client, auth
     assert label(first - datetime.timedelta(days=1)) + " " not in text[text.index("\nWEEK OF"):text.index("ALREADY ON")]
     assert f"{label(first)} · sleep 75 · no training" in text
     assert f"{label(first + datetime.timedelta(days=1))} · no training" in text  # after the start: a real rest day
+
+
+def test_garmin_numbers_with_decimals_do_not_break_the_log(client, auth):
+    """Garmin sends whole numbers for body battery, but a 55.0 must not stop the History tab."""
+    today = datetime.date.today()
+    with SessionLocal() as db:
+        user = db.query(models.User).filter(models.User.username == "athlete").one()
+        db.add(models.SleepRecord(user_id=user.id, date=today, sleep_score=80, raw_json={"bodyBatteryChange": 55.0}))
+        db.add(models.Activity(user_id=user.id, garmin_activity_id="1", activity_type="running", duration_seconds=1800,
+                               start_time=datetime.datetime.combine(today, datetime.time(7)),
+                               raw_json={"differenceBodyBattery": -12.0}))
+        db.commit()
+    res = client.get("/api/plan/log", headers=auth)
+    assert res.status_code == 200
+    assert "body battery +55 overnight" in res.json()["text"] and "body battery -12" in res.json()["text"]

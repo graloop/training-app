@@ -93,7 +93,9 @@ def test_protected_routes_require_token(client):
     assert client.get("/api/calendar", headers={"Authorization": "Bearer garbage"}).status_code == 401
 
 
-def test_tokens_from_the_old_garmin_login_are_rejected(client):
+def test_a_token_without_a_numeric_account_id_is_rejected(client):
+    """Signed with the right secret but not a token this app issues (here, the
+    shape older versions used, keyed by Garmin email)."""
     import jwt
 
     from app.config import get_settings
@@ -217,24 +219,6 @@ def test_security_headers_and_no_public_api_docs(client):
     assert client.get("/api/health").headers["cache-control"] == "no-store"
     assert client.get("/docs").status_code == 404
     assert client.get("/openapi.json").status_code == 404
-
-
-def test_there_is_no_built_in_chatbot(client, auth):
-    """The app is driven from the page (by hand or with Claude in Chrome): no chat
-    or AI-key endpoints, no AI SDKs, nothing about it on the page."""
-    from pathlib import Path
-
-    backend = Path(__file__).resolve().parents[1]
-    for path in ["/api/chat", "/api/chat/history", "/api/ai-settings", "/api/ai-settings/test", "/api/profile/notes"]:
-        assert client.get(path, headers=auth).status_code == 404
-    assert client.post("/api/chat", json={"message": "hi"}, headers=auth).status_code in (404, 405)
-    assert "ai_chat_enabled" not in client.get("/api/auth/me", headers=auth).json()
-
-    requirements = (backend / "requirements.txt").read_text().lower()
-    assert "anthropic" not in requirements and "openai" not in requirements
-    page = "".join((backend / "frontend" / name).read_text().lower() for name in ("index.html", "app.js"))
-    for word in ("chat", "api key", "anthropic", "openai", "notes for"):
-        assert word not in page, word
 
 
 def test_frontend_is_revalidated_by_browsers(client):

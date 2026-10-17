@@ -157,8 +157,19 @@ def test_sync_fetches_effort_feel_laps_and_profile_once(client, auth, monkeypatc
     # A second sync asks Garmin for nothing it already has.
     res = client.post("/api/garmin/sync", headers=auth).json()
     assert res["details_synced"] == 0 and len(calls["summary"]) == 4 and len(calls["laps"]) == 2
-    assert calls["profile"] == 2  # the profile is cheap and can change: refreshed each time
+    assert calls["profile"] == 1  # four requests to Garmin: refreshed once a day, not on every sync
     assert _calendar_activities(client, auth)["1"]["perceived_effort"] == 7  # kept when the list is re-synced
+
+
+def test_the_profile_is_refreshed_again_the_next_day(client, auth, monkeypatch):
+    calls = _stub(monkeypatch, [])
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        user.garmin_profile = {**user.garmin_profile, "synced_on": (TODAY - datetime.timedelta(days=1)).isoformat()}
+        db.commit()
+    client.post("/api/garmin/sync", headers=auth)
+    assert calls["profile"] == 2
 
 
 def test_effort_answered_later_is_picked_up(client, auth, monkeypatch):
@@ -482,3 +493,60 @@ def test_details_fetched_by_an_older_version_are_refreshed_once(client, auth, mo
         assert a.extras == {} and len(a.laps) == 2  # indoors-less stub: no weather, laps re-read in the new format
     res = client.post("/api/garmin/sync", headers=auth).json()
     assert res["details_synced"] == 0 and len(calls["summary"]) == before[0] + 1  # and never again after that
+
+
+# --- Keeping what is read, and Garmin's refreshed session ---------------------------
+
+
+FULL_NIGHT = {
+    "dailySleepDTO": {"sleepTimeSeconds": 27000, "sleepScores": {"overall": {"value": 80}}},
+    "restingHeartRate": 48, "avgOvernightHrv": 61.0, "hrvStatus": "BALANCED", "bodyBatteryChange": 55,
+    "sleepMovement": [{"activityLevel": 0.1}] * 2000, "sleepHeartRate": [{"value": 50}] * 500,
+}
+
+
+def test_only_the_parts_of_a_night_that_are_read_are_stored(client, auth, monkeypatch):
+    _stub_days(monkeypatch, lookback=0)
+    monkeypatch.setattr(garmin_client, "fetch_sleep", lambda api, day: FULL_NIGHT)
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:
+        night = db.query(models.SleepRecord).one()
+        assert set(night.raw_json) == set(garmin_details.SLEEP_KEPT)
+        assert night.sleep_score == 80 and night.resting_heart_rate == 48
+    text = client.get("/api/plan/log", headers=auth).json()["text"]
+    assert "HRV 61 balanced · body battery +55 overnight" in text
+
+
+def test_nights_stored_whole_by_an_older_version_are_trimmed(client, auth):
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        db.add(models.SleepRecord(user_id=user.id, date=TODAY, sleep_score=80, raw_json=FULL_NIGHT))
+        db.add(models.SleepRecord(user_id=user.id, date=_days_ago(1), sleep_score=70, raw_json={"avgOvernightHrv": 50}))
+        db.commit()
+        assert garmin_details.trim_stored_sleep(db) == 1  # the small one is left alone
+        assert garmin_details.trim_stored_sleep(db) == 0
+        night = db.query(models.SleepRecord).filter_by(date=TODAY).one()
+        assert night.raw_json["avgOvernightHrv"] == 61.0 and "sleepMovement" not in night.raw_json
+
+
+def test_a_refreshed_garmin_session_is_kept(client, auth, monkeypatch):
+    from app.security import decrypt_text
+
+    _stub(monkeypatch, [])
+    monkeypatch.setattr(garmin_client, "export_session", lambda api: "refreshed-session")
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        assert decrypt_text(user.garmin_session_encrypted) == "refreshed-session"
+        assert garmin_details.save_session(db, object(), user) is False  # unchanged: nothing written
+
+
+def test_a_client_that_cannot_export_keeps_the_stored_session(client, auth, monkeypatch):
+    from app.security import decrypt_text
+
+    _stub(monkeypatch, [])
+    assert garmin_client.export_session(object()) is None
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        assert decrypt_text(user.garmin_session_encrypted) == "session-for-athlete@example.com"

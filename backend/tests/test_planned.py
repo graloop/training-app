@@ -73,16 +73,3 @@ def test_old_tables_get_new_columns(tmp_path, monkeypatch):
     cols = {c["name"] for c in inspect(engine).get_columns("users")}
     assert {"is_admin", "token_version", "last_login_at"} <= cols
 
-
-def test_chat_tables_from_older_versions_are_dropped(tmp_path, monkeypatch):
-    from app import database
-
-    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
-    with engine.begin() as conn:
-        for name in ("chat_messages", "ai_settings", "coach_briefings", "planned_training"):
-            conn.execute(text(f"CREATE TABLE {name} (id INTEGER PRIMARY KEY, user_id INTEGER)"))
-        conn.execute(text("INSERT INTO ai_settings (id, user_id) VALUES (1, 1)"))
-    monkeypatch.setattr(database, "engine", engine)
-    database.drop_obsolete_tables()
-    database.drop_obsolete_tables()  # idempotent
-    assert inspect(engine).get_table_names() == ["planned_training"]

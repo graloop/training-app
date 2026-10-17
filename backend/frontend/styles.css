@@ -250,8 +250,12 @@ button:hover { background: var(--accent-hover); }
   gap: 4px;
 }
 .objective-card h3 { margin: 0 0 4px; font-size: 1rem; }
-.objective-field { display: flex; justify-content: space-between; gap: 8px; font-size: 0.9rem; }
-.objective-label { color: var(--muted); }
+/* Label column and value column: every value starts at the same place, next to its label. */
+.objective-field { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); column-gap: 10px; align-items: baseline; font-size: 0.9rem; line-height: 1.4; }
+.objective-field > :last-child { overflow-wrap: anywhere; }
+.objective-field .subtle { font-size: inherit; }
+.objective-label { color: var(--muted); font-size: 0.85rem; }
+.objective-countdown { display: block; color: var(--muted); font-size: 0.8rem; }
 .objective-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 6px; }
 .objective-form { gap: 6px; }
 
@@ -606,4 +610,4 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 #friend-to-plan:disabled, #friend-to-calendar:disabled { opacity: 0.45; cursor: not-allowed; }
 .friend-choices { margin-top: 10px; }
 #friend-summary { margin-top: 16px; }
-.objective-notes { margin: 4px 0 0; font-size: 0.85rem; color: var(--muted); }
+.objective-notes { margin: 0; white-space: pre-line; }

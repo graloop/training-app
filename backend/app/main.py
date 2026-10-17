@@ -5,10 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import autosync
+from . import autosync, garmin_details
 from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
-from .database import Base, add_missing_columns, drop_obsolete_tables, engine
+from .database import Base, SessionLocal, add_missing_columns, engine
 from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share
 from .version import VERSION
 from .visitor import is_https
@@ -88,9 +88,10 @@ async def security_headers(request: Request, call_next):
 
 @app.on_event("startup")
 def on_startup():
-    drop_obsolete_tables()
     Base.metadata.create_all(bind=engine)
     add_missing_columns()
+    with SessionLocal() as db:
+        garmin_details.trim_stored_sleep(db)  # nights stored whole by versions before 15
     bootstrap_admin()
     seed_test_accounts()
     autosync.start(settings.auto_sync_hours)

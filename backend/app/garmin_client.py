@@ -86,6 +86,13 @@ def _readable_login_error(exc: Exception) -> str:
     return f"Garmin login failed: {text[:200]}"
 
 
+def export_session(api: Garmin) -> str | None:
+    """The session of a resumed client as it is now (refreshed tokens included),
+    or None for a client that isn't a real Garmin one."""
+    client = getattr(api, "garth", None)
+    return _export_session(client) if isinstance(client, garth.Client) else None
+
+
 def get_authenticated_client(session_data: str) -> Garmin:
     """Resume a Garmin API client from a previously stored session, without
     needing the password again."""

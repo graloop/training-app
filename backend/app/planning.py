@@ -5,7 +5,7 @@ import datetime
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from . import models
 
@@ -83,7 +83,7 @@ def _fmt_pace(minutes_per_unit: float) -> str:
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
-def _fmt_activity(a: models.Activity) -> str:
+def _fmt_activity(a: models.Activity, effort: bool = True) -> str:
     sport = sport_of(a.activity_type)
     minutes = (a.duration_seconds or 0) / 60
     parts = [f"{sport if sport != 'other' else a.activity_type} {fmt_minutes(minutes)}"]
@@ -101,7 +101,7 @@ def _fmt_activity(a: models.Activity) -> str:
         parts.append(f"avg HR {round(a.avg_hr)}")
     if a.training_load is not None:
         parts.append(f"load {round(a.training_load)}")
-    felt = _fmt_effort(a)
+    felt = _fmt_effort(a) if effort else None
     if felt:
         parts.append(felt)
     text = " · ".join(parts)
@@ -222,7 +222,7 @@ def _detail_lines(a: models.Activity) -> list[str]:
             effect += f", {a.anaerobic_training_effect:.1f} anaerobic)" if a.anaerobic_training_effect is not None else ")"
         body.append(effect)
     if raw.get("differenceBodyBattery"):
-        body.append(f"body battery {raw['differenceBodyBattery']:+d}")
+        body.append(f"body battery {round(raw['differenceBodyBattery']):+d}")
     if body:
         lines.append(" · ".join(body))
 
@@ -309,7 +309,7 @@ def _fmt_night(night: models.SleepRecord | None, full: bool) -> str:
             status = (raw.get("hrvStatus") or "").lower().replace("_", " ")
             parts.append(f"HRV {round(raw['avgOvernightHrv'])}{' ' + status if status and status != 'none' else ''}")
         if raw.get("bodyBatteryChange"):
-            parts.append(f"body battery {raw['bodyBatteryChange']:+d} overnight")
+            parts.append(f"body battery {round(raw['bodyBatteryChange']):+d} overnight")
     return "".join(f" · {p}" for p in parts)
 
 
@@ -358,43 +358,75 @@ def _status_lines(latest: "models.DailyMetrics | None") -> list[str]:
     return lines or ["- nothing from Garmin yet: press Sync with Garmin"]
 
 
-MAX_EARLIER_WEEKS = 52
+# Before the detailed weeks, from Garmin's activity list (no effort, laps or
+# recovery): every session for this many weeks, then weekly totals back to two
+# years ago, then monthly totals for whatever older history was imported.
+SESSION_WEEKS = 52
+WEEKLY_YEARS = 2
 
 
-def _earlier_weeks(db: Session, user: models.User, start: datetime.date) -> list[str]:
-    """One line per week before the detailed part, up to a year back: the long-term picture."""
-    oldest = start - datetime.timedelta(weeks=MAX_EARLIER_WEEKS)
-    rows = (
-        db.query(models.Activity.start_time, models.Activity.activity_type, models.Activity.duration_seconds,
-                 models.Activity.training_load, models.Activity.extras)
-        .filter(
-            models.Activity.user_id == user.id,
-            models.Activity.start_time >= datetime.datetime.combine(oldest, datetime.time.min),
-            models.Activity.start_time < datetime.datetime.combine(start, datetime.time.min),
-        )
+def _totals(acts: list[models.Activity]) -> str:
+    sports = {s: 0.0 for s in SPORTS}
+    load = 0.0
+    for a in acts:
+        for sport, minutes in sport_minutes(a.activity_type, a.duration_seconds, a.extras):
+            sports[sport] += minutes
+        load += a.training_load or 0
+    split = _split(sports)
+    return (f"{fmt_minutes(sum(sports.values()))}{f' ({split})' if split else ''} · {len(acts)} session{'s' if len(acts) != 1 else ''}"
+            + (f" · load {round(load)}" if load else ""))
+
+
+def _earlier_weeks(db: Session, user: models.User, start: datetime.date, today: datetime.date | None = None) -> list[str]:
+    """Everything stored before the detailed part, oldest first: the long-term picture."""
+    today = today or datetime.date.today()
+    acts = (
+        db.query(models.Activity)
+        .options(defer(models.Activity.raw_json), defer(models.Activity.laps))
+        .filter(models.Activity.user_id == user.id,
+                models.Activity.start_time < datetime.datetime.combine(start, datetime.time.min))
+        .order_by(models.Activity.start_time)
         .all()
     )
-    if not rows:
+    if not acts:
         return ['- no earlier activities stored ("Import older activities" adds up to 3 years)']
-    weeks: dict[datetime.date, dict] = {}
-    for start_time, activity_type, seconds, load, extras in rows:
-        week = weeks.setdefault(monday_of(start_time.date()), {"sports": {s: 0.0 for s in SPORTS}, "count": 0, "load": 0.0})
-        for sport, minutes in sport_minutes(activity_type, seconds, extras):
-            week["sports"][sport] += minutes
-        week["count"] += 1
-        week["load"] += load or 0
+    sessions_from = start - datetime.timedelta(weeks=SESSION_WEEKS)
+    weekly_from = min(monday_of(today - datetime.timedelta(days=365 * WEEKLY_YEARS)), sessions_from)
     lines = []
-    week_start = min(weeks)
-    while week_start < start:
-        week = weeks.get(week_start)
-        label = f"Week of {MONTH_NAMES[week_start.month - 1]} {week_start.day}, {week_start.year}"
-        if week is None:
-            lines.append(f"{label} · no training recorded")
-        else:
-            lines.append(f"{label} · {fmt_minutes(sum(week['sports'].values()))} ({_split(week['sports'])}) · "
-                         f"{week['count']} session{'s' if week['count'] != 1 else ''}"
-                         + (f" · load {round(week['load'])}" if week["load"] else ""))
-        week_start += datetime.timedelta(days=7)
+
+    older = [a for a in acts if a.start_time.date() < weekly_from]
+    if older:
+        lines.append(f"By month, before {fmt_day(weekly_from)}, {weekly_from.year} (totals only):")
+        months: dict[tuple[int, int], list[models.Activity]] = {}
+        for a in older:
+            months.setdefault((a.start_time.year, a.start_time.month), []).append(a)
+        year, month = min(months)
+        while (year, month) <= (weekly_from.year, weekly_from.month):
+            label = f"Month of {MONTH_NAMES[month - 1]} {year}"
+            if (year, month) == (weekly_from.year, weekly_from.month):
+                if (year, month) not in months:
+                    break
+                label += f" (to {fmt_day(weekly_from - datetime.timedelta(days=1))})"
+            month_acts = months.get((year, month))
+            lines.append(f"{label} · {_totals(month_acts)}" if month_acts else f"{label} · no training recorded")
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+    by_week: dict[datetime.date, list[models.Activity]] = {}
+    for a in acts:
+        if a.start_time.date() >= weekly_from:
+            by_week.setdefault(monday_of(a.start_time.date()), []).append(a)
+    if by_week:
+        if lines:
+            lines.append("")
+        lines.append(f"By week, every session listed from {fmt_day(sessions_from)}, {sessions_from.year}:")
+        week_start = min(by_week) if not older else weekly_from
+        while week_start < start:
+            week = by_week.get(week_start, [])
+            label = f"Week of {MONTH_NAMES[week_start.month - 1]} {week_start.day}, {week_start.year}"
+            lines.append(f"{label} · {_totals(week)}" if week else f"{label} · no training recorded")
+            if week_start >= sessions_from:
+                lines += [f"  {fmt_day(a.start_time.date())} · {_fmt_activity(a, effort=False)}" for a in week]
+            week_start += datetime.timedelta(days=7)
     return lines
 
 
@@ -619,7 +651,8 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
     lines += ["", "RULE SET (the athlete's availability, constraints and rules: the plan must follow them)"]
     lines += [line.rstrip() for line in rules.splitlines()] if rules else ["- nothing written yet"]
 
-    lines += ["", "EARLIER WEEKS (totals only)"] + _earlier_weeks(db, user, start)
+    lines += ["", "EARLIER HISTORY (from Garmin's activity list: duration, distance, pace, avg HR and load; "
+              "no effort, laps or recovery)"] + _earlier_weeks(db, user, start, today)
 
     week_start = start
     while week_start <= today:

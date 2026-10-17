@@ -122,6 +122,20 @@ class GarminSyncResponse(BaseModel):
     more_to_sync: bool = False  # older days or activity details are still waiting: sync again
 
 
+class SyncJob(BaseModel):
+    """A sync running on the server, started with the Sync button."""
+
+    state: str  # idle (none yet) | waiting (for a background run) | running | done | failed
+    rounds: int = 0  # batches done so far
+    activities_synced: int = 0
+    days_synced: int = 0
+    details_synced: int = 0
+    more_to_sync: bool = False  # still something waiting after the last batch: sync again later
+    error: str | None = None
+    started_at: UtcDatetime | None = None
+    finished_at: UtcDatetime | None = None
+
+
 class HistoryImportRequest(BaseModel):
     months: int = Field(default=12, ge=1, le=36)
 

@@ -36,6 +36,9 @@ services:
       # Hours between background syncs of every account connected to Garmin,
       # so sleep, readiness and finished sessions arrive on their own. 0 = off.
       AUTO_SYNC_HOURS: ${AUTO_SYNC_HOURS:-4}
+      # The server's clock: "today" for syncs and the background sync. Use the
+      # timezone you and your friends live in (a tz database name).
+      TZ: ${TZ:-America/Toronto}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
       # The public name friends open, e.g. training.example.com. When set, the
       # app only answers on https://<that name>; port 8010 then just sends

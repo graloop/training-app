@@ -252,3 +252,80 @@ def test_off_by_default_outside_docker():
     from app.config import Settings
 
     assert Settings().auto_sync_hours == 0
+
+
+# --- The Sync button: a job on the server, the page asks how it goes ------------------
+
+
+def _wait_for_job(client, auth, seconds=10):
+    import time
+
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        job = client.get("/api/garmin/sync/status", headers=auth).json()
+        if job["state"] in ("done", "failed"):
+            return job
+        time.sleep(0.02)
+    raise AssertionError(f"the sync job didn't finish: {job}")
+
+
+def test_sync_job_runs_on_the_server_until_nothing_waits(client, auth, monkeypatch):
+    calls = _quiet_garmin(monkeypatch, [_listed("1", "running", TODAY, 1)])
+    assert client.get("/api/garmin/sync/status", headers=auth).json()["state"] == "idle"
+    started = client.post("/api/garmin/sync/start", headers=auth)
+    assert started.status_code == 200 and started.json()["state"] in ("waiting", "running", "done")
+    job = _wait_for_job(client, auth)
+    # a new account has 90 days of sleep and recovery: 30 days per batch, so a few batches in one job
+    assert job["state"] == "done" and job["rounds"] == calls["activities"] > 1
+    assert job["more_to_sync"] is False and job["activities_synced"] == 1
+    assert job["days_synced"] >= 91  # today and yesterday are asked again in each batch: they can still change
+    assert job["finished_at"] and job["error"] is None
+    with SessionLocal() as db:
+        assert db.query(models.Activity).count() == 1
+
+
+def test_starting_again_while_a_job_runs_returns_that_job(client, auth, monkeypatch):
+    calls = _quiet_garmin(monkeypatch)
+    with SessionLocal() as db:
+        user_id = db.query(models.User).filter_by(username="athlete").one().id
+    lock = autosync.user_lock(user_id)
+    lock.acquire()  # a background run of this account is going on
+    try:
+        first = client.post("/api/garmin/sync/start", headers=auth).json()
+        again = client.post("/api/garmin/sync/start", headers=auth).json()
+        assert first["state"] == again["state"] == "waiting" and first["started_at"] == again["started_at"]
+    finally:
+        lock.release()
+    assert _wait_for_job(client, auth)["state"] == "done"
+    rounds = calls["activities"]
+    client.post("/api/garmin/sync/start", headers=auth)  # once finished, a new press starts a new job
+    _wait_for_job(client, auth)
+    assert calls["activities"] == rounds + 1  # nothing waits any more: one batch
+
+
+def test_a_failing_sync_job_says_why(client, auth, monkeypatch):
+    _quiet_garmin(monkeypatch)
+
+    def down(api, start, end):
+        raise RuntimeError("503 Service Unavailable")
+
+    monkeypatch.setattr(garmin_client, "fetch_activities", down)
+    client.post("/api/garmin/sync/start", headers=auth)
+    job = _wait_for_job(client, auth)
+    assert job["state"] == "failed" and "503 Service Unavailable" in job["error"]
+
+
+def test_sync_job_needs_a_garmin_connection(client):
+    headers = make_user(client, "unlinked", garmin=False)
+    res = client.post("/api/garmin/sync/start", headers=headers)
+    assert res.status_code == 409  # the page shows "Connect your Garmin account"
+    assert client.get("/api/garmin/sync/status", headers=headers).json()["state"] == "idle"
+    assert client.post("/api/garmin/sync/start", headers=admin_auth(client)).status_code == 403
+
+
+def test_each_account_sees_only_its_own_job(client, auth, monkeypatch):
+    _quiet_garmin(monkeypatch)
+    other = make_user(client, "other")
+    client.post("/api/garmin/sync/start", headers=auth)
+    _wait_for_job(client, auth)
+    assert client.get("/api/garmin/sync/status", headers=other).json()["state"] == "idle"

@@ -57,11 +57,29 @@ def _garmin_api(user: models.User):
         ) from exc
 
 
+@router.post("/sync/start", response_model=schemas.SyncJob)
+def start_sync(user: models.User = Depends(get_current_member)):
+    """Start syncing on the server (as many batches as it takes, up to a few)
+    and answer straight away; GET /sync/status says how it is going. Starting
+    again while a job runs just returns that job."""
+    running = autosync.job_status(user.id)
+    if running and running["state"] in ("waiting", "running"):
+        return schemas.SyncJob(**running)
+    return schemas.SyncJob(**autosync.start_job(user.id, _garmin_api(user)))
+
+
+@router.get("/sync/status", response_model=schemas.SyncJob)
+def sync_status(user: models.User = Depends(get_current_member)):
+    job = autosync.job_status(user.id)
+    return schemas.SyncJob(**job) if job else schemas.SyncJob(state="idle")
+
+
 @router.post("/sync", response_model=schemas.GarminSyncResponse)
 def sync(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
+    """One batch, answered when it is done (the page uses /sync/start instead)."""
     api = _garmin_api(user)
     # The background sync may be working on this account: wait for it rather
     # than run the same steps twice at once.
@@ -71,6 +89,7 @@ def sync(
                             detail="A sync is already running in the background. Try again in a minute.")
     try:
         result = garmin_details.sync_user(db, api, user, datetime.date.today(), settings.garmin_sync_lookback_days)
+        garmin_details.save_session(db, api, user)
     except Exception as exc:  # noqa: BLE001 - only the activity list can fail a sync
         db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Garmin sync failed: {exc}") from exc

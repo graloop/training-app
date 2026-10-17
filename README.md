@@ -46,25 +46,31 @@ adjust sessions — it edits the page like you would.
   (acute vs chronic load, load focus), stress and body battery are fetched
   per day, and only for days not stored yet (today and yesterday are always
   refreshed). Each activity is asked once for its perceived effort, feel,
-  laps, weather and sweat loss. The work is done in batches (30 days and 40
-  activities per request) and the page keeps going until nothing is
-  waiting, so a first sync takes a minute or two and later ones a few
-  seconds. Your Garmin profile (zones, thresholds, records) is refreshed
-  each time. None of the extras can fail a sync: what Garmin doesn't answer
-  is asked again next time.
+  laps, weather and sweat loss. The sync runs on the server: the button
+  starts it and the page checks how it is going every second or two, so a
+  long catch-up never hits the proxy's time limit (Cloudflare gives up after
+  100 s) and the page stays usable meanwhile. The work is done in batches
+  (30 days and 40 activities each) until nothing is waiting, so a first
+  sync takes a minute or two and later ones a few seconds; the calendar
+  fills in after each batch. Your Garmin profile (zones, thresholds,
+  records) is refreshed once a day, and the session Garmin refreshes is
+  saved, so later syncs don't have to ask for a new one. None of the extras
+  can fail a sync: what Garmin doesn't answer is asked again next time.
 - **Background sync** — on the server, every account connected to Garmin is
   also synced every few hours (`AUTO_SYNC_HOURS`, 4 by default in the Docker
   stack, off under `npm start`), so last night's sleep, the morning
   readiness and finished sessions are there without pressing Sync. A Sync
   press waits for a background run of the same account rather than running
-  twice at once.
+  twice at once. The server's "today" follows `TZ` (America/Toronto by
+  default in the Docker stack).
 - **Multisport races** — a triathlon arrives from Garmin as one
   "multisport" session. Its legs (swim, transitions, bike, run) are fetched
   once, at any age, shown under the session on the calendar, listed in the
   log, and counted per sport in the weekly totals.
 - **Older history** — *Import older activities* on the History tab brings in
-  up to 3 years of activities (one list from Garmin), which the log shows as
-  one line of totals per week. If the Garmin session has
+  up to 3 years of activities (one list from Garmin). The History tab shows
+  all of it: every session for the year before the detailed weeks, weekly
+  totals back to two years ago, monthly totals before that. If the Garmin session has
   expired the page shows the "Connect your Garmin account" form; you stay
   logged in.
 - **Tabs** — **Calendar**, **Athlete**, **Plan**, **Import** and
@@ -115,8 +121,9 @@ adjust sessions — it edits the page like you would.
      **athlete block from Garmin** (max HR, threshold HR and pace, VO2max,
      HR zones, race predictions, personal records), the **rule set**,
      Garmin's **training status** (acute vs chronic load, load by intensity
-     against its targets) and **earlier weeks** as one line of totals each,
-     up to a year back. A session shows "effort not answered" when the watch
+     against its targets) and the **earlier history**: every session of the
+     year before (duration, distance, pace, avg HR, load), then weekly and
+     monthly totals for everything imported. A session shows "effort not answered" when the watch
      prompt was skipped and "not synced yet" when its details haven't been
      fetched. *Summary* detail keeps one line per session.
 - **Import tab** — copy a friend's planned sessions. Everyone has a **share
@@ -446,7 +453,10 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   perceived effort (1-10) and feel, the laps of runs and swims, weather and sweat loss,
   plus the raw Garmin payload for anything not modeled explicitly.
 - **SleepRecord** — per-night sleep: total/deep/REM/light minutes, sleep
-  score, resting heart rate, raw payload.
+  score, resting heart rate, and the few parts of Garmin's answer that are
+  read (overnight HRV and its status, body battery). The rest of that
+  answer, about 100 KB a night of minute-by-minute data, isn't kept; nights
+  stored whole by older versions are trimmed on startup.
 - **PlannedTraining** — future sessions: date, activity type, planned
   duration and workout details.
 
@@ -464,7 +474,9 @@ New nullable columns are added to existing databases on startup
 | `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin / delete user and their data (`?confirm=<username>` required) |
 | `/api/admin/activity`    | GET    | Admin: logins and failed attempts per day (`?days=7&tz_offset=`), totals, recent connections |
 | `/api/garmin/connect`    | POST/DELETE | Link your Garmin (email/password sent once to Garmin) / unlink |
-| `/api/garmin/sync`       | POST   | One batch: activities, then missing days (sleep, readiness, status, stress) and activity details; `more_to_sync` says to call again; 409 = connect Garmin first |
+| `/api/garmin/sync/start` | POST   | Start syncing on the server (batches until nothing waits) and answer straight away; 409 = connect Garmin first |
+| `/api/garmin/sync/status`| GET    | How that sync is going: `idle`, `waiting`, `running`, `done` or `failed`, with the totals so far |
+| `/api/garmin/sync`       | POST   | One batch, answered when done: activities, then missing days (sleep, readiness, status, stress) and activity details; `more_to_sync` says to call again; 409 = connect Garmin first |
 | `/api/garmin/import-history` | POST | `{"months": 12}`: older activities, for the long-term weekly totals |
 | `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day, with multisport legs |
 | `/api/objectives`        | GET/POST | List / add objectives (title, event date, target time)      |

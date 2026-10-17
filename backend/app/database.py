@@ -37,17 +37,3 @@ def add_missing_columns() -> None:
                     continue
                 col_type = column.type.compile(dialect=engine.dialect)
                 conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN {column.name} {col_type}'))
-
-
-# Tables of the removed built-in AI chat (history, per-user API keys, briefings).
-OBSOLETE_TABLES = ("chat_messages", "ai_settings", "coach_briefings")
-
-
-def drop_obsolete_tables() -> None:
-    """The chat feature is gone; its tables would otherwise keep stored API
-    keys around and block deleting a user on Postgres (foreign keys)."""
-    inspector = inspect(engine)
-    with engine.begin() as conn:
-        for name in OBSOLETE_TABLES:
-            if inspector.has_table(name):
-                conn.execute(text(f"DROP TABLE {name}"))
