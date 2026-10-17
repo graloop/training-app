@@ -130,16 +130,16 @@ def test_cloudflare_in_front_of_a_reverse_proxy(proxied, public):
 def test_range_requests_get_the_whole_file(client):
     """Starlette 0.46 can be made to burn CPU with a crafted Range header
     (CVE-2025-62727), and the page never asks for part of a file."""
-    whole = client.get("/app.js")
+    whole = client.get("/js/main.js")
     crafted = "bytes=" + ",".join(f"{i}-{i + 1}" for i in range(0, 4000, 2))
     for value in ("bytes=0-9", crafted):
-        res = client.get("/app.js", headers={"Range": value})
+        res = client.get("/js/main.js", headers={"Range": value})
         assert res.status_code == 200 and res.content == whole.content
         assert "content-range" not in res.headers
 
 
 def test_pages_only_run_their_own_script(client):
-    for path in ("/", "/app.js", "/api/health"):
+    for path in ("/", "/js/main.js", "/api/health"):
         assert client.get(path).headers["content-security-policy"] == main.CONTENT_SECURITY_POLICY
     assert "'unsafe-inline'" not in main.CONTENT_SECURITY_POLICY and "default-src 'self'" in main.CONTENT_SECURITY_POLICY
     assert client.get("/").headers["x-robots-tag"] == "noindex, nofollow"
@@ -150,13 +150,14 @@ def test_the_page_has_nothing_that_policy_would_block():
     another site: any of these would silently stop working in the browser."""
     frontend = REPO / "backend" / "frontend"
     html = (frontend / "index.html").read_text()
-    script = (frontend / "app.js").read_text()
+    script = "\n".join(path.read_text() for path in (frontend / "js").rglob("*.js"))
     assert re.findall(r"<script(?![^>]*\bsrc=)", html) == []
     assert "<style" not in html
     for markup in (html, script):
         assert re.findall(r"""\s(?:style|on[a-z]+)=["']""", markup) == []
         assert re.findall(r"""(?:src|href)=["'](?:https?:)?//""", markup) == []
-    assert "url(" not in (frontend / "styles.css").read_text()
+    for stylesheet in (frontend / "css").glob("*.css"):
+        assert "url(" not in stylesheet.read_text()
 
 
 # --- Who is visiting ----------------------------------------------------------------

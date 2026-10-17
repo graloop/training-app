@@ -191,8 +191,20 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── sharing.py        share codes, someone's planned sessions as draft lines (Import tab)
     │   ├── autosync.py       background Garmin sync of every connected account
     │   └── routers/          auth, admin, garmin, calendar, athlete, objectives, planned, plan, share
-    └── frontend/             index.html, app.js, styles.css (static, no build)
+    └── frontend/             static, no build step (native ES modules)
+        ├── index.html        every screen's markup; loads css/*.css and js/main.js
+        ├── css/              base.css (shared) + one file per screen: calendar, athlete, plan, history, import, admin
+        └── js/
+            ├── main.js        entry point: log in/out, show the tabs or the admin dashboard
+            ├── core/          shared by every view: api.js (fetch + errors), session.js (token, logged-in user),
+            │                  tabs.js, ui.js, format.js (dates, durations), sports.js (names, icons)
+            └── views/         one file per part of the page: calendar, session-dialog, garmin (connect + sync),
+                               objectives, athlete, plan, plan-preview, history, import, admin, settings
 ```
+
+Something broken on one tab? Its code is in `frontend/js/views/<tab>.js`
+and its styles in `frontend/css/<tab>.css`. Views never import each other in a
+circle: anything two views need lives in `core/`.
 
 ## Running it locally (`npm start`)
 

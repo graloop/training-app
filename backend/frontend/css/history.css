@@ -1,0 +1,18 @@
+/* History tab: the training log as text, the whole log on the page (no scroll box). */
+
+.log-text {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 420px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+#tab-history .log-text { max-height: none; }
+.log-subtitle { margin: 20px 0 8px; font-size: 0.95rem; }

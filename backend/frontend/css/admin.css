@@ -1,0 +1,121 @@
+/* Admin dashboard: stat tiles, logins chart, accounts table and its forms. */
+
+.row-actions { text-align: right; }
+.row-actions .btn-link + .btn-link { margin-left: 12px; }
+
+.input-with-button { display: flex; gap: 6px; }
+.input-with-button input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.checkbox { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.checkbox input { width: auto; }
+#user-status, #create-status { overflow-wrap: anywhere; }
+.row-actions .btn-link.danger.confirming { font-weight: 600; }
+.row-actions { white-space: nowrap; }
+
+.dash-header { align-items: flex-start; margin-bottom: 16px; }
+.dash-header h2 { margin: 0 0 4px; font-size: 1.2rem; }
+.dash-header .hint { font-size: 0.85rem; color: var(--muted); margin: 0; }
+.dash-subtitle { margin: 20px 0 6px; font-size: 0.95rem; }
+.table-scroll { overflow-x: auto; max-height: 320px; overflow-y: auto; }
+
+/* Stat tiles: label, value, a line of context. Values stay in ink, never a data colour. */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.stat-label { font-size: 0.8rem; color: var(--muted); }
+.stat-value { font-size: 1.9rem; font-weight: 600; line-height: 1.15; }
+.stat-note { font-size: 0.75rem; color: var(--muted); min-height: 1em; }
+
+/* Bar chart: one series (successful logins per day). Thin bars with a rounded
+   data end on a single baseline, hairline grid, values in ink. */
+.chart { margin: 0; }
+.chart figcaption { margin-bottom: 8px; }
+.bar-chart { display: flex; gap: 8px; --plot-height: 150px; }
+.chart-empty { margin: 8px 0; }
+.bar-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: var(--plot-height);
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.5em;
+}
+.bar-axis span { line-height: 1; transform: translateY(-50%); }
+.bar-axis span:last-child { transform: translateY(50%); }
+.bar-plot {
+  flex: 1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  /* gridlines at the top, the middle and the baseline */
+  background:
+    linear-gradient(var(--border), var(--border)) top / 100% 1px no-repeat,
+    linear-gradient(var(--border), var(--border)) 0 calc(var(--plot-height) / 2) / 100% 1px no-repeat,
+    linear-gradient(var(--border), var(--border)) 0 var(--plot-height) / 100% 1px no-repeat;
+}
+.bar-col { position: relative; display: flex; flex-direction: column; align-items: center; outline: none; cursor: default; }
+.bar-track { height: var(--plot-height); width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.bar {
+  position: relative;
+  width: min(24px, 60%);
+  min-height: 0;
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+}
+.bar-col:hover .bar, .bar-col:focus-visible .bar { background: var(--accent-hover); }
+.bar-col:focus-visible .bar-track { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.bar-value {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding-bottom: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.bar-label { margin-top: 6px; font-size: 0.75rem; color: var(--muted); }
+.bar-col.today .bar-label { color: var(--text); font-weight: 600; }
+.bar-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  background: var(--text);
+  color: white;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+.bar-tip span { opacity: 0.75; }
+.bar-col:hover .bar-tip, .bar-col:focus-visible .bar-tip { display: flex; }
+.bar-col:first-child .bar-tip { left: 0; transform: none; }
+.bar-col:last-child .bar-tip { left: auto; right: 0; transform: none; }
+
+/* Result of a login attempt: icon + words, colour is only a reinforcement. */
+.result-badge { font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+.result-badge.ok { color: #047857; }
+.result-badge.failed { color: #b91c1c; }
+
+.reset-row td { background: var(--bg); }
+.delete-row td { background: #fef2f2; }
+.delete-warning { flex-basis: 100%; margin: 0; font-size: 0.85rem; font-weight: 600; color: #991b1b; }
+
+.reset-form { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+.reset-form label { margin: 0; }
+.reset-form input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 14em; }

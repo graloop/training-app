@@ -1,4 +1,5 @@
 import os
+import re
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,19 +132,26 @@ class RevalidatingStaticFiles(StaticFiles):
 
 
 _FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+# src="/js/main.js", href="/css/base.css": the page's own scripts and stylesheets.
+_LOCAL_ASSET = re.compile(r'(src|href)="/([\w/.-]+\.(?:js|css))"')
 
 
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
 def index():
-    """index.html with ?v=<mtime> on its assets: any change to app.js or
-    styles.css gives a new URL, so no browser can keep running a stale copy.
+    """index.html with ?v=<mtime> on the files it links (js/main.js, css/*.css):
+    any change gives a new URL, so no browser can keep running a stale copy.
+    The modules main.js imports are revalidated on every load (no-cache).
     The footer gets the app's version."""
     with open(os.path.join(_FRONTEND_DIR, "index.html"), encoding="utf-8") as f:
         html = f.read()
-    for asset in ("app.js", "styles.css"):
-        version = int(os.path.getmtime(os.path.join(_FRONTEND_DIR, asset)))
-        html = html.replace(f'"/{asset}"', f'"/{asset}?v={version}"')
+
+    def versioned(match: re.Match) -> str:
+        path = match.group(2)
+        version = int(os.path.getmtime(os.path.join(_FRONTEND_DIR, path)))
+        return f'{match.group(1)}="/{path}?v={version}"'
+
+    html = _LOCAL_ASSET.sub(versioned, html)
     html = html.replace("__APP_VERSION__", VERSION)
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
