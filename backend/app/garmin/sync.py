@@ -5,6 +5,7 @@ records), and how each is stored. Each activity's details are fetched only
 once. Only the activity list can fail a sync; nothing else here is allowed to."""
 
 import datetime
+import logging
 from typing import Any
 
 from sqlalchemy import Text, cast, func, or_
@@ -14,6 +15,8 @@ from .. import models
 from ..planning.basics import sport_of
 from ..security import decrypt_text, encrypt_text
 from . import client as garmin_client
+
+log = logging.getLogger("trainer.garmin")
 
 MAX_ACTIVITIES_PER_SYNC = 40  # a first sync catches up over one or two runs
 DETAILS_WINDOW_DAYS = 90  # imported history older than this keeps Garmin's list data only
@@ -82,8 +85,8 @@ def _extras(api: Any, activity: models.Activity, summary: dict[str, Any]) -> dic
     if (activity.raw_json or {}).get("startLatitude"):  # outdoors
         try:
             extras.update(weather_fields(garmin_client.fetch_activity_weather(api, activity.garmin_activity_id)))
-        except Exception:  # noqa: BLE001 - weather is a nice-to-have
-            pass
+        except Exception as exc:  # noqa: BLE001 - weather is a nice-to-have
+            log.debug("No weather for activity %s: %s", activity.garmin_activity_id, exc)
     return extras
 
 
@@ -134,7 +137,8 @@ def enrich_activities(db: Session, api: Any, user: models.User, limit: int = MAX
                 activity.laps = compact_laps(garmin_client.fetch_activity_laps(api, activity.garmin_activity_id))
             if first_time:
                 activity.extras = _extras(api, activity, summary)
-        except Exception:  # noqa: BLE001 - leave it for the next sync
+        except Exception as exc:  # noqa: BLE001 - leave it for the next sync
+            log.warning("Details of activity %s not fetched, asked again next sync: %s", activity.garmin_activity_id, exc)
             failures += 1
             if failures >= GIVE_UP_AFTER_FAILURES:
                 break
@@ -178,7 +182,8 @@ def multisport_legs(db: Session, api: Any, user: models.User, limit: int = MAX_M
             summary = garmin_client.fetch_activity_summary(api, race.garmin_activity_id)
             child_ids = (summary.get("metadataDTO") or {}).get("childIds") or summary.get("childIds") or []
             legs = [_leg(garmin_client.fetch_activity_summary(api, str(cid))) for cid in child_ids]
-        except Exception:  # noqa: BLE001 - asked again next sync
+        except Exception as exc:  # noqa: BLE001 - asked again next sync
+            log.warning("Legs of race %s not fetched, asked again next sync: %s", race.garmin_activity_id, exc)
             continue
         legs.sort(key=lambda leg: leg["start"] or "")
         race.extras = {**(race.extras or {}), "legs": legs}  # [] = Garmin names no legs: don't ask again
@@ -194,7 +199,8 @@ def save_session(db: Session, api: Any, user: models.User) -> bool:
     it, so the next sync doesn't have to ask for one again."""
     try:
         session = garmin_client.export_session(api)
-    except Exception:  # noqa: BLE001 - the old session still works, just more slowly
+    except Exception as exc:  # noqa: BLE001 - the old session still works, just more slowly
+        log.warning("Refreshed Garmin session of %r not saved: %s", user.username, exc)
         return False
     if not session:
         return False
@@ -224,19 +230,25 @@ def sync_user(db: Session, api: Any, user: models.User, today: datetime.date, lo
         days_synced, sleep_synced, days_remaining = sync_days(db, api, user, start, today)
         db.commit()
     except Exception:  # noqa: BLE001
+        log.exception("Sync of %r: sleep and recovery days failed", user.username)
         db.rollback()
     try:
         details_synced = enrich_activities(db, api, user)
         db.commit()
     except Exception:  # noqa: BLE001
+        log.exception("Sync of %r: activity details failed", user.username)
         db.rollback()
         details_synced = 0
-    for step in (lambda: multisport_legs(db, api, user), lambda: refresh_profile(db, api, user, today)):
+    for name, step in (("multisport legs", lambda: multisport_legs(db, api, user)),
+                       ("athlete profile", lambda: refresh_profile(db, api, user, today))):
         try:
             step()
             db.commit()
         except Exception:  # noqa: BLE001
+            log.exception("Sync of %r: %s failed", user.username, name)
             db.rollback()
+    log.info("Synced %r: %s activities, %s days, %s session details%s", user.username, activities_synced,
+             days_synced, details_synced, f", {days_remaining} days still to fetch" if days_remaining else "")
 
     return {
         "activities_synced": activities_synced,
@@ -509,7 +521,8 @@ def sync_days(db: Session, api: Any, user: models.User, start: datetime.date, to
             try:
                 fields.update(convert(fetch(api, day)))
                 answered += 1
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                log.debug("Garmin didn't answer %s for %s: %s", fetch.__name__, day, exc)
                 refused += 1
         if not got_sleep and not answered:
             failures += 1

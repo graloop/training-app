@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     # because those passwords are public.
     seed_test_accounts: bool = False
 
+    # How much the app prints (`docker logs`, the `npm start` terminal):
+    # DEBUG, INFO, WARNING or ERROR. See app/logs.py.
+    log_level: str = "INFO"
+
     # Swagger UI at /docs. Off by default so the API isn't advertised when the
     # app is reachable from the internet.
     enable_api_docs: bool = False

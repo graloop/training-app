@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 
@@ -12,10 +13,13 @@ from .database import Base, SessionLocal, add_missing_columns, engine
 from .garmin import autosync
 from .garmin import sync as garmin_sync
 from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share
+from .logs import setup_logging
 from .version import VERSION
 from .visitor import is_https
 
 settings = get_settings()
+setup_logging(settings.log_level)
+log = logging.getLogger("trainer.main")
 
 docs = {} if settings.enable_api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 app = FastAPI(title="Training App", version=VERSION, **docs)
@@ -90,6 +94,13 @@ async def security_headers(request: Request, call_next):
 
 @app.on_event("startup")
 def on_startup():
+    log.info(
+        "Training App version %s starting · database %s · background sync %s · public address %s",
+        VERSION,
+        engine.url.render_as_string(hide_password=True),
+        f"every {settings.auto_sync_hours:g} h" if settings.auto_sync_hours > 0 else "off",
+        f"https://{settings.app_domain}" if settings.app_domain else "none (local network only)",
+    )
     Base.metadata.create_all(bind=engine)
     add_missing_columns()
     with SessionLocal() as db:

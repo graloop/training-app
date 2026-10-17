@@ -150,6 +150,9 @@ adjust sessions — it edits the page like you would.
   next to its duration (e.g. "1 h · load 113"), and each week's column
   shows the week's total load.
 
+Something broken? See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): where the logs are,
+what each error means, and where the code for each part of the app is.
+
 ## Stack
 
 | Layer      | Choice                                                              |
@@ -173,6 +176,7 @@ There's no separate frontend server/container: FastAPI serves the API under
 ├── scripts/dev.sh         local dev launcher (venv, .env, uvicorn --reload)
 ├── docker-compose.yml     production stack: postgres + backend (+ optional Cloudflare Tunnel)
 ├── .env.example           template for secrets/config (copy to .env)
+├── docs/TROUBLESHOOTING.md  logs, error messages, account rescue, backups
 └── backend/
     ├── Dockerfile
     ├── requirements.txt
@@ -188,6 +192,8 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── visitor.py      visitor address and https, as reported by the proxy or tunnel
     │   ├── accounts.py     first-admin bootstrap, test accounts, login lockout, connection log
     │   ├── sharing.py      share codes, someone's planned sessions as draft lines (Import tab)
+    │   ├── logs.py         log format and level (LOG_LEVEL)
+    │   ├── cli.py          account rescue: python -m app.cli list-users / reset-password
     │   ├── routers/        HTTP only, one file per URL prefix: auth, admin, garmin, calendar,
     │   │                   athlete, objectives, planned, plan, share. They never import each other.
     │   ├── planning/       the training log and the draft plan
@@ -444,6 +450,7 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `FERNET_KEY`                 | backend         | Encrypts the stored Garmin session at rest — **required**            |
 | `GARMIN_SYNC_LOOKBACK_DAYS`  | backend         | How far back a sync looks (default 90); only missing days are requested |
 | `AUTO_SYNC_HOURS`            | backend         | Hours between background syncs of every account connected to Garmin; 4 in the Docker stack, 0 (off) otherwise |
+| `LOG_LEVEL`                  | backend         | How much the app prints in `docker logs` / the `npm start` terminal: `INFO` (default), `DEBUG` to also see what Garmin didn't answer, `WARNING` for problems only |
 | `CORS_ALLOW_ORIGINS`         | backend         | Empty = same-origin only (default); comma-separated origins, or `*`  |
 | `APP_DOMAIN`                 | backend         | The public name friends open (e.g. `training.example.com`); when set the app only answers on `https://` that name. Empty (default) = no check |
 | `COMPOSE_PROFILES`           | docker-compose  | `tunnel` starts the optional Cloudflare Tunnel container             |

@@ -192,7 +192,12 @@ def record_failure(username: str, address: str | None = None) -> None:
                 # different names must not grow this forever).
                 for name in [n for n, times in store.items() if not times or now - times[-1] >= WINDOW_SECONDS]:
                     del store[name]
-            _recent(store, key, now).append(now)
+            times = _recent(store, key, now)
+            times.append(now)
+            limit = MAX_FAILURES if store is _failures else MAX_ADDRESS_FAILURES
+            if len(times) == limit:
+                what = f"username {key!r}" if store is _failures else f"address {key}"
+                log.warning("Too many failed logins: %s blocked for %s min", what, WINDOW_SECONDS // 60)
 
 
 def clear_failures(username: str) -> None:

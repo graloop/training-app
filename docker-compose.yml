@@ -40,6 +40,8 @@ services:
       # timezone you and your friends live in (a tz database name).
       TZ: ${TZ:-America/Toronto}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+      # INFO, DEBUG (also what Garmin didn't answer) or WARNING. See docs/TROUBLESHOOTING.md.
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # The public name friends open, e.g. training.example.com. When set, the
       # app only answers on https://<that name>; port 8010 then just sends
       # people there. Leave empty to use the app on your own network only.

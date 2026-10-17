@@ -16,12 +16,15 @@ as a generic "Garmin login failed" error.
 
 import datetime
 import json
+import logging
 import os
 import tempfile
 from typing import Any
 
 import garth
 from garminconnect import Garmin
+
+log = logging.getLogger("trainer.garmin")
 
 
 class GarminAuthError(Exception):
@@ -120,7 +123,8 @@ def fetch_activities(api: Garmin, start_date: datetime.date, end_date: datetime.
 def fetch_sleep(api: Garmin, day: datetime.date) -> dict[str, Any] | None:
     try:
         return api.get_sleep_data(day.isoformat())
-    except Exception:  # noqa: BLE001 - some days simply have no data
+    except Exception as exc:  # noqa: BLE001 - some days simply have no data
+        log.debug("No sleep data for %s: %s", day, exc)
         return None
 
 
@@ -147,7 +151,8 @@ def fetch_profile(api: Garmin) -> dict[str, Any]:
     for name, call in parts.items():
         try:
             result[name] = call()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Garmin profile part %r not available: %s", name, exc)
             result[name] = None
     return result
 

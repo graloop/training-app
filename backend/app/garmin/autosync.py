@@ -21,7 +21,7 @@ from ..security import decrypt_text
 from . import client as garmin_client
 from . import sync as garmin_sync
 
-log = logging.getLogger("trainer.autosync")
+log = logging.getLogger("trainer.garmin")
 
 FIRST_RUN_DELAY_SECONDS = 5 * 60  # not right at startup: restarts shouldn't hit Garmin
 ROUNDS_PER_ACCOUNT = 3  # a sync works in batches; a few are enough to catch up
@@ -76,7 +76,7 @@ def sync_account(user_id: int, today: datetime.date | None = None) -> bool:
             garmin_sync.save_session(db, api, user)
             return True
     except Exception as exc:  # noqa: BLE001 - never let one account stop the others
-        log.warning("Background sync failed for account %s: %s", user_id, exc)
+        log.warning("Background sync failed for account %s: %s", user_id, exc, exc_info=True)
         return False
     finally:
         lock.release()
@@ -144,7 +144,7 @@ def _run_job(user_id: int, api, job: dict) -> None:
                 garmin_sync.save_session(db, api, user)
         _update(job, state="done", finished_at=models.utcnow())
     except Exception as exc:  # noqa: BLE001 - reported to the page
-        log.warning("Sync job failed for account %s: %s", user_id, exc)
+        log.warning("Sync job failed for account %s: %s", user_id, exc, exc_info=True)
         _update(job, state="failed", finished_at=models.utcnow(), error=f"Garmin sync failed: {exc}")
     finally:
         lock.release()
@@ -164,7 +164,7 @@ def _loop(hours: float) -> None:
         try:
             sync_all()
         except Exception as exc:  # noqa: BLE001
-            log.warning("Background sync round failed: %s", exc)
+            log.warning("Background sync round failed: %s", exc, exc_info=True)
         time.sleep(hours * 3600)
 
 

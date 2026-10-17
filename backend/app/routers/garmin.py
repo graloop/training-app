@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from ..garmin import sync as garmin_sync
 from ..security import decrypt_text, encrypt_text
 
 router = APIRouter(prefix="/api/garmin", tags=["garmin"])
+log = logging.getLogger("trainer.garmin")
 settings = get_settings()
 
 
@@ -29,6 +31,7 @@ def connect(
     try:
         session_data = garmin_client.login_and_export_session(garmin_email, payload.garmin_password)
     except garmin_client.GarminAuthError as exc:
+        log.warning("Garmin connect failed for %r: %s", user.username, exc)
         # 400, not 401: a failed *Garmin* login must not log the user out of this app.
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     user.garmin_email = garmin_email
@@ -53,6 +56,7 @@ def _garmin_api(user: models.User):
     try:
         return garmin_client.get_authenticated_client(decrypt_text(user.garmin_session_encrypted))
     except (ValueError, garmin_client.GarminAuthError) as exc:
+        log.warning("Garmin session of %r can't be resumed, asking to reconnect: %s", user.username, exc)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Your Garmin session expired, please reconnect Garmin. ({exc})",
@@ -93,6 +97,7 @@ def sync(
         result = garmin_sync.sync_user(db, api, user, datetime.date.today(), settings.garmin_sync_lookback_days)
         garmin_sync.save_session(db, api, user)
     except Exception as exc:  # noqa: BLE001 - only the activity list can fail a sync
+        log.exception("Garmin sync failed for %r", user.username)
         db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Garmin sync failed: {exc}") from exc
     finally:
@@ -118,6 +123,7 @@ def import_history(
     try:
         raw_activities = garmin_client.fetch_activities(api, since, until)
     except Exception as exc:  # noqa: BLE001
+        log.exception("Importing older activities failed for %r", user.username)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Garmin import failed: {exc}") from exc
     imported = garmin_sync.save_activities(db, user, raw_activities)
     db.commit()
