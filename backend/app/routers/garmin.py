@@ -3,7 +3,7 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from .. import garmin_client, garmin_details, models, schemas
+from .. import autosync, garmin_client, garmin_details, models, schemas
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_member
@@ -63,47 +63,20 @@ def sync(
     user: models.User = Depends(get_current_member),
 ):
     api = _garmin_api(user)
-
-    lookback_days = settings.garmin_sync_lookback_days
-    end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=lookback_days)
-
+    # The background sync may be working on this account: wait for it rather
+    # than run the same steps twice at once.
+    lock = autosync.user_lock(user.id)
+    if not lock.acquire(timeout=autosync.MANUAL_WAIT_SECONDS):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="A sync is already running in the background. Try again in a minute.")
     try:
-        raw_activities = garmin_client.fetch_activities(api, start_date, end_date)
-    except Exception as exc:  # noqa: BLE001
+        result = garmin_details.sync_user(db, api, user, datetime.date.today(), settings.garmin_sync_lookback_days)
+    except Exception as exc:  # noqa: BLE001 - only the activity list can fail a sync
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Garmin sync failed: {exc}") from exc
-
-    activities_synced = garmin_details.save_activities(db, user, raw_activities)
-    db.commit()
-
-    # Everything below is saved step by step and can't fail the sync: what
-    # Garmin doesn't answer now is simply asked again next time.
-    days_synced = sleep_synced = days_remaining = details_synced = 0
-    try:
-        days_synced, sleep_synced, days_remaining = garmin_details.sync_days(db, api, user, start_date, end_date)
-        db.commit()
-    except Exception:  # noqa: BLE001
-        db.rollback()
-    try:
-        details_synced = garmin_details.enrich_activities(db, api, user)
-        db.commit()
-    except Exception:  # noqa: BLE001
-        db.rollback()
-        details_synced = 0
-    try:
-        garmin_details.refresh_profile(db, api, user)
-        db.commit()
-    except Exception:  # noqa: BLE001
-        db.rollback()
-
-    return schemas.GarminSyncResponse(
-        activities_synced=activities_synced,
-        sleep_records_synced=sleep_synced,
-        lookback_days=lookback_days,
-        details_synced=details_synced,
-        days_synced=days_synced,
-        more_to_sync=days_remaining > 0 or garmin_details.pending_details(db, user) > 0,
-    )
+    finally:
+        lock.release()
+    return schemas.GarminSyncResponse(**result)
 
 
 @router.post("/import-history", response_model=schemas.HistoryImportResponse)

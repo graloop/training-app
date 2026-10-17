@@ -7,14 +7,33 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 is required but was not found on PATH." >&2
+# The newest Python 3.11+ on PATH: macOS's own python3 is 3.9, too old for the
+# pinned dependencies, so prefer a versioned one (e.g. Homebrew's python3.14).
+PYTHON=""
+for candidate in python3.14 python3.13 python3.12 python3.11 python3; do
+  if command -v "$candidate" >/dev/null 2>&1 \
+    && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+    PYTHON="$candidate"
+    break
+  fi
+done
+if [ -z "$PYTHON" ]; then
+  echo "Python 3.11+ is required but was not found on PATH (python3 is $(python3 --version 2>&1))." >&2
+  echo "Install one, e.g.: brew install python@3.14" >&2
   exit 1
 fi
 
+# A virtualenv stores its absolute path and Python: rebuild it when the
+# project folder was moved or its Python is too old.
+if [ -d backend/.venv ] && ! { backend/.venv/bin/pip --version >/dev/null 2>&1 \
+    && backend/.venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; }; then
+  echo "backend/.venv was made for another folder or an older Python: rebuilding it ..."
+  rm -rf backend/.venv
+fi
+
 if [ ! -d backend/.venv ]; then
-  echo "Creating Python virtualenv at backend/.venv ..."
-  python3 -m venv backend/.venv
+  echo "Creating Python virtualenv at backend/.venv with $($PYTHON --version) ..."
+  "$PYTHON" -m venv backend/.venv
 fi
 
 # shellcheck disable=SC1091

@@ -340,7 +340,8 @@ def test_log_text(client, auth):
     assert "NOTE: 4 sessions below still wait for effort, feel, laps and weather from Garmin" in text
     assert "  plan  run 0:30 — easy HR under 145 (done as planned)" in text
     assert "  done  bike 0:41 · 20.5 km · 30.0 km/h · avg HR 118 · effort not synced yet — Zwift" in text
-    assert "  plan  bike 1:00\n" in text  # 41 min vs 60 planned: not within 15%, so not marked done
+    # 41 min vs 60 planned: the same sport, so done, but not "as planned" (more than 15% off)
+    assert "  plan  bike 1:00 (done, 0:41 instead of 1:00)\n" in text
     assert "  done  yoga 0:20 · effort not synced yet" in text
     assert f"{label(monday + datetime.timedelta(days=1))} · no training" in text
     assert f"WEEK OF {label(THIS_MONDAY).upper()} · done 0:00 · planned" in text and "· in progress" in text
@@ -361,6 +362,9 @@ def test_client_date_is_used_only_when_plausible(client, auth):
     assert client.get("/api/plan/log", params={"today": tomorrow.isoformat()}, headers=auth).json()["end"] == tomorrow.isoformat()
     far = TODAY + datetime.timedelta(days=30)
     assert client.get("/api/plan/log", params={"today": far.isoformat()}, headers=auth).json()["end"] == TODAY.isoformat()
+
+
+_RULES = "RULE SET (the athlete's availability, constraints and rules: the plan must follow them)"
 
 
 # --- Richer log: details, recovery, athlete profile, notes -------------------------
@@ -440,12 +444,12 @@ def test_full_log_shows_details_recovery_and_the_athlete(client, auth):
     # the night
     assert f"{label(monday)} · sleep 80 (7:30, deep 1:30, REM 1:40) · RHR 50 · HRV 60 balanced · body battery +70 overnight" in text
 
-    athlete = text[text.index("\nATHLETE\n"):text.index("\nWEEK OF")]
+    athlete = text[text.index("\nATHLETE (from Garmin)\n"):text.index("\nWEEK OF")]
     assert "- max HR 192 · threshold HR 170 · threshold pace 4:30 /km · VO2max (run) 52 · weight 70.5 kg" in athlete
     assert "- HR zones: Z1 96–114 · Z2 115–133 · Z3 134–153 · Z4 154–172 · Z5 173+" in athlete
     assert "- Garmin race predictions: 5 km 20:10 · half marathon 1:35:00" in athlete
     assert "- Personal records: 5 km 20:00 (2024-05) · best 20 min power 251 W · longest ride 150.0 km (2023-08)" in athlete
-    assert "ABOUT THE ATHLETE (their own notes)\nFree on weekday mornings.\nPool closed on Saturdays." in athlete
+    assert _RULES + "\nFree on weekday mornings.\nPool closed on Saturdays." in athlete
     assert "- City half marathon · no date · target not set\n  Main race. Run matters most." in text
 
 
@@ -461,31 +465,66 @@ def test_summary_log_keeps_one_line_per_session(client, auth):
     weekly = text[text.index("\nWEEK OF"):]  # the athlete block above keeps its HR zones
     for detail_only in ("HR zones", "laps:", "intervals:", "cadence", "HRV", "normalized"):
         assert detail_only not in weekly
-    assert "\nATHLETE\n" in text and len(text) < len(full["text"])
+    assert "\nATHLETE (from Garmin)\n" in text and len(text) < len(full["text"])
     assert client.get("/api/plan/log", params={"detail": "everything"}, headers=auth).status_code == 422
 
 
 def test_log_before_any_details_or_profile(client, auth):
     text = client.get("/api/plan/log", headers=auth).json()["text"]
-    assert "ATHLETE\n- nothing from Garmin yet: press Sync with Garmin" in text
+    assert "ATHLETE (from Garmin)\n- nothing from Garmin yet: press Sync with Garmin" in text
     assert "TRAINING STATUS (Garmin)\n- nothing from Garmin yet: press Sync with Garmin" in text
     assert "EARLIER WEEKS (totals only)\n- no earlier activities stored" in text
     assert text.count("· not synced (no Garmin data yet)") == 6 and "no training" not in text  # nothing synced at all
-    assert "ABOUT THE ATHLETE (their own notes)\n- nothing written yet" in text
+    assert _RULES + "\n- nothing written yet" in text
+    assert "(Athlete tab)" in text
 
 
-def test_about_notes_round_trip_and_privacy(client, auth):
-    assert client.get("/api/plan/about", headers=auth).json() == {"notes": ""}
-    res = client.put("/api/plan/about", json={"notes": "  Exams in December.  "}, headers=auth)
-    assert res.json() == {"notes": "Exams in December."}
-    assert "ABOUT THE ATHLETE (their own notes)\nExams in December." in client.get("/api/plan/log", headers=auth).json()["text"]
-    assert client.put("/api/plan/about", json={"notes": "x" * 10001}, headers=auth).status_code == 422
+def test_rule_set_round_trip_and_privacy(client, auth):
+    assert client.get("/api/plan/rules", headers=auth).json() == {"rules": ""}
+    res = client.put("/api/plan/rules", json={"rules": "  Exams in December.  "}, headers=auth)
+    assert res.json() == {"rules": "Exams in December."}
+    assert _RULES + "\nExams in December." in client.get("/api/plan/log", headers=auth).json()["text"]
+    assert client.put("/api/plan/rules", json={"rules": "x" * 20001}, headers=auth).status_code == 422
     other = make_user(client, "other")
-    assert client.get("/api/plan/about", headers=other).json() == {"notes": ""}
+    assert client.get("/api/plan/rules", headers=other).json() == {"rules": ""}
     assert "Exams" not in client.get("/api/plan/log", headers=other).json()["text"]
-    assert client.get("/api/plan/about", headers=admin_auth(client)).status_code == 403
-    client.put("/api/plan/about", json={"notes": ""}, headers=auth)
+    assert client.get("/api/plan/rules", headers=admin_auth(client)).status_code == 403
+    client.put("/api/plan/rules", json={"rules": ""}, headers=auth)
     assert "- nothing written yet" in client.get("/api/plan/log", headers=auth).json()["text"]
+
+
+def test_older_notes_stand_in_for_the_rule_set_until_it_is_saved(client, auth):
+    with SessionLocal() as db:
+        user = db.query(models.User).filter(models.User.username == "athlete").one()
+        user.athlete_notes = "Pool closed Saturdays."
+        db.commit()
+    _save(client, auth, notes="Easy runs stay easy.")
+    assert client.get("/api/plan/rules", headers=auth).json()["rules"] == "Pool closed Saturdays.\n\nEasy runs stay easy."
+    # saving the draft later without notes keeps them
+    client.put("/api/plan/draft", json={"start_date": NEXT_MONDAY.isoformat(), "weeks": 2, "text": ""}, headers=auth)
+    assert "Easy runs stay easy." in client.get("/api/plan/rules", headers=auth).json()["rules"]
+    client.put("/api/plan/rules", json={"rules": "Only this."}, headers=auth)
+    assert client.get("/api/plan/rules", headers=auth).json()["rules"] == "Only this."
+
+
+def test_athlete_profile_round_trip_and_log(client, auth):
+    empty = client.get("/api/athlete", headers=auth).json()
+    assert empty["profile"]["ftp_watts"] is None and empty["garmin"]
+    body = {"ftp_watts": 250, "ftp_date": "2026-03-25", "bike_zones": "Z2 138-187 W", "threshold_pace": "4:30",
+            "css_pace": "1:45", "equipment": "  Smart trainer  ", "health": "", "weight_kg": 70.5}
+    res = client.put("/api/athlete", json=body, headers=auth).json()["profile"]
+    assert res["ftp_watts"] == 250 and res["equipment"] == "Smart trainer" and res["health"] is None
+    text = client.get("/api/plan/log", headers=auth).json()["text"]
+    assert "- Bike: FTP 250 W (tested 2026-03-25) · power zones Z2 138-187 W" in text
+    assert "- Run: threshold pace 4:30 /km" in text and "- Swim: CSS 1:45 /100 m" in text
+    assert "- Equipment: Smart trainer" in text and "weight 70.5 kg" in text
+    assert client.put("/api/athlete", json={"css_pace": "fast"}, headers=auth).status_code == 422
+    assert client.put("/api/athlete", json={"ftp_watts": 5}, headers=auth).status_code == 422
+    other = make_user(client, "other")
+    assert client.get("/api/athlete", headers=other).json()["profile"]["ftp_watts"] is None
+    assert client.get("/api/athlete", headers=admin_auth(client)).status_code == 403
+    client.put("/api/athlete", json={}, headers=auth)
+    assert "FTP" not in client.get("/api/plan/log", headers=auth).json()["text"].split("ATHLETE (from Garmin)")[0]
 
 
 # --- Phase 3: recovery per day, training status, reps, swim, weather, history ------

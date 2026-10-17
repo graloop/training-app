@@ -58,8 +58,10 @@
   <main id="app-view" class="hidden">
     <nav class="tabs" aria-label="Sections">
       <button id="tab-btn-calendar" type="button" class="tab active" aria-current="page">Calendar</button>
+      <button id="tab-btn-athlete" type="button" class="tab">Athlete</button>
       <button id="tab-btn-plan" type="button" class="tab">Plan</button>
       <button id="tab-btn-import" type="button" class="tab">Import</button>
+      <button id="tab-btn-history" type="button" class="tab">History</button>
     </nav>
 
     <div id="tab-calendar">
@@ -94,6 +96,7 @@
       </div>
       <div class="legend">
         <span class="entry completed">Done as planned</span>
+        <span class="entry completed-off">Done, other duration</span>
         <span class="entry done">Done (Garmin)</span>
         <span class="entry planned">Planned</span>
       </div>
@@ -101,10 +104,81 @@
 
     </div>
 
-    <div id="tab-plan" class="hidden">
-      <p class="hint plan-intro">What you are training for, and the plan for the coming weeks. Ask Claude in Chrome to write the plan, or type it in the draft further down. Nothing changes on the calendar until you press <strong>Put this plan on the calendar</strong>.</p>
+    <div id="tab-athlete" class="hidden">
+      <p class="hint plan-intro">Who you are as an athlete: your objectives, your tested numbers and zones, and what Garmin knows. Everything here is read with your history when a plan is written. Leave a box empty if you don't know it yet.</p>
 
-      <!-- The Objectives panel is moved here, above the preview, while this tab is open (see showTab). -->
+      <section id="objectives-panel" class="panel" aria-labelledby="objectives-title">
+        <div class="panel-header">
+          <h2 id="objectives-title">Objectives</h2>
+          <button id="objective-add" type="button" class="btn-ghost">+ Add objective</button>
+        </div>
+        <div id="objectives-list" class="objectives-list"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="profile-title">
+        <h2 id="profile-title">Benchmarks and zones</h2>
+        <p class="hint">Your own tested numbers. They override Garmin's estimates when a plan is written.</p>
+        <form id="profile-form" novalidate>
+          <fieldset class="profile-group">
+            <legend>Body and heart rate</legend>
+            <div class="profile-fields">
+              <div><label for="pf-weight_kg">Weight (kg)</label><input id="pf-weight_kg" type="number" min="20" max="300" step="0.1" inputmode="decimal" /></div>
+              <div><label for="pf-height_cm">Height (cm)</label><input id="pf-height_cm" type="number" min="100" max="250" step="1" inputmode="numeric" /></div>
+              <div><label for="pf-max_hr">Max HR (bpm)</label><input id="pf-max_hr" type="number" min="100" max="230" step="1" inputmode="numeric" /></div>
+              <div><label for="pf-threshold_hr">Threshold HR (bpm)</label><input id="pf-threshold_hr" type="number" min="80" max="230" step="1" inputmode="numeric" /></div>
+              <div><label for="pf-resting_hr">Resting HR (bpm)</label><input id="pf-resting_hr" type="number" min="25" max="120" step="1" inputmode="numeric" /></div>
+            </div>
+          </fieldset>
+          <fieldset class="profile-group">
+            <legend>Bike</legend>
+            <div class="profile-fields">
+              <div><label for="pf-ftp_watts">FTP (W)</label><input id="pf-ftp_watts" type="number" min="50" max="700" step="1" inputmode="numeric" /></div>
+              <div><label for="pf-ftp_date">FTP tested on</label><input id="pf-ftp_date" type="date" /></div>
+            </div>
+            <label for="pf-bike_zones">Power zones</label>
+            <textarea id="pf-bike_zones" rows="2" maxlength="1000" placeholder="e.g. Z1 &lt;138 W · Z2 138–187 · Z3 188–225 · Z4 226–262 · Z5 263+"></textarea>
+          </fieldset>
+          <fieldset class="profile-group">
+            <legend>Run</legend>
+            <div class="profile-fields">
+              <div><label for="pf-threshold_pace">Threshold pace (min:sec /km)</label><input id="pf-threshold_pace" type="text" inputmode="numeric" placeholder="4:30" pattern="\d{1,2}:\d{2}" /></div>
+            </div>
+            <label for="pf-run_zones">Pace or HR zones</label>
+            <textarea id="pf-run_zones" rows="2" maxlength="1000" placeholder="e.g. Easy 5:30–6:10 · Tempo 4:50 · Threshold 4:30 · Interval 4:10"></textarea>
+          </fieldset>
+          <fieldset class="profile-group">
+            <legend>Swim</legend>
+            <div class="profile-fields">
+              <div><label for="pf-css_pace">CSS (min:sec /100 m)</label><input id="pf-css_pace" type="text" inputmode="numeric" placeholder="1:45" pattern="\d{1,2}:\d{2}" /></div>
+            </div>
+            <label for="pf-swim_zones">Swim zones</label>
+            <textarea id="pf-swim_zones" rows="2" maxlength="1000" placeholder="e.g. Easy CSS +10 s · Steady CSS +5 s · Threshold CSS"></textarea>
+          </fieldset>
+          <fieldset class="profile-group">
+            <legend>Everything else</legend>
+            <label for="pf-equipment">Equipment</label>
+            <textarea id="pf-equipment" rows="2" maxlength="2000" placeholder="e.g. Smart trainer (Wahoo Kickr) for Zwift, no power meter outside. HR strap. 25 m pool."></textarea>
+            <label for="pf-health">Health and injuries</label>
+            <textarea id="pf-health" rows="2" maxlength="3000" placeholder="e.g. Sick in September 2026. Sore left knee after long runs in 2025."></textarea>
+            <label for="pf-other">Anything else worth knowing</label>
+            <textarea id="pf-other" rows="2" maxlength="3000" placeholder="e.g. Best results: Ironman Ottawa 10:47 (Aug 2026). Weight goal 68 kg by spring."></textarea>
+          </fieldset>
+          <div class="form-row">
+            <button id="profile-save" type="submit">Save</button>
+            <span id="profile-status" class="status hidden" role="status"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="garmin-profile-title">
+        <h2 id="garmin-profile-title">From Garmin</h2>
+        <p class="hint">Zones, thresholds, records and training status as Garmin has them, refreshed on each sync. You can't edit them here: enter your own numbers above instead.</p>
+        <pre id="athlete-garmin" class="log-text" tabindex="0" aria-labelledby="garmin-profile-title"></pre>
+      </section>
+    </div>
+
+    <div id="tab-plan" class="hidden">
+      <p class="hint plan-intro">The plan for the coming weeks, and the rules it follows. Ask Claude in Chrome to write the plan, or type it in the draft further down. Nothing changes on the calendar until you press <strong>Put this plan on the calendar</strong>.</p>
 
       <section id="plan-panel" class="panel" aria-labelledby="preview-title">
         <div class="panel-header">
@@ -146,9 +220,6 @@ Wed Oct 14 | swim | 1:00 | 8×100 m steady, 20 s rest
 Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
         <p id="draft-format" class="hint">Format: one session per line, written as <code>date | sport | duration | details</code>. Date like <code>Tue Oct 13</code> or <code>2026-10-13</code>. Sport: swim, bike, run or strength. Duration like <code>1:15</code> or <code>45 min</code>. Details are optional (the workout itself). Two sessions on one day are two lines. Lines starting with <code>#</code> are comments, and rest days need no line.</p>
 
-        <label for="draft-notes">Block notes (goal, zones, weekly rhythm, rules of thumb)</label>
-        <textarea id="draft-notes" rows="5" placeholder="e.g. Goal: a spring half marathon. Easy runs stay conversational. One rest day a week, long run on Sunday."></textarea>
-
         <div class="form-row">
           <button id="draft-save" type="button">Save and preview</button>
           <span id="draft-status" class="status hidden" role="status"></span>
@@ -157,50 +228,13 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
         <div id="draft-errors" class="draft-errors hidden" role="alert"></div>
       </section>
 
-      <section class="panel" aria-labelledby="about-title">
-        <h2 id="about-title">About you: what Garmin doesn't know</h2>
-        <p class="hint">Availability, upcoming constraints, injuries, equipment, benchmarks Garmin doesn't have. Claude reads it with the training log below.</p>
-        <textarea id="about-text" aria-labelledby="about-title" rows="4" maxlength="10000" placeholder="e.g. Free on weekday mornings and Sunday. Pool is closed on Saturdays. Exams the first week of December. Indoor trainer at home. Sore left knee after long runs."></textarea>
+      <section class="panel" aria-labelledby="rules-title">
+        <h2 id="rules-title">Rule set</h2>
+        <p class="hint">The rules every plan follows: when you can train, school and work schedule, exam periods, holidays and travel, the weekly rhythm, rules of thumb (rest when resting HR is up, long run on Sunday…). Claude reads it with your history.</p>
+        <textarea id="rules-text" aria-labelledby="rules-title" rows="10" maxlength="20000" placeholder="e.g. Free on weekday mornings and Sunday. Pool closed on Saturdays. Exams the first two weeks of December: deload. One rest day a week. Easy runs stay conversational. If resting HR is 5+ bpm above normal, swap the session for rest."></textarea>
         <div class="form-row">
-          <button id="about-save" type="button" class="btn-ghost">Save</button>
-          <span id="about-status" class="status hidden" role="status"></span>
-        </div>
-      </section>
-
-      <section class="panel" aria-labelledby="log-title">
-        <div class="panel-header">
-          <h2 id="log-title">Training log <span class="subtle">for Claude</span></h2>
-          <div class="calendar-nav">
-            <label for="log-weeks" class="inline-label">Show the last</label>
-            <select id="log-weeks" aria-label="How many weeks of training log to show">
-              <option value="2">2 weeks</option>
-              <option value="4">4 weeks</option>
-              <option value="6" selected>6 weeks</option>
-              <option value="8">8 weeks</option>
-              <option value="12">12 weeks</option>
-            </select>
-            <label for="log-detail" class="inline-label">Detail</label>
-            <select id="log-detail" aria-label="How much detail the training log shows">
-              <option value="full" selected>Full (zones, laps, recovery)</option>
-              <option value="summary">Summary (one line per session)</option>
-            </select>
-            <button id="log-sync" type="button" class="btn-ghost">Sync with Garmin</button>
-            <button id="log-copy" type="button" class="btn-ghost">Copy log for Claude</button>
-          </div>
-        </div>
-        <p class="hint">You don't need to read this: it is what Claude reads to write your plan. What you did (from Garmin, with the effort and feel you answered on the watch), your sleep and recovery, your zones and records, your objectives and what is already planned.</p>
-        <p id="log-status" class="status hidden" role="status"></p>
-        <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
-        <div class="form-row import-row">
-          <label for="import-months" class="inline-label">Long-term picture:</label>
-          <select id="import-months" aria-label="How far back to import older activities">
-            <option value="6">last 6 months</option>
-            <option value="12" selected>last 12 months</option>
-            <option value="24">last 2 years</option>
-            <option value="36">last 3 years</option>
-          </select>
-          <button id="import-btn" type="button" class="btn-ghost">Import older activities</button>
-          <span id="import-status" class="status hidden" role="status"></span>
+          <button id="rules-save" type="button" class="btn-ghost">Save</button>
+          <span id="rules-status" class="status hidden" role="status"></span>
         </div>
       </section>
     </div>
@@ -272,14 +306,50 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
       </section>
     </div>
 
-    <!-- What you're training for: under the calendar, and at the top of the Plan tab. -->
-    <section id="objectives-panel" class="panel" aria-labelledby="objectives-title">
-      <div class="panel-header">
-        <h2 id="objectives-title">Objectives</h2>
-        <button id="objective-add" type="button" class="btn-ghost">+ Add objective</button>
-      </div>
-      <div id="objectives-list" class="objectives-list"></div>
-    </section>
+    <div id="tab-history" class="hidden">
+      <p class="hint plan-intro">For the AI, not for reading: everything stored about your training, as text Claude in Chrome reads to coach you and write the plan. Ask Claude to read this tab, then to write the plan on the Plan tab.</p>
+
+      <section class="panel" aria-labelledby="log-title">
+        <div class="panel-header">
+          <h2 id="log-title">Training history</h2>
+          <div class="calendar-nav">
+            <label for="log-weeks" class="inline-label">Show the last</label>
+            <select id="log-weeks" aria-label="How many weeks of training log to show">
+              <option value="2">2 weeks</option>
+              <option value="4">4 weeks</option>
+              <option value="6">6 weeks</option>
+              <option value="8">8 weeks</option>
+              <option value="12">12 weeks</option>
+              <option value="16">16 weeks</option>
+              <option value="26" selected>26 weeks</option>
+            </select>
+            <label for="log-detail" class="inline-label">Detail</label>
+            <select id="log-detail" aria-label="How much detail the training log shows">
+              <option value="full" selected>Full (zones, laps, recovery)</option>
+              <option value="summary">Summary (one line per session)</option>
+            </select>
+            <button id="log-sync" type="button" class="btn-ghost">Sync with Garmin</button>
+            <button id="log-copy" type="button" class="btn-ghost">Copy log for Claude</button>
+          </div>
+        </div>
+        <p class="hint">Objectives, the athlete's numbers and Garmin's, the rule set, every session with effort and feel, sleep and recovery, what is planned, earlier weeks as totals, then the plan being written.</p>
+        <p id="log-status" class="status hidden" role="status"></p>
+        <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
+        <h3 class="log-subtitle">The plan being written</h3>
+        <pre id="log-context" class="log-text" tabindex="0" aria-label="The weeks being planned and the current draft"></pre>
+        <div class="form-row import-row">
+          <label for="import-months" class="inline-label">Long-term picture:</label>
+          <select id="import-months" aria-label="How far back to import older activities">
+            <option value="6">last 6 months</option>
+            <option value="12" selected>last 12 months</option>
+            <option value="24">last 2 years</option>
+            <option value="36">last 3 years</option>
+          </select>
+          <button id="import-btn" type="button" class="btn-ghost">Import older activities</button>
+          <span id="import-status" class="status hidden" role="status"></span>
+        </div>
+      </section>
+    </div>
 
   </main>
 

@@ -292,6 +292,9 @@ button:hover { background: var(--accent-hover); }
 /* A planned session that was done within 15% of its planned time. */
 .entry.completed { background: #6ee7b7; color: #064e3b; border: 1px solid #059669; font-weight: 600; }
 .entry.completed .entry-extra { color: #065f46; font-weight: 400; }
+/* Done, but more than 15% off the planned time: same green family, lighter, dashed. */
+.entry.completed-off { background: #d1fae5; color: #064e3b; border: 1px dashed #059669; }
+.entry.completed-off .entry-extra, .entry.completed-off .entry-notes { color: #065f46; }
 .entry.planned { background: var(--planned); border: 1px dashed var(--planned-border); }
 .day-cell .entry.planned { cursor: pointer; }
 .day-cell .entry.planned:hover { border-style: solid; }
@@ -574,6 +577,19 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 .split-table td:not(:first-child), .split-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
 #draft-confirm.confirming { background: var(--danger); }
 #draft-confirm:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* --- History tab: the whole log on the page, no scroll box --- */
+#tab-history .log-text { max-height: none; }
+.log-subtitle { margin: 20px 0 8px; font-size: 0.95rem; }
+
+/* --- Athlete tab --- */
+.profile-group { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px 14px; margin: 0 0 14px; min-width: 0; }
+.profile-group legend { font-weight: 600; padding: 0 4px; }
+.profile-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; }
+.profile-fields input { width: 100%; box-sizing: border-box; }
+.profile-group > label { display: block; margin: 10px 0 4px; }
+.profile-group textarea { width: 100%; box-sizing: border-box; }
+#rules-text { width: 100%; box-sizing: border-box; }
 
 /* --- Import tab --- */
 .share-card { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }

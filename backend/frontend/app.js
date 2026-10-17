@@ -108,10 +108,13 @@ async function showAppView({ sync = false } = {}) {
   weekOffset = 0;
   showView("app-view");
   renderGarminState();
-  showTab(TABS.find((tab) => `#${tab}` === location.hash) || "calendar", { load: false });
+  const hash = location.hash === "#logs" ? "#history" : location.hash; // the History tab used to be "Logs"
+  showTab(TABS.find((tab) => `#${tab}` === hash) || "calendar", { load: false });
   await loadAll();
+  if (currentTab === "athlete") await loadAthletePage();
   if (currentTab === "plan") await loadPlanPage();
   if (currentTab === "import") await loadImportPage();
+  if (currentTab === "history") await loadHistoryPage();
   if (sync && me.garmin_connected) runSync();
 }
 
@@ -470,7 +473,8 @@ function renderWeekSummary(week) {
   return cell;
 }
 
-// Planned vs. done: same day, same sport, and done time within 15% of the plan.
+// Planned vs. done, same day and same sport: within 15% of the planned time is
+// "done as planned"; any other duration is still done, just not as planned.
 const MATCH_TOLERANCE = 0.15;
 
 function sportCategory(type) {
@@ -482,31 +486,35 @@ function sportCategory(type) {
   return null;
 }
 
-// Pairs each planned session with the closest same-sport activity of the day
-// that's within tolerance. Returns the pairs plus whatever is left unmatched.
+// Pairs each planned session with the closest same-sport activity of the day:
+// first those within tolerance, then any duration. One activity covers one
+// planned session (split sessions are not added up). Returns the pairs, with
+// `asPlanned`, plus whatever is left unmatched.
 function matchDay(day) {
-  const activities = [...day.activities];
-  const planned = [];
+  const activities = day.activities.filter((a) => a.duration_seconds);
+  const unmatchable = day.activities.filter((a) => !a.duration_seconds);
   const pairs = [];
-  for (const p of day.planned) {
-    const category = sportCategory(p.activity_type);
-    const plannedMin = p.planned_duration_minutes || 0;
-    let best = null;
-    if (category && plannedMin > 0) {
+  const left = new Set(day.planned);
+  for (const strict of [true, false]) {
+    for (const p of day.planned) {
+      if (!left.has(p)) continue;
+      const category = sportCategory(p.activity_type);
+      const plannedMin = p.planned_duration_minutes || 0;
+      if (!category || plannedMin <= 0) continue;
+      let best = null;
       for (const a of activities) {
-        if (sportCategory(a.activity_type) !== category || !a.duration_seconds) continue;
+        if (sportCategory(a.activity_type) !== category) continue;
         const diff = Math.abs(a.duration_seconds / 60 - plannedMin) / plannedMin;
-        if (diff <= MATCH_TOLERANCE && (!best || diff < best.diff)) best = { a, diff };
+        if ((!strict || diff <= MATCH_TOLERANCE) && (!best || diff < best.diff)) best = { a, diff };
+      }
+      if (best) {
+        pairs.push({ planned: p, activity: best.a, asPlanned: best.diff <= MATCH_TOLERANCE });
+        activities.splice(activities.indexOf(best.a), 1);
+        left.delete(p);
       }
     }
-    if (best) {
-      pairs.push({ planned: p, activity: best.a });
-      activities.splice(activities.indexOf(best.a), 1);
-    } else {
-      planned.push(p);
-    }
   }
-  return { pairs, activities, planned };
+  return { pairs, activities: [...activities, ...unmatchable], planned: day.planned.filter((p) => left.has(p)) };
 }
 
 // What was answered on the watch after the session: ", effort 7/10, felt strong".
@@ -523,10 +531,30 @@ function makeActivityEntry(className, a) {
   const load = a.training_load != null ? Math.round(a.training_load) : null;
   const entry = makeEntry(className, a.activity_type, detail, load != null ? ` · load ${load}` : "");
   const te = a.aerobic_training_effect != null ? `, aerobic TE ${a.aerobic_training_effect.toFixed(1)}` : "";
-  entry.title = `Done (Garmin): ${a.name || sportLabel(a.activity_type)}, ${detail}${load != null ? `, training load ${load}` : ""}${te}${effortText(a)}`;
+  entry.title = `Done (Garmin): ${a.name || sportLabel(a.activity_type)}, ${detail}${load != null ? `, training load ${load}` : ""}${te}${effortText(a)}${legsText(a, true)}`;
   entry.setAttribute("role", "note");
   entry.setAttribute("aria-label", entry.title);
+  if (a.legs && a.legs.length) addNotes(entry, legsText(a));
   return entry;
+}
+
+// A multisport race's legs: "🏊 0:42 · 🚴 2:40 · 🏃 1:45" (transitions in the long form only).
+function legsText(a, long = false) {
+  if (!a.legs || !a.legs.length) return "";
+  const parts = [];
+  let transition = 0;
+  for (const leg of a.legs) {
+    const time = fmtHM((leg.duration_seconds || 0) / 60);
+    if (leg.sport === "other" && (leg.type || "").includes("transition")) {
+      transition += 1;
+      if (long) parts.push(`T${transition} ${time}`);
+      continue;
+    }
+    const km = leg.distance_meters >= 100 ? ` ${(leg.distance_meters / 1000).toFixed(1)} km` : "";
+    const name = { swim: "Swim", bike: "Bike", run: "Run" }[leg.sport] || sportLabel(leg.type);
+    parts.push(long ? `${name} ${time}${km}` : `${activityIcon(leg.type)} ${time}`);
+  }
+  return long ? `. Legs: ${parts.join(", ")}` : parts.join(" · ");
 }
 
 function addNotes(entry, notes) {
@@ -586,11 +614,11 @@ function renderCalendar(data) {
 
       const { pairs, activities, planned } = matchDay(day);
 
-      for (const { planned: p, activity: a } of pairs) {
-        const entry = makeActivityEntry("completed", a);
+      for (const { planned: p, activity: a, asPlanned } of pairs) {
+        const entry = makeActivityEntry(asPlanned ? "completed" : "completed-off", a);
         const load = a.training_load != null ? ` · load ${Math.round(a.training_load)}` : "";
         entry.title =
-          `✓ Done as planned: ${sportLabel(p.activity_type)}, planned ${fmtHours(p.planned_duration_minutes)}, ` +
+          `✓ ${asPlanned ? "Done as planned" : "Done, other duration"}: ${sportLabel(p.activity_type)}, planned ${fmtHours(p.planned_duration_minutes)}, ` +
           `did ${fmtHours(a.duration_seconds / 60)}${load}${effortText(a)}${p.notes ? `. Plan: ${p.notes}` : ""}. Click to edit the plan.`;
         addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
@@ -790,7 +818,8 @@ async function runSync(statusEl = syncStatus) {
       totals.days += result.days_synced;
       totals.details += result.details_synced;
       await loadCalendar();
-      if (currentTab === "plan") await loadLog();
+      if (currentTab === "history") await loadHistoryPage();
+      if (currentTab === "athlete") await loadAthletePage();
       if (!result.more_to_sync) break;
     }
     showStatus(
@@ -1001,7 +1030,6 @@ function renderObjectives(objectives) {
 async function loadObjectives() {
   const data = await api("/api/objectives");
   renderObjectives(data.objectives);
-  if (currentTab === "plan") loadLog(); // the log lists the objectives
 }
 
 document.getElementById("objective-add").addEventListener("click", () => {
@@ -1015,9 +1043,9 @@ document.getElementById("objective-add").addEventListener("click", () => {
   renderObjectiveEdit(card, { id: null, title: "", event_date: null, target_time: null, notes: null });
 });
 
-// --- Calendar / Plan tabs ---
+// --- Tabs ---
 
-const TABS = ["calendar", "plan", "import"];
+const TABS = ["calendar", "athlete", "plan", "import", "history"];
 let currentTab = "calendar";
 
 function showTab(name, { load = true } = {}) {
@@ -1029,19 +1057,16 @@ function showTab(name, { load = true } = {}) {
     if (tab === name) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
   }
-  // Objectives sit under the calendar, and on the Plan tab above the plan that works towards them.
-  const objectivesPanel = document.getElementById("objectives-panel");
-  if (name === "plan") document.getElementById("plan-panel").before(objectivesPanel);
-  else document.getElementById("app-view").appendChild(objectivesPanel);
-  objectivesPanel.classList.toggle("hidden", name === "import");
   try {
     history.replaceState(null, "", name === "calendar" ? location.pathname : `#${name}`);
   } catch (_) {
     /* not essential */
   }
   if (!load) return;
-  if (name === "plan") loadPlanPage();
+  if (name === "athlete") loadAthletePage();
+  else if (name === "plan") loadPlanPage();
   else if (name === "import") loadImportPage();
+  else if (name === "history") loadHistoryPage();
   else loadCalendar();
 }
 
@@ -1052,13 +1077,12 @@ for (const tab of TABS) document.getElementById(`tab-btn-${tab}`).addEventListen
 const logEl = document.getElementById("training-log");
 const logWeeks = document.getElementById("log-weeks");
 const logDetail = document.getElementById("log-detail");
-const aboutText = document.getElementById("about-text");
-const aboutStatus = document.getElementById("about-status");
+const rulesText = document.getElementById("rules-text");
+const rulesStatus = document.getElementById("rules-status");
 const logStatus = document.getElementById("log-status");
 const planStart = document.getElementById("plan-start");
 const planWeeks = document.getElementById("plan-weeks");
 const draftText = document.getElementById("draft-text");
-const draftNotes = document.getElementById("draft-notes");
 const draftStatus = document.getElementById("draft-status");
 const draftErrors = document.getElementById("draft-errors");
 const draftPreview = document.getElementById("draft-preview");
@@ -1268,7 +1292,6 @@ function applyDraft(draft, { fill = false } = {}) {
     }
     planWeeks.value = String(draft.weeks);
     draftText.value = draft.text;
-    draftNotes.value = draft.notes;
     draftDirty = false;
   }
   document.getElementById("plan-range").textContent = fmtSpan(draft.start_date, draft.end_date);
@@ -1285,7 +1308,6 @@ async function saveDraft({ quiet = false } = {}) {
         start_date: planStart.value,
         weeks: Number(planWeeks.value),
         text: draftText.value,
-        notes: draftNotes.value,
       }),
     });
     draftDirty = false;
@@ -1304,15 +1326,11 @@ async function saveDraft({ quiet = false } = {}) {
 }
 
 async function loadPlanPage() {
-  for (const el of [draftStatus, confirmStatus, logStatus, aboutStatus, importStatus]) el.classList.add("hidden");
+  for (const el of [draftStatus, confirmStatus, logStatus, rulesStatus, importStatus]) el.classList.add("hidden");
   confirmView.classList.add("hidden");
   try {
-    const [draft, about] = await Promise.all([
-      api(`/api/plan/draft?today=${isoDate(new Date())}`),
-      api("/api/plan/about"),
-      loadLog(),
-    ]);
-    aboutText.value = about.notes;
+    const [draft, rules] = await Promise.all([api(`/api/plan/draft?today=${isoDate(new Date())}`), api("/api/plan/rules")]);
+    rulesText.value = rules.rules;
     applyDraft(draft, { fill: true });
   } catch (err) {
     if (err.status !== 401) showStatus(confirmStatus, err.message, true);
@@ -1338,7 +1356,7 @@ importBtn.addEventListener("click", async () => {
         `${fmtLongDate(result.since)}. They are in the log under "Earlier weeks".`
     );
     importStatus.classList.add("ok");
-    await loadLog();
+    await loadHistoryPage();
   } catch (err) {
     if (err.status !== 401) showStatus(importStatus, err.message, true);
   } finally {
@@ -1346,26 +1364,23 @@ importBtn.addEventListener("click", async () => {
   }
 });
 
-// "About you" is saved on its own and shows up in the log.
-async function saveAbout() {
+// The rule set is saved on its own and shows up in the history.
+async function saveRules() {
   try {
-    aboutText.value = (await api("/api/plan/about", { method: "PUT", body: JSON.stringify({ notes: aboutText.value }) })).notes;
-    showStatus(aboutStatus, "Saved. It is now part of the log.");
-    aboutStatus.classList.add("ok");
-    await loadLog();
+    rulesText.value = (await api("/api/plan/rules", { method: "PUT", body: JSON.stringify({ rules: rulesText.value }) })).rules;
+    showStatus(rulesStatus, "Saved. It is now part of the History tab.");
+    rulesStatus.classList.add("ok");
   } catch (err) {
-    if (err.status !== 401) showStatus(aboutStatus, err.message, true);
+    if (err.status !== 401) showStatus(rulesStatus, err.message, true);
   }
 }
-document.getElementById("about-save").addEventListener("click", saveAbout);
-aboutText.addEventListener("change", saveAbout);
-for (const el of [draftText, draftNotes]) {
-  el.addEventListener("input", () => {
-    draftDirty = true;
-  });
-  // Saving when the box loses focus keeps the preview current without an extra click.
-  el.addEventListener("change", () => saveDraft());
-}
+document.getElementById("rules-save").addEventListener("click", saveRules);
+rulesText.addEventListener("change", saveRules);
+draftText.addEventListener("input", () => {
+  draftDirty = true;
+});
+// Saving when the box loses focus keeps the preview current without an extra click.
+draftText.addEventListener("change", () => saveDraft());
 for (const el of [planStart, planWeeks]) el.addEventListener("change", () => saveDraft());
 document.getElementById("draft-save").addEventListener("click", async () => {
   const draft = await saveDraft();
@@ -1373,20 +1388,38 @@ document.getElementById("draft-save").addEventListener("click", async () => {
   if (draft && !draft.errors.length) document.getElementById("plan-panel").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
-// The log, the weeks being planned and the line format, ready to paste into a Claude conversation.
-document.getElementById("log-copy").addEventListener("click", async () => {
-  const start = planDraft ? planDraft.start_date : planStart.value;
+// --- History tab: everything Claude in Chrome needs, on one page ---
+
+const logContext = document.getElementById("log-context");
+
+// The weeks being planned, the line format and the current draft.
+function planContextText(draft) {
   const parts = [
-    logEl.textContent,
-    "",
     "HOW TO WRITE THE PLAN",
-    planDraft ? `Weeks to plan: ${fmtSpan(planDraft.start_date, planDraft.end_date)}.` : `Plan from the week of ${fmtLongDate(start)}.`,
+    `Weeks to plan: ${fmtSpan(draft.start_date, draft.end_date)} (change them on the Plan tab).`,
     "Give one session per line as: date | sport | duration | details",
     'Date like "Tue Oct 13", sport swim / bike / run / strength, duration like 1:15. Two sessions on one day are two lines; rest days need no line.',
+    'In the app: write the lines in the Plan tab\'s "Draft sessions" box and press "Save and preview". The athlete puts it on the calendar.',
+    "",
+    `CURRENT DRAFT (${draft.sessions_count} session${draft.sessions_count === 1 ? "" : "s"}${draft.errors.length ? `, ${draft.errors.length} line(s) with a problem` : ""})`,
+    (draft.text || "").trim() || "- empty",
   ];
-  if (draftNotes.value.trim()) parts.push("", "BLOCK NOTES", draftNotes.value.trim());
-  if (draftText.value.trim()) parts.push("", "CURRENT DRAFT", draftText.value.trim());
-  const text = parts.join("\n");
+  return parts.join("\n");
+}
+
+async function loadHistoryPage() {
+  for (const el of [logStatus, importStatus]) el.classList.add("hidden");
+  try {
+    const [draft] = await Promise.all([api(`/api/plan/draft?today=${isoDate(new Date())}`), loadLog()]);
+    logContext.textContent = planContextText(draft);
+  } catch (err) {
+    if (err.status !== 401) showStatus(logStatus, err.message, true);
+  }
+}
+
+// The same text, ready to paste into a normal Claude conversation.
+document.getElementById("log-copy").addEventListener("click", async () => {
+  const text = `${logEl.textContent}\n\n${logContext.textContent}`;
   try {
     await navigator.clipboard.writeText(text);
     showStatus(logStatus, "Copied. Paste it into a Claude conversation and ask for the plan.");
@@ -1438,6 +1471,56 @@ confirmView.addEventListener("click", () => {
 async function loadAll() {
   await Promise.all([loadCalendar(), loadObjectives()]);
 }
+
+// --- Athlete tab: objectives, the athlete's own numbers, and what Garmin knows ---
+
+const profileForm = document.getElementById("profile-form");
+const profileStatus = document.getElementById("profile-status");
+const PROFILE_NUMBERS = ["weight_kg", "height_cm", "max_hr", "threshold_hr", "resting_hr", "ftp_watts"];
+const PROFILE_TEXTS = ["ftp_date", "bike_zones", "threshold_pace", "run_zones", "css_pace", "swim_zones", "equipment", "health", "other"];
+
+function fillProfile(data) {
+  for (const key of [...PROFILE_NUMBERS, ...PROFILE_TEXTS]) {
+    const value = data.profile[key];
+    document.getElementById(`pf-${key}`).value = value == null ? "" : String(value);
+  }
+  document.getElementById("athlete-garmin").textContent = data.garmin.join("\n");
+}
+
+async function loadAthletePage() {
+  profileStatus.classList.add("hidden");
+  try {
+    fillProfile(await api(`/api/athlete?today=${isoDate(new Date())}`));
+  } catch (err) {
+    if (err.status !== 401) showStatus(profileStatus, err.message, true);
+  }
+}
+
+profileForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = {};
+  for (const key of PROFILE_NUMBERS) {
+    const value = document.getElementById(`pf-${key}`).value.trim();
+    if (value) body[key] = Number(value);
+  }
+  for (const key of PROFILE_TEXTS) {
+    const value = document.getElementById(`pf-${key}`).value.trim();
+    if (value) body[key] = value;
+  }
+  for (const key of ["threshold_pace", "css_pace"]) {
+    if (body[key] && !/^\d{1,2}:\d{2}$/.test(body[key])) {
+      showStatus(profileStatus, `Write the ${key === "css_pace" ? "CSS" : "threshold pace"} as min:sec, like 4:30.`, true);
+      return document.getElementById(`pf-${key}`).focus();
+    }
+  }
+  try {
+    fillProfile(await api(`/api/athlete?today=${isoDate(new Date())}`, { method: "PUT", body: JSON.stringify(body) }));
+    showStatus(profileStatus, "Saved. It is now part of the History tab.");
+    profileStatus.classList.add("ok");
+  } catch (err) {
+    if (err.status !== 401) showStatus(profileStatus, err.status === 422 ? "One of the numbers is out of range: check them and save again." : err.message, true);
+  }
+});
 
 // --- Import tab: your share code, and copying someone's planned sessions ---
 

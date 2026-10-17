@@ -35,8 +35,11 @@ adjust sessions — it edits the page like you would.
   opens a small window to plan a swim, ride, run or strength session, its
   duration and the workout details (shown under the session).
   **← Earlier / Later →** move the calendar 2 weeks at a time. Click a planned session to edit or delete it. When a planned
-  session is done (same day, same sport, time within 15% of the plan) the
-  two merge into one dark-green "done as planned" entry.
+  session is done (same day, same sport) the two merge into one green
+  entry: dark green "done as planned" when the time is within 15% of the
+  plan, light green with a dashed border "done, other duration" otherwise.
+  One activity covers one planned session: two swims on a day are not added
+  up to match a longer planned swim.
 - **Garmin sync** — runs automatically after login; the "Sync with Garmin"
   button (on both tabs) pulls on demand. It looks back 90 days: activities
   come as one list; sleep, the morning Training Readiness, Training Status
@@ -49,18 +52,38 @@ adjust sessions — it edits the page like you would.
   seconds. Your Garmin profile (zones, thresholds, records) is refreshed
   each time. None of the extras can fail a sync: what Garmin doesn't answer
   is asked again next time.
-- **Older history** — *Import older activities* on the Plan page brings in
+- **Background sync** — on the server, every account connected to Garmin is
+  also synced every few hours (`AUTO_SYNC_HOURS`, 4 by default in the Docker
+  stack, off under `npm start`), so last night's sleep, the morning
+  readiness and finished sessions are there without pressing Sync. A Sync
+  press waits for a background run of the same account rather than running
+  twice at once.
+- **Multisport races** — a triathlon arrives from Garmin as one
+  "multisport" session. Its legs (swim, transitions, bike, run) are fetched
+  once, at any age, shown under the session on the calendar, listed in the
+  log, and counted per sport in the weekly totals.
+- **Older history** — *Import older activities* on the History tab brings in
   up to 3 years of activities (one list from Garmin), which the log shows as
   one line of totals per week. If the Garmin session has
   expired the page shows the "Connect your Garmin account" form; you stay
   logged in.
-- **Plan page** — the **Plan** tab is where future weeks get planned, by
-  hand or with Claude in Chrome, without touching the calendar until you
-  confirm. What a person reads comes first, what Claude reads comes last.
-  From top to bottom:
-  1. **Objectives**, then the **Plan preview** — pick the first week to
-     plan (any week up to about six months ahead) and how many weeks. The
-     draft is shown as a table per week with a weekly split.
+- **Tabs** — **Calendar**, **Athlete**, **Plan**, **Import** and
+  **History**.
+- **Athlete tab** — everything about the athlete in one place:
+  1. **Objectives** (see below).
+  2. **Benchmarks and zones** — your own tested numbers: weight, height,
+     max / threshold / resting HR, FTP and the day it was tested, power
+     zones, run threshold pace and zones, swim CSS and zones, equipment,
+     health and injuries, and anything else worth knowing. They override
+     Garmin's estimates in the history. Every box is optional.
+  3. **From Garmin** — zones, thresholds, records, race predictions and
+     training status as Garmin has them (read only, refreshed on each sync).
+- **Plan tab** — where future weeks get planned, by hand or with Claude in
+  Chrome, without touching the calendar until you confirm. From top to
+  bottom:
+  1. **Plan preview** — pick the first week to plan (any week up to about
+     six months ahead) and how many weeks. The draft is shown as a table
+     per week with a weekly split.
   2. **Put this plan on the calendar**, right under the preview — adds the
      draft's sessions and replaces whatever was planned from today to the
      end of those weeks, so re-planning never duplicates. Done activities
@@ -68,12 +91,17 @@ adjust sessions — it edits the page like you would.
   3. **Draft plan** — the text the preview is made from, one session per
      line: `Tue Oct 13 | run | 1:15 | Track: 2×6×400 m`. Any line the page
      can't read is flagged under the box (a wrong weekday for the date, a
-     date outside the chosen weeks, an unreadable duration). Block notes
-     (goal, zones, rules of thumb) are saved with the draft.
-  4. **About you** — what Garmin doesn't know (availability, constraints,
-     injuries, equipment). It is added to the training log.
-  5. **Training log**, at the bottom because it is written for Claude — the
-     last 2 to 12 weeks as plain text. Per session:
+     date outside the chosen weeks, an unreadable duration).
+  4. **Rule set** — the rules every plan follows: availability, school or
+     work schedule, exam periods, holidays and travel, weekly rhythm, rules
+     of thumb. It replaces the older "About you" box and block notes: until
+     the rule set is first saved, their text is shown in it, so nothing is
+     lost.
+- **History tab** — for the AI, not for reading: the whole training
+  history as text for Claude in Chrome (26 weeks in full detail by default),
+  then the plan being written (the weeks, the line format and the current
+  draft). **Copy log for Claude** copies the
+  same text for a normal Claude conversation. The history holds, per session:
      duration, distance, pace, average HR, load, and the **perceived effort
      and feel you answered on the watch**. In *Full* detail also time in each
      HR zone, max HR, Garmin's session type and training effect, bike power,
@@ -83,15 +111,14 @@ adjust sessions — it edits the page like you would.
      length, strokes and SWOLF). Per day: the morning **Training
      Readiness**, sleep score, duration and stages, resting HR, overnight
      HRV, stress and body battery. Plus weekly totals, your objectives, what
-     is already planned, an **athlete block from Garmin** (max HR, threshold
-     HR and pace, VO2max, HR zones, race predictions, personal records),
+     is already planned, the **numbers you entered on the Athlete tab**, an
+     **athlete block from Garmin** (max HR, threshold HR and pace, VO2max,
+     HR zones, race predictions, personal records), the **rule set**,
      Garmin's **training status** (acute vs chronic load, load by intensity
      against its targets) and **earlier weeks** as one line of totals each,
      up to a year back. A session shows "effort not answered" when the watch
      prompt was skipped and "not synced yet" when its details haven't been
-     fetched. *Summary* detail keeps one line per session. **Copy log for
-     Claude** copies it with the line format, for a normal Claude
-     conversation.
+     fetched. *Summary* detail keeps one line per session.
 - **Import tab** — copy a friend's planned sessions. Everyone has a **share
   code** shown on the tab, next to their name (**New code** makes the old one
   stop working). With someone's name and code you pick their weeks (past or
@@ -105,11 +132,13 @@ adjust sessions — it edits the page like you would.
   account, so codes can't be guessed.
 - **Objectives** — **+ Add objective** records a target event (title, event
   date, target time, and notes such as its priority) as a card with a
-  countdown; edit or delete it from the card. Shown under the calendar and
-  at the top of the Plan tab, and listed in the training log.
+  countdown; edit or delete it from the card. Shown on the Athlete tab, and
+  listed in the history.
 - **Sleep & recovery** — each day shows its Garmin sleep score (top right,
   coloured good / fair / poor) and resting heart rate (❤️ bpm); each week's
   column shows the average sleep score and average resting heart rate.
+  The morning Training Readiness, overnight HRV, stress and body battery
+  are only in the History tab.
 - **Training load** — each completed activity shows Garmin's training load
   next to its duration (e.g. "1 h · load 113"), and each week's column
   shows the week's total load.
@@ -153,7 +182,8 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── visitor.py        visitor address and https, as reported by the proxy or tunnel
     │   ├── planning.py       training log text + draft plan parser (Plan page)
     │   ├── sharing.py        share codes, someone's planned sessions as draft lines (Import tab)
-    │   └── routers/          auth, admin, garmin, calendar, objectives, planned, plan, share
+    │   ├── autosync.py       background Garmin sync of every connected account
+    │   └── routers/          auth, admin, garmin, calendar, athlete, objectives, planned, plan, share
     └── frontend/             index.html, app.js, styles.css (static, no build)
 ```
 
@@ -344,10 +374,9 @@ public. The most private choice, with more setup per friend. Leave
 Open the app in Chrome, log in, open the Claude extension and ask in plain
 words, for example:
 
-- On the **Plan** tab: "Read my training log at the bottom of the page and
-  my block notes, then plan the next 4 weeks in the draft box, one session
-  per line in the format shown. Save and preview, and tell me the weekly
-  totals." Then discuss, let it adjust the draft, and press **Put this
+- "Read the **History** tab, then on the **Plan** tab plan the next 4 weeks in
+  the draft box, one session per line in the format shown. Save and
+  preview, and tell me the weekly totals." Then discuss, let it adjust the draft, and press **Put this
   plan on the calendar** yourself when you're happy.
 - "Read my objectives and the last two weeks, then plan next week
   with 3 runs, 2 swims and a long ride. Put the workout details in each
@@ -386,6 +415,7 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `ENABLE_API_DOCS`            | backend         | `true` serves Swagger UI at `/docs` (default `false`)                |
 | `FERNET_KEY`                 | backend         | Encrypts the stored Garmin session at rest — **required**            |
 | `GARMIN_SYNC_LOOKBACK_DAYS`  | backend         | How far back a sync looks (default 90); only missing days are requested |
+| `AUTO_SYNC_HOURS`            | backend         | Hours between background syncs of every account connected to Garmin; 4 in the Docker stack, 0 (off) otherwise |
 | `CORS_ALLOW_ORIGINS`         | backend         | Empty = same-origin only (default); comma-separated origins, or `*`  |
 | `APP_DOMAIN`                 | backend         | The public name friends open (e.g. `training.example.com`); when set the app only answers on `https://` that name. Empty (default) = no check |
 | `COMPOSE_PROFILES`           | docker-compose  | `tunnel` starts the optional Cloudflare Tunnel container             |
@@ -397,7 +427,8 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   password hash, admin flag, token version (bumped on password change to
   log out old sessions), last login time, Garmin email + encrypted Garmin
   session token, the athlete profile Garmin keeps (zones, thresholds,
-  records, race predictions) and the athlete's own "about you" notes.
+  records, race predictions), the numbers the athlete entered on the
+  Athlete tab (FTP, zones, CSS…) and the Plan tab's rule set.
 - **LoginEvent** — one row per login attempt (account, success or not,
   time), kept 90 days, for the admin dashboard. A failed attempt on a name
   that isn't an account is stored as "(unknown account)", never with the
@@ -435,11 +466,12 @@ New nullable columns are added to existing databases on startup
 | `/api/garmin/connect`    | POST/DELETE | Link your Garmin (email/password sent once to Garmin) / unlink |
 | `/api/garmin/sync`       | POST   | One batch: activities, then missing days (sleep, readiness, status, stress) and activity details; `more_to_sync` says to call again; 409 = connect Garmin first |
 | `/api/garmin/import-history` | POST | `{"months": 12}`: older activities, for the long-term weekly totals |
-| `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day       |
+| `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day, with multisport legs |
 | `/api/objectives`        | GET/POST | List / add objectives (title, event date, target time)      |
 | `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |
 | `/api/plan/log`          | GET    | Training log as text (`?weeks=6&detail=full|summary`): sessions, effort/feel, laps, sleep and recovery, athlete profile, objectives, what's planned |
-| `/api/plan/about`        | GET/PUT | "About you": free text added to the log                       |
+| `/api/athlete`           | GET/PUT | The athlete's own numbers (FTP, zones, CSS, equipment…), plus what Garmin knows as text |
+| `/api/plan/rules`        | GET/PUT | The rule set: free text the plan follows, added to the history |
 | `/api/plan/draft`        | GET/PUT | The draft plan (first week, number of weeks, session lines, notes), returned parsed with errors and weekly totals |
 | `/api/plan/draft/confirm`| POST   | Put the draft on the calendar, replacing planned sessions from today to the draft's last day |
 | `/api/share`             | GET    | Your username and share code (created on first use) |

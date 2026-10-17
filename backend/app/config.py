@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # recovery data are only requested for days that aren't stored yet.
     garmin_sync_lookback_days: int = 90
 
+    # Hours between background syncs of every account connected to Garmin
+    # (sleep, readiness and finished sessions arrive without pressing Sync).
+    # 0 = off: the default, so `npm start` never syncs on its own; the Docker
+    # stack turns it on.
+    auto_sync_hours: float = 0
+
     # Comma-separated origins allowed to call the API from another site.
     # Empty = same-origin only (the frontend is served by this app, so that's
     # all it needs). "*" allows any origin.

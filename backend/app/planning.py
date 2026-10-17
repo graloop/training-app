@@ -43,6 +43,38 @@ def fmt_minutes(minutes: float | None) -> str:
     return f"{total // 60}:{total % 60:02d}"
 
 
+def legs_of(extras: dict | None) -> list[dict]:
+    """A multisport race's legs (swim, transitions, bike, run), once synced."""
+    return (extras or {}).get("legs") or []
+
+
+def sport_minutes(activity_type: str | None, seconds: float | None, extras: dict | None) -> list[tuple[str, float]]:
+    """Minutes per sport: a race counts its swim, bike and run legs (transitions
+    as "other"); any other activity counts whole."""
+    legs = legs_of(extras)
+    if legs:
+        return [(leg.get("sport") or "other", (leg.get("duration_seconds") or 0) / 60) for leg in legs]
+    return [(sport_of(activity_type), (seconds or 0) / 60)]
+
+
+def _fmt_legs(legs: list[dict]) -> str:
+    """'swim 0:42 1.9 km · T1 0:04 · bike 2:40 90.0 km · T2 0:02 · run 1:45 21.1 km'"""
+    parts, transitions = [], 0
+    for leg in legs:
+        minutes = (leg.get("duration_seconds") or 0) / 60
+        if leg.get("sport") == "other" and "transition" in (leg.get("type") or ""):
+            transitions += 1
+            parts.append(f"T{transitions} {fmt_minutes(minutes)}")
+            continue
+        text = f"{leg.get('sport') if leg.get('sport') != 'other' else leg.get('type')} {fmt_minutes(minutes)}"
+        if (leg.get("distance_meters") or 0) >= 100:
+            text += f" {leg['distance_meters'] / 1000:.1f} km"
+        if leg.get("avg_hr"):
+            text += f" avg HR {round(leg['avg_hr'])}"
+        parts.append(text)
+    return " · ".join(parts)
+
+
 # --- Training log -------------------------------------------------------------
 
 
@@ -73,7 +105,9 @@ def _fmt_activity(a: models.Activity) -> str:
     if felt:
         parts.append(felt)
     text = " · ".join(parts)
-    return f"{text} — {a.name}" if a.name else text
+    text = f"{text} — {a.name}" if a.name else text
+    legs = legs_of(a.extras)
+    return f"{text} · legs: {_fmt_legs(legs)}" if legs else text
 
 
 FEEL_WORDS = {0: "very weak", 25: "weak", 50: "normal", 75: "strong", 100: "very strong"}
@@ -332,7 +366,7 @@ def _earlier_weeks(db: Session, user: models.User, start: datetime.date) -> list
     oldest = start - datetime.timedelta(weeks=MAX_EARLIER_WEEKS)
     rows = (
         db.query(models.Activity.start_time, models.Activity.activity_type, models.Activity.duration_seconds,
-                 models.Activity.training_load)
+                 models.Activity.training_load, models.Activity.extras)
         .filter(
             models.Activity.user_id == user.id,
             models.Activity.start_time >= datetime.datetime.combine(oldest, datetime.time.min),
@@ -343,9 +377,10 @@ def _earlier_weeks(db: Session, user: models.User, start: datetime.date) -> list
     if not rows:
         return ['- no earlier activities stored ("Import older activities" adds up to 3 years)']
     weeks: dict[datetime.date, dict] = {}
-    for start_time, activity_type, seconds, load in rows:
+    for start_time, activity_type, seconds, load, extras in rows:
         week = weeks.setdefault(monday_of(start_time.date()), {"sports": {s: 0.0 for s in SPORTS}, "count": 0, "load": 0.0})
-        week["sports"][sport_of(activity_type)] += (seconds or 0) / 60
+        for sport, minutes in sport_minutes(activity_type, seconds, extras):
+            week["sports"][sport] += minutes
         week["count"] += 1
         week["load"] += load or 0
     lines = []
@@ -361,6 +396,58 @@ def _earlier_weeks(db: Session, user: models.User, start: datetime.date) -> list
                          + (f" · load {round(week['load'])}" if week["load"] else ""))
         week_start += datetime.timedelta(days=7)
     return lines
+
+
+def rule_set_text(user: models.User) -> str:
+    """The rule set. Until it is first saved, the older "About you" text and
+    block notes stand in for it, so nothing written before is lost."""
+    if user.rule_set is not None:
+        return user.rule_set
+    draft = user.plan_draft
+    older = [(user.athlete_notes or "").strip(), ((draft.notes if draft else "") or "").strip()]
+    return "\n\n".join(text for text in older if text)
+
+
+def profile_lines(profile: dict | None) -> list[str]:
+    """What the athlete entered on the Athlete tab, as log lines."""
+    p = profile or {}
+    lines = []
+
+    def line(label: str, parts: list[str | None]) -> None:
+        parts = [x for x in parts if x]
+        if parts:
+            lines.append(f"- {label}: " + " · ".join(parts))
+
+    line("Body", [f"weight {p['weight_kg']:g} kg" if p.get("weight_kg") else None,
+                  f"height {p['height_cm']:g} cm" if p.get("height_cm") else None])
+    line("Heart rate", [f"max {p['max_hr']}" if p.get("max_hr") else None,
+                        f"threshold {p['threshold_hr']}" if p.get("threshold_hr") else None,
+                        f"resting {p['resting_hr']}" if p.get("resting_hr") else None])
+    line("Bike", [f"FTP {p['ftp_watts']} W" + (f" (tested {p['ftp_date']})" if p.get("ftp_date") else "") if p.get("ftp_watts") else None,
+                  f"power zones {p['bike_zones']}" if p.get("bike_zones") else None])
+    line("Run", [f"threshold pace {p['threshold_pace']} /km" if p.get("threshold_pace") else None,
+                 f"pace zones {p['run_zones']}" if p.get("run_zones") else None])
+    line("Swim", [f"CSS {p['css_pace']} /100 m" if p.get("css_pace") else None,
+                  f"swim zones {p['swim_zones']}" if p.get("swim_zones") else None])
+    for key, label in (("equipment", "Equipment"), ("health", "Health and injuries"), ("other", "Other")):
+        if p.get(key):
+            lines.append(f"- {label}: " + " ".join(p[key].split()))
+    return lines
+
+
+def latest_status(db: Session, user: models.User, today: datetime.date) -> "models.DailyMetrics | None":
+    return (
+        db.query(models.DailyMetrics)
+        .filter(models.DailyMetrics.user_id == user.id, models.DailyMetrics.date <= today,
+                models.DailyMetrics.acute_load.is_not(None))
+        .order_by(models.DailyMetrics.date.desc())
+        .first()
+    )
+
+
+def garmin_lines(db: Session, user: models.User, today: datetime.date) -> list[str]:
+    """Garmin's side of the athlete (zones, records) and training status, as text."""
+    return _athlete_lines(user) + ["", "Training status:"] + _status_lines(latest_status(db, user, today))
 
 
 def _athlete_lines(user: models.User) -> list[str]:
@@ -401,32 +488,43 @@ def _athlete_lines(user: models.User) -> list[str]:
     return lines
 
 
-def _fmt_planned(p: models.PlannedTraining, done: bool = False) -> str:
+def _fmt_planned(p: models.PlannedTraining, done: models.Activity | None = None) -> str:
     sport = sport_of(p.activity_type)
     text = f"{sport if sport != 'other' else p.activity_type} {fmt_minutes(p.planned_duration_minutes)}"
     if p.notes:
         text += f" — {' '.join(p.notes.split())}"
-    return text + (" (done as planned)" if done else "")
+    if done is None:
+        return text
+    did = (done.duration_seconds or 0) / 60
+    plan = p.planned_duration_minutes or 0
+    if plan and abs(did - plan) / plan <= MATCH_TOLERANCE:
+        return text + " (done as planned)"
+    return text + f" (done, {fmt_minutes(did)} instead of {fmt_minutes(plan)})"
 
 
-def _matched_plans(planned: list[models.PlannedTraining], activities: list[models.Activity]) -> set[int]:
-    """Ids of planned sessions that were done: same sport, time within 15%."""
-    left = list(activities)
-    matched = set()
-    for p in planned:
-        plan_min = p.planned_duration_minutes or 0
-        if plan_min <= 0 or sport_of(p.activity_type) == "other":
-            continue
-        best = None
-        for a in left:
-            if sport_of(a.activity_type) != sport_of(p.activity_type) or not a.duration_seconds:
+def matched_plans(planned: list[models.PlannedTraining], activities: list[models.Activity]) -> dict[int, models.Activity]:
+    """Planned session id -> the activity that did it, for one day. First the
+    same sport within 15% of the planned time ("done as planned"), then the
+    same sport at any duration. One activity covers one planned session:
+    split sessions are not added up."""
+    left = [a for a in activities if a.duration_seconds]
+    matched: dict[int, models.Activity] = {}
+    plans = [p for p in planned if (p.planned_duration_minutes or 0) > 0 and sport_of(p.activity_type) != "other"]
+    for strict in (True, False):
+        for p in plans:
+            if p.id in matched:
                 continue
-            diff = abs(a.duration_seconds / 60 - plan_min) / plan_min
-            if diff <= MATCH_TOLERANCE and (best is None or diff < best[0]):
-                best = (diff, a)
-        if best:
-            matched.add(p.id)
-            left.remove(best[1])
+            plan_min = p.planned_duration_minutes
+            best = None
+            for a in left:
+                if sport_of(a.activity_type) != sport_of(p.activity_type):
+                    continue
+                diff = abs(a.duration_seconds / 60 - plan_min) / plan_min
+                if (not strict or diff <= MATCH_TOLERANCE) and (best is None or diff < best[0]):
+                    best = (diff, a)
+            if best:
+                matched[p.id] = best[1]
+                left.remove(best[1])
     return matched
 
 
@@ -477,13 +575,7 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
             models.DailyMetrics.user_id == user.id, models.DailyMetrics.date >= start, models.DailyMetrics.date <= today
         )
     }
-    latest_status = (
-        db.query(models.DailyMetrics)
-        .filter(models.DailyMetrics.user_id == user.id, models.DailyMetrics.date <= today,
-                models.DailyMetrics.acute_load.is_not(None))
-        .order_by(models.DailyMetrics.date.desc())
-        .first()
-    )
+    status = latest_status(db, user, today)
     # Where this account's Garmin data begins: earlier days are "not synced", not "no training".
     first_activity = db.query(models.Activity.start_time).filter(models.Activity.user_id == user.id).order_by(models.Activity.start_time).first()
     first_night = db.query(models.SleepRecord.date).filter(models.SleepRecord.user_id == user.id).order_by(models.SleepRecord.date).first()
@@ -516,12 +608,16 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
             if o.notes:
                 lines.append(f"  {' '.join(o.notes.split())}")
     else:
-        lines.append("- none yet (add them under Objectives)")
+        lines.append("- none yet (add them on the Athlete tab)")
 
-    lines += ["", "ATHLETE"] + _athlete_lines(user)
-    lines += ["", "TRAINING STATUS (Garmin)"] + _status_lines(latest_status)
-    lines += ["", "ABOUT THE ATHLETE (their own notes)"]
-    lines += [line.rstrip() for line in user.athlete_notes.strip().splitlines()] if (user.athlete_notes or "").strip() else ["- nothing written yet"]
+    entered = profile_lines(user.athlete_profile)
+    lines += ["", "ATHLETE (entered by the athlete: these override Garmin's estimates)"]
+    lines += entered or ["- nothing entered yet (Athlete tab)"]
+    lines += ["", "ATHLETE (from Garmin)"] + _athlete_lines(user)
+    lines += ["", "TRAINING STATUS (Garmin)"] + _status_lines(status)
+    rules = rule_set_text(user).strip()
+    lines += ["", "RULE SET (the athlete's availability, constraints and rules: the plan must follow them)"]
+    lines += [line.rstrip() for line in rules.splitlines()] if rules else ["- nothing written yet"]
 
     lines += ["", "EARLIER WEEKS (totals only)"] + _earlier_weeks(db, user, start)
 
@@ -539,7 +635,8 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
         scores, rhrs = [], []
         for day in days:
             for a in acts_by_day.get(day, []):
-                done[sport_of(a.activity_type)] += (a.duration_seconds or 0) / 60
+                for sport, minutes in sport_minutes(a.activity_type, a.duration_seconds, a.extras):
+                    done[sport] += minutes
                 load += a.training_load or 0
             planned_min += sum(p.planned_duration_minutes or 0 for p in plans_by_day.get(day, []))
             night = sleep.get(day)
@@ -590,12 +687,12 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
                 lines.append(f"{label} · no training")
                 continue
             lines.append(label)
-            matched = _matched_plans(day_plans, day_acts)
+            matched = matched_plans(day_plans, day_acts)
             for a in day_acts:
                 lines.append(f"  done  {_fmt_activity(a)}")
                 if full:
                     lines += [f"        {extra}" for extra in _detail_lines(a)]
-            lines += [f"  plan  {_fmt_planned(p, p.id in matched)}" for p in day_plans]
+            lines += [f"  plan  {_fmt_planned(p, matched.get(p.id))}" for p in day_plans]
         week_start += datetime.timedelta(days=7)
 
     ahead = [p for p in planned if p.date > today]

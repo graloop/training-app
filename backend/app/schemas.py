@@ -164,6 +164,16 @@ class ObjectivesResponse(BaseModel):
 
 # --- Calendar ---
 
+class LegOut(BaseModel):
+    """One leg of a multisport race."""
+
+    type: str
+    sport: str  # swim | bike | run | other (transitions)
+    duration_seconds: float | None = None
+    distance_meters: float | None = None
+    avg_hr: float | None = None
+
+
 class ActivityOut(BaseModel):
     id: int
     garmin_activity_id: str
@@ -179,6 +189,7 @@ class ActivityOut(BaseModel):
     training_load: float | None
     perceived_effort: int | None  # RPE 1-10, answered on the watch
     feel: int | None  # 0 very weak .. 100 very strong
+    legs: list[LegOut] = []  # multisport races only
 
     class Config:
         from_attributes = True
@@ -260,11 +271,46 @@ class AthleteNotes(BaseModel):
     notes: str = Field(default="", max_length=10000)
 
 
+class RuleSet(BaseModel):
+    """The Plan tab's rules: availability, constraints, rules of thumb, in the athlete's words."""
+
+    rules: str = Field(default="", max_length=20000)
+
+
+PACE = r"^\d{1,2}:\d{2}$"
+
+
+class AthleteProfile(BaseModel):
+    """What the athlete enters on the Athlete tab: benchmarks and zones Garmin doesn't have
+    or gets wrong. Everything is optional."""
+
+    weight_kg: float | None = Field(default=None, gt=20, lt=300)
+    height_cm: float | None = Field(default=None, gt=100, lt=250)
+    max_hr: int | None = Field(default=None, ge=100, le=230)
+    threshold_hr: int | None = Field(default=None, ge=80, le=230)
+    resting_hr: int | None = Field(default=None, ge=25, le=120)
+    ftp_watts: int | None = Field(default=None, ge=50, le=700)
+    ftp_date: datetime.date | None = None
+    bike_zones: str | None = Field(default=None, max_length=1000)
+    threshold_pace: str | None = Field(default=None, pattern=PACE)  # min:sec per km
+    run_zones: str | None = Field(default=None, max_length=1000)
+    css_pace: str | None = Field(default=None, pattern=PACE)  # min:sec per 100 m
+    swim_zones: str | None = Field(default=None, max_length=1000)
+    equipment: str | None = Field(default=None, max_length=2000)
+    health: str | None = Field(default=None, max_length=3000)
+    other: str | None = Field(default=None, max_length=3000)
+
+
+class AthleteOut(BaseModel):
+    profile: AthleteProfile
+    garmin: list[str]  # what Garmin knows, as text lines (read only)
+
+
 class DraftIn(BaseModel):
     start_date: datetime.date  # any day of the first week to plan
     weeks: int = Field(ge=1, le=MAX_PLAN_WEEKS)
     text: str = Field(default="", max_length=30000)
-    notes: str = Field(default="", max_length=20000)
+    notes: str | None = Field(default=None, max_length=20000)  # older block notes: kept unless sent
 
 
 class DraftSessionOut(BaseModel):

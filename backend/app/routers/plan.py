@@ -93,21 +93,21 @@ def training_log(
     return schemas.TrainingLog(text=text, start=start, end=day, weeks=weeks, detail=detail)
 
 
-@router.get("/about", response_model=schemas.AthleteNotes)
-def get_about(user: models.User = Depends(get_current_member)):
-    return schemas.AthleteNotes(notes=user.athlete_notes or "")
+@router.get("/rules", response_model=schemas.RuleSet)
+def get_rules(user: models.User = Depends(get_current_member)):
+    return schemas.RuleSet(rules=planning.rule_set_text(user))
 
 
-@router.put("/about", response_model=schemas.AthleteNotes)
-def save_about(
-    payload: schemas.AthleteNotes,
+@router.put("/rules", response_model=schemas.RuleSet)
+def save_rules(
+    payload: schemas.RuleSet,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
-    """Availability, constraints and whatever Garmin doesn't know; shown in the log."""
-    user.athlete_notes = payload.notes.strip() or None
+    """The rule set the plan must follow; shown in the history."""
+    user.rule_set = payload.rules.strip()  # "" (not None) = cleared: the older notes don't come back
     db.commit()
-    return schemas.AthleteNotes(notes=user.athlete_notes or "")
+    return schemas.RuleSet(rules=user.rule_set)
 
 
 @router.get("/draft", response_model=schemas.DraftOut)
@@ -134,7 +134,8 @@ def save_draft(
     draft.start_date = planning.monday_of(payload.start_date)
     draft.weeks = payload.weeks
     draft.text = payload.text
-    draft.notes = payload.notes.strip() or None
+    if payload.notes is not None:
+        draft.notes = payload.notes.strip() or None
     draft.confirmed_at = None
     db.commit()
     db.refresh(user)

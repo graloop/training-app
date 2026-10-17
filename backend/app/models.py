@@ -43,7 +43,12 @@ class User(Base):
     # refreshed on each sync (see garmin_details.normalize_profile).
     garmin_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The athlete's own words: availability, constraints, what Garmin doesn't know.
-    athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # older "About you" text, read until rule_set is saved
+    # What the athlete enters on the Athlete tab: FTP, zones, CSS, equipment... (schemas.AthleteProfile).
+    athlete_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+    # The Plan tab's rule set: availability, constraints and rules of thumb the plan must follow.
+    # It replaces the older "About you" and block notes (see planning.rule_set_text).
+    rule_set: Mapped[str | None] = mapped_column(Text, nullable=True)
     # With their username, lets someone else copy this account's planned sessions
     # (Import tab). Created on first use; a new one stops the old one working.
     share_code: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
@@ -90,6 +95,11 @@ class Activity(Base):
     raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="activities")
+
+    @property
+    def legs(self) -> list[dict]:
+        """A multisport race's legs (swim, transitions, bike, run), once synced."""
+        return (self.extras or {}).get("legs") or []
 
 
 class SleepRecord(Base):

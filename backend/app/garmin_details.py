@@ -19,6 +19,8 @@ MAX_DAY_ATTEMPTS = 3  # then stop asking for a day Garmin won't fully answer
 MAX_LAPS_STORED = 100
 RECHECK_DAYS = 2  # effort/feel can be answered a little after the activity is saved
 GIVE_UP_AFTER_FAILURES = 3  # consecutive: Garmin is refusing, try again next sync
+MAX_MULTISPORT_PER_SYNC = 3  # races: one request for the race, one per leg
+MULTISPORT_TYPE = "multi_sport"
 
 
 def effort_and_feel(summary: dict[str, Any]) -> tuple[int | None, int | None]:
@@ -137,6 +139,89 @@ def enrich_activities(db: Session, api: Any, user: models.User, limit: int = MAX
         activity.details_synced_at = models.utcnow()
         done += 1
     return done
+
+
+# --- Multisport races ----------------------------------------------------------
+# Garmin's list has a triathlon as one "multi_sport" activity. Its legs (swim,
+# transitions, bike, run) are separate activities that only the race's own
+# detail names, so they are fetched once and kept with the race.
+
+
+def _leg(summary: dict[str, Any]) -> dict[str, Any]:
+    dto = summary.get("summaryDTO") or {}
+    kind = (summary.get("activityTypeDTO") or {}).get("typeKey") or "other"
+    return {
+        "type": kind,
+        "sport": sport_of(kind),
+        "duration_seconds": dto.get("duration") or dto.get("elapsedDuration"),
+        "distance_meters": dto.get("distance"),
+        "avg_hr": dto.get("averageHR"),
+        "start": dto.get("startTimeGMT") or dto.get("startTimeLocal"),
+    }
+
+
+def multisport_legs(db: Session, api: Any, user: models.User, limit: int = MAX_MULTISPORT_PER_SYNC) -> int:
+    """Fetch the legs of multisport activities that don't have them yet, at
+    any age (races are few and matter). Returns how many races got their legs."""
+    races = [
+        a for a in db.query(models.Activity).filter(
+            models.Activity.user_id == user.id, models.Activity.activity_type == MULTISPORT_TYPE)
+        if "legs" not in (a.extras or {})
+    ]
+    done = 0
+    for race in sorted(races, key=lambda a: a.start_time, reverse=True)[:limit]:
+        try:
+            summary = garmin_client.fetch_activity_summary(api, race.garmin_activity_id)
+            child_ids = (summary.get("metadataDTO") or {}).get("childIds") or summary.get("childIds") or []
+            legs = [_leg(garmin_client.fetch_activity_summary(api, str(cid))) for cid in child_ids]
+        except Exception:  # noqa: BLE001 - asked again next sync
+            continue
+        legs.sort(key=lambda leg: leg["start"] or "")
+        race.extras = {**(race.extras or {}), "legs": legs}  # [] = Garmin names no legs: don't ask again
+        done += 1
+    return done
+
+
+# --- One sync ---------------------------------------------------------------------
+
+
+def sync_user(db: Session, api: Any, user: models.User, today: datetime.date, lookback_days: int) -> dict[str, Any]:
+    """One batch for one account (the fields of schemas.GarminSyncResponse): activities, then missing days, activity
+    details, multisport legs and the profile. Only the activity list can fail
+    it (the exception is raised); every later step is saved on its own, and
+    what Garmin doesn't answer now is asked again next time."""
+    start = today - datetime.timedelta(days=lookback_days)
+    raw_activities = garmin_client.fetch_activities(api, start, today)
+    activities_synced = save_activities(db, user, raw_activities)
+    db.commit()
+
+    days_synced = sleep_synced = days_remaining = details_synced = 0
+    try:
+        days_synced, sleep_synced, days_remaining = sync_days(db, api, user, start, today)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+    try:
+        details_synced = enrich_activities(db, api, user)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        details_synced = 0
+    for step in (multisport_legs, refresh_profile):
+        try:
+            step(db, api, user)
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+
+    return {
+        "activities_synced": activities_synced,
+        "sleep_records_synced": sleep_synced,
+        "lookback_days": lookback_days,
+        "details_synced": details_synced,
+        "days_synced": days_synced,
+        "more_to_sync": days_remaining > 0 or pending_details(db, user) > 0,
+    }
 
 
 # --- Athlete profile ----------------------------------------------------------

@@ -5,10 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import autosync
 from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
 from .database import Base, add_missing_columns, drop_obsolete_tables, engine
-from .routers import admin, auth, calendar, garmin, objectives, plan, planned, share
+from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share
 from .version import VERSION
 from .visitor import is_https
 
@@ -92,12 +93,14 @@ def on_startup():
     add_missing_columns()
     bootstrap_admin()
     seed_test_accounts()
+    autosync.start(settings.auto_sync_hours)
 
 
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(garmin.router)
 app.include_router(calendar.router)
+app.include_router(athlete.router)
 app.include_router(objectives.router)
 app.include_router(planned.router)
 app.include_router(plan.router)

@@ -33,6 +33,9 @@ services:
       # test logins only exist under `npm start`.
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
       GARMIN_SYNC_LOOKBACK_DAYS: ${GARMIN_SYNC_LOOKBACK_DAYS:-90}
+      # Hours between background syncs of every account connected to Garmin,
+      # so sleep, readiness and finished sessions arrive on their own. 0 = off.
+      AUTO_SYNC_HOURS: ${AUTO_SYNC_HOURS:-4}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
       # The public name friends open, e.g. training.example.com. When set, the
       # app only answers on https://<that name>; port 8010 then just sends
