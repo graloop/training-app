@@ -3,7 +3,8 @@ import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from .. import models, planning, schemas
+from .. import models, schemas
+from ..planning.training_log import garmin_lines
 from ..database import get_db
 from ..deps import get_current_member
 
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/api/athlete", tags=["athlete"])
 
 def _out(db: Session, user: models.User, today: datetime.date | None) -> schemas.AthleteOut:
     profile = schemas.AthleteProfile(**(user.athlete_profile or {}))
-    return schemas.AthleteOut(profile=profile, garmin=planning.garmin_lines(db, user, today or datetime.date.today()))
+    return schemas.AthleteOut(profile=profile, garmin=garmin_lines(db, user, today or datetime.date.today()))
 
 
 @router.get("", response_model=schemas.AthleteOut)

@@ -3,12 +3,14 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from .. import autosync, garmin_client, garmin_details, models, schemas
+from .. import models, schemas
 from ..config import get_settings
 from ..database import get_db
 from ..deps import get_current_member
+from ..garmin import autosync
+from ..garmin import client as garmin_client
+from ..garmin import sync as garmin_sync
 from ..security import decrypt_text, encrypt_text
-from .auth import me_out
 
 router = APIRouter(prefix="/api/garmin", tags=["garmin"])
 settings = get_settings()
@@ -32,7 +34,7 @@ def connect(
     user.garmin_email = garmin_email
     user.garmin_session_encrypted = encrypt_text(session_data)
     db.commit()
-    return me_out(user)
+    return schemas.MeOut.of(user)
 
 
 @router.delete("/connect", response_model=schemas.MeOut)
@@ -40,7 +42,7 @@ def disconnect(db: Session = Depends(get_db), user: models.User = Depends(get_cu
     """Forget the stored Garmin session. Already-synced data stays."""
     user.garmin_session_encrypted = None
     db.commit()
-    return me_out(user)
+    return schemas.MeOut.of(user)
 
 
 def _garmin_api(user: models.User):
@@ -88,8 +90,8 @@ def sync(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="A sync is already running in the background. Try again in a minute.")
     try:
-        result = garmin_details.sync_user(db, api, user, datetime.date.today(), settings.garmin_sync_lookback_days)
-        garmin_details.save_session(db, api, user)
+        result = garmin_sync.sync_user(db, api, user, datetime.date.today(), settings.garmin_sync_lookback_days)
+        garmin_sync.save_session(db, api, user)
     except Exception as exc:  # noqa: BLE001 - only the activity list can fail a sync
         db.rollback()
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Garmin sync failed: {exc}") from exc
@@ -117,6 +119,6 @@ def import_history(
         raw_activities = garmin_client.fetch_activities(api, since, until)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Garmin import failed: {exc}") from exc
-    imported = garmin_details.save_activities(db, user, raw_activities)
+    imported = garmin_sync.save_activities(db, user, raw_activities)
     db.commit()
     return schemas.HistoryImportResponse(activities_imported=imported, since=since)

@@ -40,14 +40,14 @@ class User(Base):
     garmin_session_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Zones, thresholds, records and race predictions as Garmin has them,
-    # refreshed on each sync (see garmin_details.normalize_profile).
+    # refreshed on each sync (see garmin/sync.py, normalize_profile).
     garmin_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The athlete's own words: availability, constraints, what Garmin doesn't know.
     athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # older "About you" text, read until rule_set is saved
     # What the athlete enters on the Athlete tab: FTP, zones, CSS, equipment... (schemas.AthleteProfile).
     athlete_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The Plan tab's rule set: availability, constraints and rules of thumb the plan must follow.
-    # It replaces the older "About you" and block notes (see planning.rule_set_text).
+    # It replaces the older "About you" and block notes (see planning/training_log.py, rule_set_text).
     rule_set: Mapped[str | None] = mapped_column(Text, nullable=True)
     # With their username, lets someone else copy this account's planned sessions
     # (Import tab). Created on first use; a new one stops the old one working.
@@ -85,7 +85,7 @@ class Activity(Base):
     anaerobic_training_effect: Mapped[float | None] = mapped_column(Float, nullable=True)
     calories: Mapped[float | None] = mapped_column(Float, nullable=True)
     training_load: Mapped[float | None] = mapped_column(Float, nullable=True)  # Garmin "activityTrainingLoad"
-    # Answered on the watch after the activity; fetched per activity (see garmin_details).
+    # Answered on the watch after the activity; fetched per activity (see garmin/sync.py).
     perceived_effort: Mapped[int | None] = mapped_column(Integer, nullable=True)  # RPE 1-10
     feel: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0 very weak .. 100 very strong
     # none_as_null: "nothing yet" is a real SQL NULL, so it can be queried for.

@@ -1,6 +1,6 @@
 import datetime
 
-from app import garmin_client
+from app.garmin import client as garmin_client
 
 
 # Bound at import, before conftest's autouse fixture swaps in the fake.

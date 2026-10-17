@@ -7,7 +7,10 @@ import threading
 import pytest
 from conftest import admin_auth, make_user
 
-from app import autosync, garmin_client, models, planning
+from app import models
+from app.garmin import autosync
+from app.garmin import client as garmin_client
+from app.planning import training_log
 from app.database import SessionLocal
 
 TODAY = datetime.date.today()
@@ -153,29 +156,29 @@ def _done(aid, kind, minutes):
 
 def test_same_sport_at_another_duration_still_counts_as_done():
     run = _done(1, "running", 70)
-    matched = planning.matched_plans([_plan(10, "running", 90)], [run])
+    matched = training_log.matched_plans([_plan(10, "running", 90)], [run])
     assert matched == {10: run}
-    assert planning._fmt_planned(_plan(10, "running", 90), run) == "run 1:30 (done, 1:10 instead of 1:30)"
-    assert planning._fmt_planned(_plan(10, "running", 90), _done(2, "running", 85)) == "run 1:30 (done as planned)"
+    assert training_log._fmt_planned(_plan(10, "running", 90), run) == "run 1:30 (done, 1:10 instead of 1:30)"
+    assert training_log._fmt_planned(_plan(10, "running", 90), _done(2, "running", 85)) == "run 1:30 (done as planned)"
 
 
 def test_split_sessions_are_not_added_up():
     """1:03 + 0:29 of swimming against a planned 1:30: the closer one does it, the other stays its own session."""
     long_swim, short_swim = _done(1, "lap_swimming", 63), _done(2, "lap_swimming", 29)
-    assert planning.matched_plans([_plan(10, "swimming", 90)], [short_swim, long_swim]) == {10: long_swim}
+    assert training_log.matched_plans([_plan(10, "swimming", 90)], [short_swim, long_swim]) == {10: long_swim}
 
 
 def test_as_planned_is_matched_first():
     """Two runs planned: the one done within 15% keeps its match even if listed second."""
     easy, long_ = _done(1, "running", 40), _done(2, "running", 115)
-    matched = planning.matched_plans([_plan(10, "running", 45), _plan(11, "running", 120)], [long_, easy])
+    matched = training_log.matched_plans([_plan(10, "running", 45), _plan(11, "running", 120)], [long_, easy])
     assert matched == {10: easy, 11: long_}
 
 
 def test_other_sports_and_missing_durations_are_never_matched():
-    assert planning.matched_plans([_plan(10, "running", 60)], [_done(1, "cycling", 60)]) == {}
-    assert planning.matched_plans([_plan(10, "yoga", 60)], [_done(1, "yoga", 60)]) == {}
-    assert planning.matched_plans([_plan(10, "running", 60)], [_done(1, "running", 0)]) == {}
+    assert training_log.matched_plans([_plan(10, "running", 60)], [_done(1, "cycling", 60)]) == {}
+    assert training_log.matched_plans([_plan(10, "yoga", 60)], [_done(1, "yoga", 60)]) == {}
+    assert training_log.matched_plans([_plan(10, "running", 60)], [_done(1, "running", 0)]) == {}
 
 
 # --- Background sync ----------------------------------------------------------------------

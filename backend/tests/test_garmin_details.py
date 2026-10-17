@@ -2,7 +2,9 @@ import datetime
 
 import pytest
 
-from app import garmin_client, garmin_details, models
+from app import models
+from app.garmin import client as garmin_client
+from app.garmin import sync as garmin_sync
 from app.database import SessionLocal
 
 TODAY = datetime.date.today()
@@ -17,12 +19,12 @@ TODAY = datetime.date.today()
 ])
 def test_effort_and_feel(rpe, feel, expected):
     summary = {"summaryDTO": {"directWorkoutRpe": rpe, "directWorkoutFeel": feel}}
-    assert garmin_details.effort_and_feel(summary) == expected
+    assert garmin_sync.effort_and_feel(summary) == expected
 
 
 def test_effort_and_feel_tolerates_missing_parts():
-    assert garmin_details.effort_and_feel({}) == (None, None)
-    assert garmin_details.effort_and_feel({"summaryDTO": None}) == (None, None)
+    assert garmin_sync.effort_and_feel({}) == (None, None)
+    assert garmin_sync.effort_and_feel({"summaryDTO": None}) == (None, None)
 
 
 def test_compact_laps_keeps_only_what_matters():
@@ -31,11 +33,11 @@ def test_compact_laps_keeps_only_what_matters():
          "startTimeGMT": "x", "lengthDTOs": [1, 2, 3], "strideLength": 120.5},
         {"distance": 0.0, "duration": 20.0, "averageHR": None},
     ]
-    assert garmin_details.compact_laps(laps) == [
+    assert garmin_sync.compact_laps(laps) == [
         {"distance": 1600, "duration": 384.1, "avg_hr": 175, "max_hr": 186, "avg_power": 500},
         {"distance": 0, "duration": 20.0},
     ]
-    assert len(garmin_details.compact_laps([{"distance": 100, "duration": 60}] * 500)) == garmin_details.MAX_LAPS_STORED
+    assert len(garmin_sync.compact_laps([{"distance": 100, "duration": 60}] * 500)) == garmin_sync.MAX_LAPS_STORED
 
 
 RAW_PROFILE = {
@@ -60,7 +62,7 @@ RAW_PROFILE = {
 
 
 def test_normalize_profile():
-    profile = garmin_details.normalize_profile(RAW_PROFILE)
+    profile = garmin_sync.normalize_profile(RAW_PROFILE)
     assert profile["weight_kg"] == 70.5 and profile["height_cm"] == 178
     assert profile["vo2max_running"] == 52 and "vo2max_cycling" not in profile
     assert profile["lactate_threshold_hr"] == 170
@@ -76,9 +78,9 @@ def test_normalize_profile():
 
 
 def test_normalize_profile_with_nothing_or_partial_data():
-    assert garmin_details.normalize_profile({"profile": None, "hr_zones": None, "records": None, "predictions": None}) is None
-    assert garmin_details.normalize_profile({}) is None
-    only_zones = garmin_details.normalize_profile({"hr_zones": [{"sport": "DEFAULT", "maxHeartRateUsed": 185}]})
+    assert garmin_sync.normalize_profile({"profile": None, "hr_zones": None, "records": None, "predictions": None}) is None
+    assert garmin_sync.normalize_profile({}) is None
+    only_zones = garmin_sync.normalize_profile({"hr_zones": [{"sport": "DEFAULT", "maxHeartRateUsed": 185}]})
     assert only_zones["max_hr"] == 185 and "hr_zone_floors" not in only_zones
 
 
@@ -192,7 +194,7 @@ def test_garmin_refusing_details_does_not_fail_the_sync(client, auth, monkeypatc
     res = client.post("/api/garmin/sync", headers=auth)
     assert res.status_code == 200
     assert res.json()["activities_synced"] == 8 and res.json()["details_synced"] == 0
-    assert len(calls["summary"]) == garmin_details.GIVE_UP_AFTER_FAILURES  # stops asking instead of hammering Garmin
+    assert len(calls["summary"]) == garmin_sync.GIVE_UP_AFTER_FAILURES  # stops asking instead of hammering Garmin
     assert len(_calendar_activities(client, auth)) == 8  # the activities themselves are saved
     with SessionLocal() as db:
         assert db.query(models.Activity).filter(models.Activity.details_synced_at.is_not(None)).count() == 0
@@ -212,10 +214,10 @@ def test_a_profile_problem_does_not_lose_the_activity_details(client, auth, monk
 
 
 def test_only_a_batch_per_sync(client, auth, monkeypatch):
-    monkeypatch.setattr(garmin_details, "MAX_ACTIVITIES_PER_SYNC", 3)
+    monkeypatch.setattr(garmin_sync, "MAX_ACTIVITIES_PER_SYNC", 3)
     calls = _stub(monkeypatch, [_activity(str(i), "cycling", days_ago=i) for i in range(1, 8)])
     # enrich_activities reads the limit from its default argument, so call it the way the sync does
-    monkeypatch.setattr(garmin_details.enrich_activities, "__defaults__", (3,))
+    monkeypatch.setattr(garmin_sync.enrich_activities, "__defaults__", (3,))
     assert client.post("/api/garmin/sync", headers=auth).json()["details_synced"] == 3
     assert sorted(calls["summary"]) == ["1", "2", "3"]  # newest first
     assert client.post("/api/garmin/sync", headers=auth).json()["details_synced"] == 3
@@ -234,11 +236,11 @@ def test_morning_readiness_is_the_wake_up_reading():
         {"inputContext": "AFTER_WAKEUP_RESET", "score": 66, "level": "MODERATE", "feedbackShort": "WELL_RECOVERED",
          "recoveryTime": 120, "timestampLocal": "2026-01-05T06:00:00"},
     ]
-    assert garmin_details.morning_readiness(entries) == {
+    assert garmin_sync.morning_readiness(entries) == {
         "readiness": 66, "readiness_level": "moderate", "readiness_feedback": "well recovered", "recovery_minutes": 120}
     # No wake-up reading (watch not worn overnight): the earliest one of the day.
-    assert garmin_details.morning_readiness(entries[:2])["readiness"] == 40
-    assert garmin_details.morning_readiness([]) == {}
+    assert garmin_sync.morning_readiness(entries[:2])["readiness"] == 40
+    assert garmin_sync.morning_readiness([]) == {}
 
 
 STATUS = {
@@ -259,24 +261,24 @@ STATUS = {
 
 
 def test_status_fields_use_the_primary_device():
-    assert garmin_details.status_fields(STATUS) == {
+    assert garmin_sync.status_fields(STATUS) == {
         "training_status": "productive", "acute_load": 600, "chronic_load": 500, "load_ratio": 1.2,
         "load_ratio_status": "optimal", "vo2max": 51.4,
         "load_focus": {"phrase": "aerobic high shortage", "low": 1200, "low_target": [500, 1100], "high": 300,
                        "high_target": [600, 1200], "anaerobic": 250, "anaerobic_target": [200, 600]},
     }
-    assert garmin_details.status_fields({}) == {}
-    assert garmin_details.status_fields({"mostRecentTrainingStatus": None, "mostRecentVO2Max": None}) == {}
+    assert garmin_sync.status_fields({}) == {}
+    assert garmin_sync.status_fields({"mostRecentTrainingStatus": None, "mostRecentVO2Max": None}) == {}
 
 
 def test_stats_and_weather_fields():
-    assert garmin_details.stats_fields({"averageStressLevel": 30, "bodyBatteryHighestValue": 95,
+    assert garmin_sync.stats_fields({"averageStressLevel": 30, "bodyBatteryHighestValue": 95,
                                         "bodyBatteryLowestValue": 20, "totalSteps": 9000}) == {
         "stress_avg": 30, "body_battery_high": 95, "body_battery_low": 20, "steps": 9000}
-    assert garmin_details.stats_fields({"averageStressLevel": -1})["stress_avg"] is None  # Garmin's "no data"
-    assert garmin_details.weather_fields({"temp": 50, "windSpeed": 10, "relativeHumidity": 60.4}) == {
+    assert garmin_sync.stats_fields({"averageStressLevel": -1})["stress_avg"] is None  # Garmin's "no data"
+    assert garmin_sync.weather_fields({"temp": 50, "windSpeed": 10, "relativeHumidity": 60.4}) == {
         "temp_c": 10, "wind_kmh": 16, "humidity": 60}
-    assert garmin_details.weather_fields({"temp": None}) == {}
+    assert garmin_sync.weather_fields({"temp": None}) == {}
 
 
 def test_compact_laps_keep_kind_stroke_and_cadence():
@@ -287,7 +289,7 @@ def test_compact_laps_keep_kind_stroke_and_cadence():
         {"distance": 100.0, "duration": 95.0, "swimStroke": "BREASTSTROKE", "averageSWOLF": 41.0},
         {"distance": 0.0, "duration": 20.0, "averageSWOLF": 0.0},
     ]
-    assert garmin_details.compact_laps(laps) == [
+    assert garmin_sync.compact_laps(laps) == [
         {"distance": 400, "duration": 90.0, "cadence": 182, "kind": "active"},
         {"distance": 200, "duration": 80.0, "kind": "recovery"},
         {"distance": 1000, "duration": 300.0},
@@ -365,7 +367,7 @@ def test_later_syncs_only_ask_for_today_and_yesterday(client, auth, monkeypatch)
 
 
 def test_a_long_backlog_is_fetched_over_several_syncs(client, auth, monkeypatch):
-    monkeypatch.setattr(garmin_details.sync_days, "__defaults__", (4,))  # 4 days per sync
+    monkeypatch.setattr(garmin_sync.sync_days, "__defaults__", (4,))  # 4 days per sync
     calls = _stub_days(monkeypatch, lookback=9)
     first = client.post("/api/garmin/sync", headers=auth).json()
     assert first["days_synced"] == 4 and first["more_to_sync"] is True
@@ -407,7 +409,7 @@ def test_garmin_down_for_the_day_calls_stops_early_and_keeps_the_sync(client, au
     calls = _stub_days(monkeypatch, lookback=20, sleep_days=set(), refuse=("readiness", "status", "stats"))
     res = client.post("/api/garmin/sync", headers=auth)
     assert res.status_code == 200 and res.json()["more_to_sync"] is True
-    assert len(calls["sleep"]) == garmin_details.GIVE_UP_AFTER_FAILURES
+    assert len(calls["sleep"]) == garmin_sync.GIVE_UP_AFTER_FAILURES
 
 
 def test_sweat_and_weather_for_outdoor_sessions(client, auth, monkeypatch):
@@ -511,7 +513,7 @@ def test_only_the_parts_of_a_night_that_are_read_are_stored(client, auth, monkey
     client.post("/api/garmin/sync", headers=auth)
     with SessionLocal() as db:
         night = db.query(models.SleepRecord).one()
-        assert set(night.raw_json) == set(garmin_details.SLEEP_KEPT)
+        assert set(night.raw_json) == set(garmin_sync.SLEEP_KEPT)
         assert night.sleep_score == 80 and night.resting_heart_rate == 48
     text = client.get("/api/plan/log", headers=auth).json()["text"]
     assert "HRV 61 balanced · body battery +55 overnight" in text
@@ -523,8 +525,8 @@ def test_nights_stored_whole_by_an_older_version_are_trimmed(client, auth):
         db.add(models.SleepRecord(user_id=user.id, date=TODAY, sleep_score=80, raw_json=FULL_NIGHT))
         db.add(models.SleepRecord(user_id=user.id, date=_days_ago(1), sleep_score=70, raw_json={"avgOvernightHrv": 50}))
         db.commit()
-        assert garmin_details.trim_stored_sleep(db) == 1  # the small one is left alone
-        assert garmin_details.trim_stored_sleep(db) == 0
+        assert garmin_sync.trim_stored_sleep(db) == 1  # the small one is left alone
+        assert garmin_sync.trim_stored_sleep(db) == 0
         night = db.query(models.SleepRecord).filter_by(date=TODAY).one()
         assert night.raw_json["avgOvernightHrv"] == 61.0 and "sleepMovement" not in night.raw_json
 
@@ -538,7 +540,7 @@ def test_a_refreshed_garmin_session_is_kept(client, auth, monkeypatch):
     with SessionLocal() as db:
         user = db.query(models.User).filter_by(username="athlete").one()
         assert decrypt_text(user.garmin_session_encrypted) == "refreshed-session"
-        assert garmin_details.save_session(db, object(), user) is False  # unchanged: nothing written
+        assert garmin_sync.save_session(db, object(), user) is False  # unchanged: nothing written
 
 
 def test_a_client_that_cannot_export_keeps_the_stored_session(client, auth, monkeypatch):

@@ -176,21 +176,30 @@ There's no separate frontend server/container: FastAPI serves the API under
 └── backend/
     ├── Dockerfile
     ├── requirements.txt
+    ├── tests/              pytest, one file per area (npm test); test_structure.py keeps this layout true
     ├── app/
-    │   ├── main.py         FastAPI app, mounts routers + static frontend
+    │   ├── main.py         FastAPI app: security headers, startup, mounts routers + static frontend
     │   ├── config.py       env-driven settings
-    │   ├── database.py     SQLAlchemy engine/session
-    │   ├── models.py       User, Activity, SleepRecord, PlannedTraining, Objective, LoginEvent
-    │   ├── schemas.py       Pydantic request/response models
+    │   ├── database.py     SQLAlchemy engine/session, tiny forward-only migration
+    │   ├── models.py       database tables: User, Activity, SleepRecord, DailyMetrics, PlannedTraining, PlanDraft, Objective, LoginEvent
+    │   ├── schemas.py      Pydantic request/response models (what the API sends and accepts)
     │   ├── security.py     scrypt password hashing, JWT, Fernet encryption
-    │   ├── deps.py          auth dependencies: any user / regular member / admin
-    │   ├── garmin_client.py wraps garth/garminconnect for login + sync
-    │   ├── accounts.py       first-admin bootstrap, test accounts, login lockout, connection log
-    │   ├── visitor.py        visitor address and https, as reported by the proxy or tunnel
-    │   ├── planning.py       training log text + draft plan parser (Plan page)
-    │   ├── sharing.py        share codes, someone's planned sessions as draft lines (Import tab)
-    │   ├── autosync.py       background Garmin sync of every connected account
-    │   └── routers/          auth, admin, garmin, calendar, athlete, objectives, planned, plan, share
+    │   ├── deps.py         auth dependencies: any user / regular member / admin
+    │   ├── visitor.py      visitor address and https, as reported by the proxy or tunnel
+    │   ├── accounts.py     first-admin bootstrap, test accounts, login lockout, connection log
+    │   ├── sharing.py      share codes, someone's planned sessions as draft lines (Import tab)
+    │   ├── routers/        HTTP only, one file per URL prefix: auth, admin, garmin, calendar,
+    │   │                   athlete, objectives, planned, plan, share. They never import each other.
+    │   ├── planning/       the training log and the draft plan
+    │   │   ├── basics.py         days, durations, sports
+    │   │   ├── activity_text.py  one activity as text (pace, HR, effort, laps, weather)
+    │   │   ├── training_log.py   the History tab's log (build_log, one function per section)
+    │   │   ├── draft_parser.py   "date | sport | duration | details" lines -> sessions or errors
+    │   │   └── drafts.py         a draft as the page sees it, putting sessions on the calendar
+    │   └── garmin/         everything that talks to Garmin Connect
+    │       ├── client.py     the only file that calls Garmin (wraps garth/garminconnect)
+    │       ├── sync.py       one sync of one account: what is fetched and how it is stored
+    │       └── autosync.py   background syncs every few hours + the jobs the Sync button starts
     └── frontend/             static, no build step (native ES modules)
         ├── index.html        every screen's markup; loads css/*.css and js/main.js
         ├── css/              base.css (shared) + one file per screen: calendar, athlete, plan, history, import, admin

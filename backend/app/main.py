@@ -6,10 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import autosync, garmin_details
 from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
 from .database import Base, SessionLocal, add_missing_columns, engine
+from .garmin import autosync
+from .garmin import sync as garmin_sync
 from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share
 from .version import VERSION
 from .visitor import is_https
@@ -92,7 +93,7 @@ def on_startup():
     Base.metadata.create_all(bind=engine)
     add_missing_columns()
     with SessionLocal() as db:
-        garmin_details.trim_stored_sleep(db)  # nights stored whole by versions before 15
+        garmin_sync.trim_stored_sleep(db)  # nights stored whole by versions before 15
     bootstrap_admin()
     seed_test_accounts()
     autosync.start(settings.auto_sync_hours)

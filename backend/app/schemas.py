@@ -38,6 +38,17 @@ class MeOut(BaseModel):
     garmin_connected: bool
     garmin_email: str | None
 
+    @classmethod
+    def of(cls, user) -> "MeOut":
+        """The logged-in account as the page sees it (a models.User)."""
+        return cls(
+            id=user.id,
+            username=user.username,
+            is_admin=bool(user.is_admin),
+            garmin_connected=bool(user.garmin_session_encrypted),
+            garmin_email=user.garmin_email if user.garmin_session_encrypted else None,
+        )
+
 
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=256)

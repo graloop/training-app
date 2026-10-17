@@ -1,6 +1,8 @@
-"""Per-activity details (perceived effort, feel, laps) and the athlete profile
-Garmin keeps (zones, thresholds, records). Fetched during a sync, each activity
-only once; nothing here is allowed to fail the sync."""
+"""One sync of one account (sync_user): the activity list, sleep and recovery
+day by day, then per-activity details (perceived effort, feel, laps, weather),
+multisport legs and the athlete profile Garmin keeps (zones, thresholds,
+records), and how each is stored. Each activity's details are fetched only
+once. Only the activity list can fail a sync; nothing else here is allowed to."""
 
 import datetime
 from typing import Any
@@ -8,9 +10,10 @@ from typing import Any
 from sqlalchemy import Text, cast, func, or_
 from sqlalchemy.orm import Session
 
-from . import garmin_client, models
-from .security import decrypt_text, encrypt_text
-from .planning import sport_of
+from .. import models
+from ..planning.basics import sport_of
+from ..security import decrypt_text, encrypt_text
+from . import client as garmin_client
 
 MAX_ACTIVITIES_PER_SYNC = 40  # a first sync catches up over one or two runs
 DETAILS_WINDOW_DAYS = 90  # imported history older than this keeps Garmin's list data only

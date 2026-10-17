@@ -11,7 +11,8 @@ import secrets
 
 from sqlalchemy.orm import Session
 
-from . import models, planning
+from . import models
+from .planning.basics import fmt_day, fmt_minutes
 
 # No 0/O, 1/I/L: the code is read out loud or typed from a message.
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
@@ -80,8 +81,8 @@ def draft_lines(
         .all()
     )
     lines = [
-        f"# Imported from {sharer.username}: their weeks of {planning.fmt_day(source_start)}"
-        f" to {planning.fmt_day(source_end)}"
+        f"# Imported from {sharer.username}: their weeks of {fmt_day(source_start)}"
+        f" to {fmt_day(source_end)}"
     ]
     skipped = 0
     for p in planned:
@@ -90,7 +91,7 @@ def draft_lines(
             skipped += 1
             continue
         sport = _DRAFT_SPORT.get(p.activity_type, _cell(p.activity_type))
-        line = f"{planning.fmt_day(day)} | {sport} | {planning.fmt_minutes(p.planned_duration_minutes)}"
+        line = f"{fmt_day(day)} | {sport} | {fmt_minutes(p.planned_duration_minutes)}"
         details = _cell(p.notes)
         lines.append(f"{line} | {details}" if details else line)
     return "\n".join(lines), skipped

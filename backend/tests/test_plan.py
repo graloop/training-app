@@ -3,7 +3,8 @@ import datetime
 import pytest
 from conftest import admin_auth, make_user
 
-from app import models, planning
+from app import models
+from app.planning import basics, draft_parser
 from app.database import SessionLocal
 
 D = datetime.date
@@ -17,7 +18,7 @@ def day(n):  # n days after next Monday
 
 
 def label(d):
-    return planning.fmt_day(d)  # e.g. "Tue Oct 13"
+    return basics.fmt_day(d)  # e.g. "Tue Oct 13"
 
 
 # --- Parsing durations and sports -------------------------------------------------
@@ -28,18 +29,18 @@ def label(d):
     ("1,5 h", 90), ("2 hours", 120), ("75 min", 75), ("75", 75), ("45m", 45), ("30 minutes", 30), (" 1:05 ", 65),
 ])
 def test_durations(text, minutes):
-    assert planning.parse_duration(text) == minutes
+    assert draft_parser.parse_duration(text) == minutes
 
 
 @pytest.mark.parametrize("text", ["", "soon", "1:5", "1:60:00", "-30", "h"])
 def test_bad_durations(text):
-    assert planning.parse_duration(text) is None
+    assert draft_parser.parse_duration(text) is None
 
 
 def _parse(text, weeks=4, today=None):
     first = NEXT_MONDAY
     last = first + datetime.timedelta(days=weeks * 7 - 1)
-    return planning.parse_draft(text, first, last, today or TODAY)
+    return draft_parser.parse_draft(text, first, last, today or TODAY)
 
 
 @pytest.mark.parametrize("sport,activity_type", [
@@ -59,7 +60,7 @@ def test_sports(sport, activity_type):
 
 def test_date_formats_all_mean_the_same_day():
     d = day(1)  # a Tuesday
-    month, full_month = planning.MONTH_NAMES[d.month - 1], d.strftime("%B")
+    month, full_month = basics.MONTH_NAMES[d.month - 1], d.strftime("%B")
     forms = [
         d.isoformat(), f"Tue {month} {d.day}", f"Tuesday, {full_month} {d.day}", f"{month} {d.day}",
         f"{d.day} {month}", f"Tue {month} {d.day}, {d.year}", f"tue {month.lower()} {d.day}", f"{month} {d.day}th".replace("1th", "1st") if d.day in (1, 21, 31) else f"{month} {d.day}th",
@@ -71,9 +72,9 @@ def test_date_formats_all_mean_the_same_day():
 
 def test_weekday_that_does_not_match_the_date_is_caught():
     d = day(1)  # Tuesday
-    parsed = _parse(f"Wed {planning.MONTH_NAMES[d.month - 1]} {d.day} | run | 0:30")
+    parsed = _parse(f"Wed {basics.MONTH_NAMES[d.month - 1]} {d.day} | run | 0:30")
     assert parsed.sessions == []
-    assert parsed.errors[0].message == f"{planning.MONTH_NAMES[d.month - 1]} {d.day} is a Tue, not a Wed."
+    assert parsed.errors[0].message == f"{basics.MONTH_NAMES[d.month - 1]} {d.day} is a Tue, not a Wed."
 
 
 def test_dates_outside_the_planned_weeks_are_errors():
@@ -88,7 +89,7 @@ def test_a_date_outside_the_weeks_says_so_whatever_its_weekday():
     # so the message must be about the weeks, not a weekday guessed in the wrong year.
     old = NEXT_MONDAY - datetime.timedelta(days=140)
     far_start = NEXT_MONDAY + datetime.timedelta(weeks=20)
-    parsed = planning.parse_draft(f"{label(old)} | run | 0:30\n{label(NEXT_MONDAY)} | run | 0:30",
+    parsed = draft_parser.parse_draft(f"{label(old)} | run | 0:30\n{label(NEXT_MONDAY)} | run | 0:30",
                                   far_start, far_start + datetime.timedelta(days=6), TODAY)
     assert parsed.sessions == [] and len(parsed.errors) == 2
     assert parsed.errors[0].message.startswith(f"{label(old)} is outside the weeks you're planning")
@@ -115,7 +116,7 @@ def test_unreadable_dates_and_lines():
 
 def test_past_days_are_refused():
     monday = THIS_MONDAY
-    parsed = planning.parse_draft(
+    parsed = draft_parser.parse_draft(
         f"{monday.isoformat()} | run | 0:30\n{(monday + datetime.timedelta(days=3)).isoformat()} | run | 0:30",
         monday, monday + datetime.timedelta(days=6), today=monday + datetime.timedelta(days=2),
     )
@@ -656,7 +657,7 @@ def test_earlier_weeks_give_the_long_term_picture(client, auth):
     text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
     earlier = text[text.index("EARLIER HISTORY"):text.index("\nWEEK OF")].splitlines()
     w20, w18, w60 = (monday - datetime.timedelta(weeks=n) for n in (20, 18, 60))
-    name = lambda d: f"Week of {planning.MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"  # noqa: E731
+    name = lambda d: f"Week of {basics.MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"  # noqa: E731
     weeks = [line for line in earlier if line.startswith("Week of")]
     # every week from the first stored one (60 weeks back) up to the detailed part, gaps included
     assert weeks[0] == f"{name(w60)} · 0:10 (run 0:10) · 1 session"
@@ -686,7 +687,7 @@ def test_history_older_than_two_years_comes_by_month(client, auth):
         db.commit()
     text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
     earlier = text[text.index("EARLIER HISTORY"):text.index("\nWEEK OF")].splitlines()
-    month = f"Month of {planning.MONTH_NAMES[old.month - 1]} {old.year}"
+    month = f"Month of {basics.MONTH_NAMES[old.month - 1]} {old.year}"
     assert f"{month} · 4:00 (swim 1:00 · bike 2:00 · run 1:00) · 3 sessions · load 150" in earlier
     assert earlier[1].startswith("By month, before ") and earlier[2].startswith(month)
     months = [line for line in earlier if line.startswith("Month of")]

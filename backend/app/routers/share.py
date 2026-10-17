@@ -3,10 +3,12 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from .. import accounts, models, planning, schemas, sharing
+from .. import accounts, models, schemas, sharing
+from ..planning import drafts
+from ..planning.basics import monday_of
+from ..planning.draft_parser import parse_draft
 from ..database import get_db
 from ..deps import get_current_member
-from .plan import _out, _today, planned_between, weeks_preview
 
 router = APIRouter(prefix="/api/share", tags=["share"])
 
@@ -38,14 +40,14 @@ def _prepare(db: Session, user: models.User, payload: schemas.ImportRequest, tod
         accounts.record_share_failure(user.id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No account with that name and share code.")
 
-    source_start = planning.monday_of(payload.source_start)
-    start = planning.monday_of(payload.target_start or payload.source_start)
+    source_start = monday_of(payload.source_start)
+    start = monday_of(payload.target_start or payload.source_start)
     end = start + datetime.timedelta(days=payload.weeks * 7 - 1)
     text, skipped = sharing.draft_lines(db, sharer, source_start, payload.weeks, start, today)
     if len(text) > MAX_IMPORT_TEXT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="That's too much to import at once. Choose fewer weeks.")
-    parsed = planning.parse_draft(text, start, end, today)
+    parsed = parse_draft(text, start, end, today)
     return sharer, source_start, start, end, text, skipped, parsed
 
 
@@ -57,14 +59,14 @@ def preview_import(
     user: models.User = Depends(get_current_member),
 ):
     """What importing would bring in. Changes nothing."""
-    day = _today(today)
+    day = drafts.client_today(today)
     sharer, source_start, start, end, text, skipped, parsed = _prepare(db, user, payload, day)
     replace_from = max(start, day)
     draft = user.plan_draft
     draft_sessions = 0
     if draft is not None:
         draft_end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
-        draft_sessions = len(planning.parse_draft(draft.text, draft.start_date, draft_end, day).sessions)
+        draft_sessions = len(parse_draft(draft.text, draft.start_date, draft_end, day).sessions)
     return schemas.ImportPreview(
         from_username=sharer.username,
         source_start=source_start,
@@ -76,9 +78,9 @@ def preview_import(
         sessions_count=len(parsed.sessions),
         skipped_past=skipped,
         errors=[schemas.DraftErrorOut(line=e.line, text=e.text, message=e.message) for e in parsed.errors],
-        weeks_preview=weeks_preview(parsed.sessions, start, payload.weeks),
+        weeks_preview=drafts.weeks_preview(parsed.sessions, start, payload.weeks),
         replace_from=replace_from,
-        existing_planned=planned_between(db, user, replace_from, end).count(),
+        existing_planned=drafts.planned_between(db, user, replace_from, end).count(),
         draft_sessions=draft_sessions,
     )
 
@@ -92,7 +94,7 @@ def import_to_plan(
 ):
     """Make their sessions your Plan draft, to edit before it goes on the
     calendar. Your block notes are kept; the calendar isn't touched."""
-    day = _today(today)
+    day = drafts.client_today(today)
     _, _, start, _, text, _, parsed = _prepare(db, user, payload, day)
     if not parsed.sessions:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There are no sessions to import in those weeks.")
@@ -106,7 +108,7 @@ def import_to_plan(
     draft.confirmed_at = None
     db.commit()
     db.refresh(user)
-    return _out(db, user, user.plan_draft, day)
+    return drafts.draft_out(db, user, user.plan_draft, day)
 
 
 @router.post("/import/calendar", response_model=schemas.ConfirmResult)
@@ -119,16 +121,11 @@ def import_to_calendar(
     """Put their sessions straight on your calendar. Like confirming a plan:
     your planned sessions from today to the last imported day are replaced;
     done activities, earlier days and your Plan draft are not touched."""
-    day = _today(today)
+    day = drafts.client_today(today)
     _, _, start, end, _, _, parsed = _prepare(db, user, payload, day)
     if not parsed.sessions:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There are no sessions to import in those weeks.")
     replace_from = max(start, day)
-    replaced = planned_between(db, user, replace_from, end).delete()
-    for s in parsed.sessions:
-        db.add(models.PlannedTraining(
-            user_id=user.id, date=s.date, activity_type=s.activity_type, planned_duration_minutes=s.minutes,
-            notes=s.details, source="import",
-        ))
+    replaced = drafts.put_on_calendar(db, user, parsed.sessions, replace_from, end, source="import")
     db.commit()
     return schemas.ConfirmResult(added=len(parsed.sessions), replaced=replaced, start_date=replace_from, end_date=end)

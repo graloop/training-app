@@ -14,10 +14,12 @@ import logging
 import threading
 import time
 
-from . import garmin_client, garmin_details, models
-from .config import get_settings
-from .database import SessionLocal
-from .security import decrypt_text
+from .. import models
+from ..config import get_settings
+from ..database import SessionLocal
+from ..security import decrypt_text
+from . import client as garmin_client
+from . import sync as garmin_sync
 
 log = logging.getLogger("trainer.autosync")
 
@@ -68,10 +70,10 @@ def sync_account(user_id: int, today: datetime.date | None = None) -> bool:
                 return False
             lookback = get_settings().garmin_sync_lookback_days
             for _ in range(ROUNDS_PER_ACCOUNT):
-                result = garmin_details.sync_user(db, api, user, today or datetime.date.today(), lookback)
+                result = garmin_sync.sync_user(db, api, user, today or datetime.date.today(), lookback)
                 if not result["more_to_sync"]:
                     break
-            garmin_details.save_session(db, api, user)
+            garmin_sync.save_session(db, api, user)
             return True
     except Exception as exc:  # noqa: BLE001 - never let one account stop the others
         log.warning("Background sync failed for account %s: %s", user_id, exc)
@@ -132,14 +134,14 @@ def _run_job(user_id: int, api, job: dict) -> None:
             if user is not None:
                 lookback = get_settings().garmin_sync_lookback_days
                 for _ in range(JOB_ROUNDS):
-                    result = garmin_details.sync_user(db, api, user, datetime.date.today(), lookback)
+                    result = garmin_sync.sync_user(db, api, user, datetime.date.today(), lookback)
                     _update(job, rounds=job["rounds"] + 1, more_to_sync=result["more_to_sync"],
                             activities_synced=max(job["activities_synced"], result["activities_synced"]),
                             days_synced=job["days_synced"] + result["days_synced"],
                             details_synced=job["details_synced"] + result["details_synced"])
                     if not result["more_to_sync"]:
                         break
-                garmin_details.save_session(db, api, user)
+                garmin_sync.save_session(db, api, user)
         _update(job, state="done", finished_at=models.utcnow())
     except Exception as exc:  # noqa: BLE001 - reported to the page
         log.warning("Sync job failed for account %s: %s", user_id, exc)

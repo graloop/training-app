@@ -9,16 +9,6 @@ from ..security import create_access_token, hash_password, verify_password
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def me_out(user: models.User) -> schemas.MeOut:
-    return schemas.MeOut(
-        id=user.id,
-        username=user.username,
-        is_admin=bool(user.is_admin),
-        garmin_connected=bool(user.garmin_session_encrypted),
-        garmin_email=user.garmin_email if user.garmin_session_encrypted else None,
-    )
-
-
 @router.post("/login", response_model=schemas.TokenResponse)
 def login(payload: schemas.LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Log in with an account the admin created. There is no sign-up."""
@@ -44,7 +34,7 @@ def login(payload: schemas.LoginRequest, request: Request, db: Session = Depends
 
 @router.get("/me", response_model=schemas.MeOut)
 def me(user: models.User = Depends(get_current_user)):
-    return me_out(user)
+    return schemas.MeOut.of(user)
 
 
 @router.post("/password", response_model=schemas.TokenResponse)
