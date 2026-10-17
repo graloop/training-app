@@ -148,7 +148,11 @@ friendForm.addEventListener("submit", async (e) => {
       body: JSON.stringify(body),
     });
     friendPreview = preview;
-    renderDraftPreview(preview, document.getElementById("friend-preview"), `${preview.from_username} has no planned sessions in those weeks.`);
+    renderDraftPreview(
+      preview,
+      document.getElementById("friend-preview"),
+      `${preview.from_username} has no planned sessions in those weeks.`,
+    );
     let summary = "";
     if (preview.sessions_count) {
       const weeks =
@@ -189,7 +193,10 @@ friendToPlan.addEventListener("click", async () => {
   if (!friendPreview || armed(friendToPlan, friendPreview.draft_sessions, "session", " in your draft")) return;
   friendToPlan.disabled = true;
   try {
-    await api(`/api/share/import/plan?today=${isoDate(new Date())}`, { method: "POST", body: JSON.stringify(friendRequest()) });
+    await api(`/api/share/import/plan?today=${isoDate(new Date())}`, {
+      method: "POST",
+      body: JSON.stringify(friendRequest()),
+    });
     clearFriendPreview();
     showTab("plan"); // the draft is there, ready to adjust
   } catch (err) {

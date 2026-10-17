@@ -172,14 +172,16 @@ There's no separate frontend server/container: FastAPI serves the API under
 
 ```
 .
-├── package.json          npm wrapper — `npm start` runs scripts/dev.sh
+├── package.json          npm wrapper: npm start, npm test, npm run lint / format (see "Working on the code")
+├── .github/workflows/    CI: tests, lint and the Docker build on every push
 ├── scripts/dev.sh         local dev launcher (venv, .env, uvicorn --reload)
 ├── docker-compose.yml     production stack: postgres + backend (+ optional Cloudflare Tunnel)
 ├── .env.example           template for secrets/config (copy to .env)
 ├── docs/TROUBLESHOOTING.md  logs, error messages, account rescue, backups
 └── backend/
     ├── Dockerfile
-    ├── requirements.txt
+    ├── requirements.txt    the app's Python dependencies (requirements-dev.txt adds pytest and ruff)
+    ├── pyproject.toml      pytest and ruff settings
     ├── tests/              pytest, one file per area (npm test); test_structure.py keeps this layout true
     ├── app/
     │   ├── main.py         FastAPI app: security headers, startup, mounts routers + static frontend
@@ -263,6 +265,26 @@ To reset local state (fresh database, fresh generated secrets):
 rm -f .env backend/dev.db
 npm start
 ```
+
+## Working on the code
+
+| Command | What it does |
+|---|---|
+| `npm start` | runs the app locally with auto-reload (see above) |
+| `npm test` | the backend tests, plus checks that the page's scripts and HTML agree and that the layout rules below hold |
+| `npm run lint` | [ruff](https://docs.astral.sh/ruff/) on the Python, [Prettier](https://prettier.io) on the page's JavaScript (`npm install` once first) |
+| `npm run format` | fixes what both can fix by themselves |
+
+GitHub runs the tests, the lint and a Docker build on every push
+(`.github/workflows/ci.yml`): a red cross on a commit means one failed, and
+the run's log says which.
+
+Two rules keep each part of the app in one place, and tests enforce them:
+routers only handle HTTP and never import each other (shared logic lives in
+`planning/`, `garmin/` or another module), and the page's modules never
+import each other in a circle (what two views share lives in `js/core/`).
+When something breaks, [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+says where to look.
 
 ## Deploying to your server (Docker / Portainer)
 

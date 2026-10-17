@@ -18,7 +18,8 @@ let target = null; // { date, existing, onSaved }
 function renderSportOptions(extraType) {
   planSports.innerHTML = "";
   const sports = [...SPORTS];
-  if (extraType && !SPORTS.some((s) => s.type === extraType)) sports.push({ type: extraType, label: sportLabel(extraType) });
+  if (extraType && !SPORTS.some((s) => s.type === extraType))
+    sports.push({ type: extraType, label: sportLabel(extraType) });
   for (const sport of sports) {
     const label = document.createElement("label");
     label.className = "sport-option";

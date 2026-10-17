@@ -52,7 +52,7 @@ def verify_password(password: str, stored: str | None) -> bool:
 # --- Session tokens ---
 
 def create_access_token(user_id: int, token_version: int | None) -> str:
-    expire = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+    expire = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
         minutes=settings.access_token_expire_minutes
     )
     payload = {"sub": str(user_id), "tv": token_version or 0, "exp": expire}

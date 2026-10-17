@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..planning.training_log import garmin_lines
 from ..database import get_db
 from ..deps import get_current_member
+from ..planning.training_log import garmin_lines
 
 router = APIRouter(prefix="/api/athlete", tags=["athlete"])
 

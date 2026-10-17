@@ -11,7 +11,7 @@ from ..security import hash_password
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 RECENT_LIMIT = 100
 
 

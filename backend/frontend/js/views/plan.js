@@ -40,7 +40,8 @@ function fillPlanStart(selectedIso) {
     if (i === 1) label = `Next week (${label})`;
     options.push([isoDate(day), label]);
   }
-  if (selectedIso && !options.some(([iso]) => iso === selectedIso)) options.unshift([selectedIso, fmtLongDate(selectedIso)]);
+  if (selectedIso && !options.some(([iso]) => iso === selectedIso))
+    options.unshift([selectedIso, fmtLongDate(selectedIso)]);
   planStart.innerHTML = "";
   for (const [iso, label] of options) {
     const opt = document.createElement("option");
@@ -144,7 +145,10 @@ export async function loadPlanPage() {
   for (const el of [draftStatus, confirmStatus, rulesStatus]) el.classList.add("hidden");
   confirmView.classList.add("hidden");
   try {
-    const [draft, rules] = await Promise.all([api(`/api/plan/draft?today=${isoDate(new Date())}`), api("/api/plan/rules")]);
+    const [draft, rules] = await Promise.all([
+      api(`/api/plan/draft?today=${isoDate(new Date())}`),
+      api("/api/plan/rules"),
+    ]);
     rulesText.value = rules.rules;
     applyDraft(draft, { fill: true });
   } catch (err) {
@@ -163,7 +167,8 @@ for (const el of [planStart, planWeeks]) el.addEventListener("change", () => sav
 document.getElementById("draft-save").addEventListener("click", async () => {
   const draft = await saveDraft();
   // The preview is above the draft: bring it into view, unless there are lines to fix right here.
-  if (draft && !draft.errors.length) document.getElementById("plan-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (draft && !draft.errors.length)
+    document.getElementById("plan-panel").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 // --- Putting it on the calendar ---
@@ -198,7 +203,9 @@ confirmView.addEventListener("click", () => showCalendarAround(planDraft.start_d
 
 async function saveRules() {
   try {
-    rulesText.value = (await api("/api/plan/rules", { method: "PUT", body: JSON.stringify({ rules: rulesText.value }) })).rules;
+    rulesText.value = (
+      await api("/api/plan/rules", { method: "PUT", body: JSON.stringify({ rules: rulesText.value }) })
+    ).rules;
     showStatus(rulesStatus, "Saved. It is now part of the History tab.");
     rulesStatus.classList.add("ok");
   } catch (err) {

@@ -5,7 +5,7 @@ from conftest import USER_PASSWORD, admin_auth, login, make_user
 from app import accounts, models
 from app.database import SessionLocal
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 
 
 def _activity(client, headers=None, **params):

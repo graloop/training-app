@@ -3,9 +3,9 @@ import datetime
 import pytest
 
 from app import models
+from app.database import SessionLocal
 from app.garmin import client as garmin_client
 from app.garmin import sync as garmin_sync
-from app.database import SessionLocal
 
 TODAY = datetime.date.today()
 
@@ -413,7 +413,7 @@ def test_garmin_down_for_the_day_calls_stops_early_and_keeps_the_sync(client, au
 
 
 def test_sweat_and_weather_for_outdoor_sessions(client, auth, monkeypatch):
-    calls = _stub(monkeypatch, [{**_activity("1", "running"), "startLatitude": 46.0}, _activity("2", "lap_swimming")])
+    _stub(monkeypatch, [{**_activity("1", "running"), "startLatitude": 46.0}, _activity("2", "lap_swimming")])
     monkeypatch.setattr(garmin_client, "fetch_activity_summary",
                         lambda api, aid: {"summaryDTO": {"directWorkoutRpe": 50, "directWorkoutFeel": 50, "waterEstimated": 800.0}})
     weather_calls = []

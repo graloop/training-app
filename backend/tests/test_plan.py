@@ -4,8 +4,8 @@ import pytest
 from conftest import admin_auth, make_user
 
 from app import models
-from app.planning import basics, draft_parser
 from app.database import SessionLocal
+from app.planning import basics, draft_parser
 
 D = datetime.date
 TODAY = D.today()

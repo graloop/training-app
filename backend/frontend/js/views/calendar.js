@@ -95,7 +95,10 @@ function renderWeekSummary(week) {
   title.textContent = `Week of ${new Date(week[0].date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
   cell.appendChild(title);
 
-  for (const [label, minutes, cls] of [["Planned", plannedMin, "planned"], ["Done", doneMin, "done"]]) {
+  for (const [label, minutes, cls] of [
+    ["Planned", plannedMin, "planned"],
+    ["Done", doneMin, "done"],
+  ]) {
     const row = document.createElement("div");
     row.className = `week-row ${cls}`;
     const name = document.createElement("span");
@@ -352,8 +355,7 @@ function renderCalendar(data) {
         const detail = p.planned_duration_minutes ? fmtHours(p.planned_duration_minutes) : "";
         const entry = makeEntry("planned", p.activity_type, detail);
         entry.title =
-          `Planned ${sportLabel(p.activity_type)}, ${detail}` +
-          `${p.notes ? `: ${p.notes}` : ""}. Click to edit.`;
+          `Planned ${sportLabel(p.activity_type)}, ${detail}` + `${p.notes ? `: ${p.notes}` : ""}. Click to edit.`;
         addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
         cell.appendChild(entry);
@@ -379,7 +381,8 @@ export async function loadCalendar() {
   try {
     data = await api(`/api/calendar?start=${start}&end=${end}`);
   } catch (err) {
-    if (err.status !== 401) showStatus(document.getElementById("sync-status"), `Couldn't load the calendar: ${err.message}`, true);
+    if (err.status !== 401)
+      showStatus(document.getElementById("sync-status"), `Couldn't load the calendar: ${err.message}`, true);
     return;
   }
   renderCalendar(data);
@@ -387,7 +390,11 @@ export async function loadCalendar() {
   document.getElementById("cal-today").disabled = weekOffset === 0;
 }
 
-for (const [id, change] of [["cal-prev", -2], ["cal-next", 2], ["cal-today", null]]) {
+for (const [id, change] of [
+  ["cal-prev", -2],
+  ["cal-next", 2],
+  ["cal-today", null],
+]) {
   document.getElementById(id).addEventListener("click", () => {
     weekOffset = change === null ? 0 : weekOffset + change;
     loadCalendar();

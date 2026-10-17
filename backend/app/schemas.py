@@ -1,13 +1,13 @@
 import datetime
 from typing import Annotated
 
-from pydantic import AfterValidator, BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
 
 def _as_utc(value: datetime.datetime) -> datetime.datetime:
     # SQLite hands back naive datetimes; they are stored in UTC. Without the
     # offset a browser would read them as local time.
-    return value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=datetime.UTC)
 
 
 UtcDatetime = Annotated[datetime.datetime, AfterValidator(_as_utc)]
@@ -165,8 +165,7 @@ class ObjectiveOut(BaseModel):
     target_time: str | None
     notes: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ObjectiveCreate(BaseModel):
@@ -216,8 +215,7 @@ class ActivityOut(BaseModel):
     feel: int | None  # 0 very weak .. 100 very strong
     legs: list[LegOut] = []  # multisport races only
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SleepOut(BaseModel):
@@ -230,8 +228,7 @@ class SleepOut(BaseModel):
     sleep_score: float | None
     resting_heart_rate: float | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlannedTrainingOut(BaseModel):
@@ -242,8 +239,7 @@ class PlannedTrainingOut(BaseModel):
     notes: str | None
     source: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # A confirmed draft line's details become the session's notes, so they get

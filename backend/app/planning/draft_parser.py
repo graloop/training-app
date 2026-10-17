@@ -146,7 +146,7 @@ def parse_draft(text: str, first: datetime.date, last: datetime.date, today: dat
         if cells[0].lower() in ("date", "day"):  # a table header row
             continue
 
-        def error(message: str) -> None:
+        def error(message: str, number: int = number, raw: str = raw) -> None:
             result.errors.append(DraftError(line=number, text=raw.strip(), message=message))
 
         if len(cells) < 2 or not cells[1]:

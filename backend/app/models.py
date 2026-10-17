@@ -17,7 +17,7 @@ from .database import Base
 
 
 def utcnow() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
+    return datetime.datetime.now(datetime.UTC)
 
 
 class User(Base):

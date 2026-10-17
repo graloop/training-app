@@ -9,7 +9,17 @@ const profileForm = document.getElementById("profile-form");
 const profileStatus = document.getElementById("profile-status");
 // Each key has an input with id "pf-<key>" in index.html.
 const PROFILE_NUMBERS = ["weight_kg", "height_cm", "max_hr", "threshold_hr", "resting_hr", "ftp_watts"];
-const PROFILE_TEXTS = ["ftp_date", "bike_zones", "threshold_pace", "run_zones", "css_pace", "swim_zones", "equipment", "health", "other"];
+const PROFILE_TEXTS = [
+  "ftp_date",
+  "bike_zones",
+  "threshold_pace",
+  "run_zones",
+  "css_pace",
+  "swim_zones",
+  "equipment",
+  "health",
+  "other",
+];
 
 function fillProfile(data) {
   for (const key of [...PROFILE_NUMBERS, ...PROFILE_TEXTS]) {
@@ -41,7 +51,11 @@ profileForm.addEventListener("submit", async (e) => {
   }
   for (const key of ["threshold_pace", "css_pace"]) {
     if (body[key] && !/^\d{1,2}:\d{2}$/.test(body[key])) {
-      showStatus(profileStatus, `Write the ${key === "css_pace" ? "CSS" : "threshold pace"} as min:sec, like 4:30.`, true);
+      showStatus(
+        profileStatus,
+        `Write the ${key === "css_pace" ? "CSS" : "threshold pace"} as min:sec, like 4:30.`,
+        true,
+      );
       return document.getElementById(`pf-${key}`).focus();
     }
   }
@@ -50,6 +64,11 @@ profileForm.addEventListener("submit", async (e) => {
     showStatus(profileStatus, "Saved. It is now part of the History tab.");
     profileStatus.classList.add("ok");
   } catch (err) {
-    if (err.status !== 401) showStatus(profileStatus, err.status === 422 ? "One of the numbers is out of range: check them and save again." : err.message, true);
+    if (err.status !== 401)
+      showStatus(
+        profileStatus,
+        err.status === 422 ? "One of the numbers is out of range: check them and save again." : err.message,
+        true,
+      );
   }
 });

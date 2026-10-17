@@ -198,8 +198,10 @@ earlier version usually runs on a newer database: it ignores the new columns.
 
 ## 6. Before changing code
 
-Run `npm test`. It runs the backend tests and checks that the page's
-scripts and HTML still agree (`tests/test_frontend.py`). Two rules keep the
+Run `npm test` and `npm run lint`. The tests cover the backend and check
+that the page's scripts and HTML still agree (`tests/test_frontend.py`);
+the lint catches mistakes like an unused import or a misspelt name. GitHub
+runs both on every push. Two rules keep the
 code easy to find your way in, and tests enforce both:
 
 - Routers only handle HTTP and never import each other. Shared logic goes

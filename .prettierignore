@@ -1,0 +1,7 @@
+# Prettier formats the page's JavaScript (npm run format). The stylesheets
+# keep one short rule per line and index.html is laid out by hand: Prettier
+# would spread both over many more lines.
+*.css
+*.html
+*.md
+*.yml

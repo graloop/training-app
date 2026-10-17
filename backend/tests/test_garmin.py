@@ -2,7 +2,6 @@ import datetime
 
 from app.garmin import client as garmin_client
 
-
 # Bound at import, before conftest's autouse fixture swaps in the fake.
 real_login_and_export_session = garmin_client.login_and_export_session
 

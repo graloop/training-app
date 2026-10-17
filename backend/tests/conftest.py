@@ -14,9 +14,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import accounts
+from app.database import Base, engine
 from app.garmin import autosync
 from app.garmin import client as garmin_client
-from app.database import Base, engine
 from app.main import app
 
 

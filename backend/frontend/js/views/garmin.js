@@ -30,7 +30,9 @@ export function renderGarminState(reason = "") {
   garminPanel.classList.toggle("hidden", connected);
   document.getElementById("garmin-reason").textContent =
     reason || "Connect Garmin so your activities and sleep show up on the calendar.";
-  document.getElementById("garmin-state").textContent = isConnected() ? `Connected as ${me.garmin_email}.` : "Not connected.";
+  document.getElementById("garmin-state").textContent = isConnected()
+    ? `Connected as ${me.garmin_email}.`
+    : "Not connected.";
   document.getElementById("garmin-disconnect").classList.toggle("hidden", !isConnected());
   syncBtn.disabled = !isConnected();
   syncBtn.title = isConnected() ? "" : "Connect Garmin first";
@@ -57,7 +59,7 @@ garminForm.addEventListener("submit", async (e) => {
           garmin_email: document.getElementById("garmin-email").value.trim(),
           garmin_password: document.getElementById("garmin-password").value,
         }),
-      })
+      }),
     );
     document.getElementById("garmin-password").value = "";
     renderGarminState();
@@ -139,7 +141,7 @@ export async function runSync(statusEl = syncStatus) {
       `Synced ${job.activities_synced} ${job.activities_synced === 1 ? "activity" : "activities"}, ` +
         `${plural(job.days_synced, "day")} of sleep and recovery` +
         (job.details_synced ? `, effort, feel and laps for ${plural(job.details_synced, "session")}` : "") +
-        (job.more_to_sync ? ". Older data is still waiting: sync again to continue." : ".")
+        (job.more_to_sync ? ". Older data is still waiting: sync again to continue." : "."),
     );
     if (!job.more_to_sync) statusEl.classList.add("ok");
   } catch (err) {

@@ -64,9 +64,13 @@ export function renderDraftPreview(draft, container, emptyText = null) {
   });
 
   // Weekly split, like a block summary. Strength/Other only appear when used.
-  const sports = [["swim", "Swim"], ["bike", "Bike"], ["run", "Run"], ["strength", "Strength"], ["other", "Other"]].filter(
-    ([key], i) => i < 3 || draft.weeks_preview.some((w) => w.minutes_by_sport[key] > 0)
-  );
+  const sports = [
+    ["swim", "Swim"],
+    ["bike", "Bike"],
+    ["run", "Run"],
+    ["strength", "Strength"],
+    ["other", "Other"],
+  ].filter(([key], i) => i < 3 || draft.weeks_preview.some((w) => w.minutes_by_sport[key] > 0));
   const heading = document.createElement("h3");
   heading.className = "plan-week-title";
   heading.textContent = "Weekly split";

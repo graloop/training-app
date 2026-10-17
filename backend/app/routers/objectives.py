@@ -39,7 +39,7 @@ def create_objective(
 ):
     title = payload.title.strip()
     if not title:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Give the objective a title")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Give the objective a title")
     row = models.Objective(
         user_id=user.id,
         title=title,

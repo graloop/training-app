@@ -36,7 +36,7 @@ async function showAppView({ sync = false } = {}) {
   const me = getUser();
   // Nothing from a previous session should linger (status lines, half-typed forms).
   for (const el of document.querySelectorAll(
-    "#app-view .status, #app-view .error, #admin-view .status, #admin-view .error, #settings-menu .status"
+    "#app-view .status, #app-view .error, #admin-view .status, #admin-view .error, #settings-menu .status",
   ))
     el.classList.add("hidden");
   document.getElementById("garmin-password").value = "";

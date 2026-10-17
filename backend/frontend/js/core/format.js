@@ -19,7 +19,11 @@ export function thisMonday() {
 
 // "Tue, Oct 13"
 export function fmtDate(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 // "Tue, Oct 13, 2026"

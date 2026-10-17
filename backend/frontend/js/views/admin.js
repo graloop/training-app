@@ -94,15 +94,14 @@ function renderLoginsChart(days) {
   plot.setAttribute("role", "list");
   for (const day of days) {
     const date = new Date(day.date + "T00:00:00");
-    const summary =
-      `${plural(day.logins, "login")}` + (day.failed ? ` · ${plural(day.failed, "failed attempt")}` : "");
+    const summary = `${plural(day.logins, "login")}` + (day.failed ? ` · ${plural(day.failed, "failed attempt")}` : "");
     const col = document.createElement("div");
     col.className = "bar-col" + (day.date === todayIso ? " today" : "");
     col.setAttribute("role", "listitem");
     col.tabIndex = 0;
     col.setAttribute(
       "aria-label",
-      `${date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}: ${summary}`
+      `${date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}: ${summary}`,
     );
 
     const track = document.createElement("div");
@@ -369,8 +368,8 @@ function renderUsers(users) {
             await loadDashboard();
             showStatus(userStatus, `${u.username} is now ${makeAdmin ? "an admin" : "a regular user"}.`);
             userStatus.classList.add("ok");
-          }
-        )
+          },
+        ),
       );
       const del = document.createElement("button");
       del.type = "button";

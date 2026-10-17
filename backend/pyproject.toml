@@ -1,0 +1,25 @@
+# Settings for the backend's tools. The app's dependencies are in requirements.txt.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, likely bugs (bugbear), outdated syntax
+select = ["E", "F", "W", "I", "B", "UP"]
+# Some lines stay long on purpose: one log or message line reads better whole.
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's way of declaring dependencies and query parameters.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.ruff.lint.per-file-ignores]
+# The settings have to be in the environment before the app is imported.
+"tests/conftest.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]

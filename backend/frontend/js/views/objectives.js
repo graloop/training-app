@@ -108,7 +108,13 @@ function renderObjectiveEdit(card, obj) {
     ["Title", "text", "title", obj.title, "e.g. Montreal half marathon"],
     ["Event date", "date", "event_date", obj.event_date || "", ""],
     ["Target time", "text", "target_time", obj.target_time || "", "e.g. 1:45:00"],
-    ["Notes (priority, what matters most)", "text", "notes", obj.notes || "", "e.g. Main race of the year. The bike is my weak leg."],
+    [
+      "Notes (priority, what matters most)",
+      "text",
+      "notes",
+      obj.notes || "",
+      "e.g. Main race of the year. The bike is my weak leg.",
+    ],
   ];
   const inputs = {};
   for (const [label, type, key, value, placeholder] of fields) {

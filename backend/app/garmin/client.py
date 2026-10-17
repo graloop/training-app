@@ -39,7 +39,7 @@ def _export_session(client: garth.Client) -> str:
             client.dump(tmp_dir)
             data: dict[str, str] = {}
             for fname in os.listdir(tmp_dir):
-                with open(os.path.join(tmp_dir, fname), "r", encoding="utf-8") as f:
+                with open(os.path.join(tmp_dir, fname), encoding="utf-8") as f:
                     data[fname] = f.read()
             return json.dumps(data)
 

@@ -115,7 +115,7 @@ def _work_laps(laps: list[dict], sport: str) -> list[dict] | None:
     if max(speeds) < 1.25 * min(speeds):
         return None
     cut = (max(speeds) + min(speeds)) / 2
-    return [lap for lap, speed in zip(laps, speeds) if speed > cut]
+    return [lap for lap, speed in zip(laps, speeds, strict=True) if speed > cut]
 
 
 def _lap_lines(a: models.Activity, sport: str) -> list[str]:

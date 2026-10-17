@@ -4,14 +4,13 @@ matching, and the background sync."""
 import datetime
 import threading
 
-import pytest
 from conftest import admin_auth, make_user
 
 from app import models
+from app.database import SessionLocal
 from app.garmin import autosync
 from app.garmin import client as garmin_client
 from app.planning import training_log
-from app.database import SessionLocal
 
 TODAY = datetime.date.today()
 

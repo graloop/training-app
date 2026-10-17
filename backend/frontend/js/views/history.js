@@ -17,7 +17,9 @@ const importStatus = document.getElementById("import-status");
 
 async function loadLog() {
   try {
-    const data = await api(`/api/plan/log?weeks=${logWeeks.value}&detail=${logDetail.value}&today=${isoDate(new Date())}`);
+    const data = await api(
+      `/api/plan/log?weeks=${logWeeks.value}&detail=${logDetail.value}&today=${isoDate(new Date())}`,
+    );
     logEl.textContent = data.text;
     logStatus.classList.add("hidden");
   } catch (err) {
@@ -78,7 +80,7 @@ importBtn.addEventListener("click", async () => {
     showStatus(
       importStatus,
       `Imported ${result.activities_imported} older ${result.activities_imported === 1 ? "activity" : "activities"} back to ` +
-        `${fmtLongDate(result.since)}. They are in the log under "Earlier weeks".`
+        `${fmtLongDate(result.since)}. They are in the log under "Earlier weeks".`,
     );
     importStatus.classList.add("ok");
   } catch (err) {
