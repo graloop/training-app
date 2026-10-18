@@ -11,6 +11,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
 COPY requirements.txt .
+# pip downloads every package from files.pythonhosted.org. A DNS ad blocker
+# (Pi-hole) that answers 0.0.0.0 for it makes pip fail with only "exit code: 1"
+# in Portainer, so check it first: Portainer then shows this command, and its
+# message names the cause. See docs/TROUBLESHOOTING.md.
+RUN python -c "import socket, sys; sys.exit(socket.gethostbyname('files.pythonhosted.org').startswith('0.') and 'files.pythonhosted.org is blocked by the DNS (Pi-hole?): allow it, see docs/TROUBLESHOOTING.md')"
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app

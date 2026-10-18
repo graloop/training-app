@@ -68,6 +68,28 @@ Backend paths are under `backend/app/`, page paths under `backend/frontend/`.
 
 ## 3. Symptoms
 
+### Portainer: "Failed to deploy a stack: compose build operation failed"
+
+The image is built on the server, so the build needs the internet. Portainer
+only shows the command that failed:
+
+- **`python -c "... files.pythonhosted.org is blocked by the DNS (Pi-hole?) ..."`**:
+  the network's DNS answers `0.0.0.0` for `files.pythonhosted.org`, where pip
+  downloads every package. With Pi-hole: **Domains → Allow (exact)** →
+  `files.pythonhosted.org`, or on the Pi-hole itself
+  `pihole allow files.pythonhosted.org` (Pi-hole 6; `pihole -w` before).
+  `pihole query files.pythonhosted.org` says which blocklist caught it.
+  Check from any computer on the network: `dig +short files.pythonhosted.org`
+  must not print `0.0.0.0`.
+- **`pip install --no-cache-dir -r requirements.txt`**: pip itself failed.
+  See its whole message by building on the server:
+  `docker build --no-cache --progress=plain ./backend` in a clone of the repo.
+  Usual causes: no internet or DNS from Docker, a full disk (`df -h`,
+  `docker system df`; `docker builder prune` frees build cache), or a new
+  release of a dependency. GitHub builds the image on every push
+  (`.github/workflows/ci.yml`): if that build is green, the requirements are
+  fine and the problem is the server's network.
+
 ### The page doesn't load, or says "The server didn't answer (error 502...)"
 
 1. `docker compose ps`: is `backend` **running** and **healthy**? If it is
