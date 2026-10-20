@@ -1,0 +1,11 @@
+# Proposes a pull request when a GitHub Action used by the CI has a new release
+# (the workflow pins each one to a commit, so they never update on their own).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,0 +1,13 @@
+# Only app/, frontend/ and requirements.txt go into the image (see the
+# Dockerfile). Leaving the rest out keeps secrets and local data out of the
+# build context when the image is built from a checkout
+# (docker-compose.build.yml).
+.env
+.env.*
+*.db
+*.db-journal
+.venv/
+tests/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
