@@ -4,11 +4,12 @@
 
 import { api } from "../core/api.js";
 import { plural } from "../core/format.js";
+import { t } from "../core/i18n.js";
+import { closeMenus } from "../core/menus.js";
 import { getUser, setUser } from "../core/session.js";
 import { getCurrentTab, loadTab, showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
 import { loadCalendar } from "./calendar.js";
-import { setMenuOpen } from "./settings.js";
 
 const garminPanel = document.getElementById("garmin-panel");
 const garminForm = document.getElementById("garmin-form");
@@ -29,13 +30,13 @@ export function renderGarminState(reason = "") {
   const connected = isConnected() && !reason;
   garminPanel.classList.toggle("hidden", connected);
   document.getElementById("garmin-reason").textContent =
-    reason || "Connect Garmin so your activities and sleep show up on the calendar.";
+    reason || t("Connect Garmin so your activities and sleep show up on the calendar.");
   document.getElementById("garmin-state").textContent = isConnected()
-    ? `Connected as ${me.garmin_email}.`
-    : "Not connected.";
+    ? t("Connected as {email}.", { email: me.garmin_email })
+    : t("Not connected.");
   document.getElementById("garmin-disconnect").classList.toggle("hidden", !isConnected());
   syncBtn.disabled = !isConnected();
-  syncBtn.title = isConnected() ? "" : "Connect Garmin first";
+  syncBtn.title = isConnected() ? "" : t("Connect Garmin first");
   if (!connected && me && me.garmin_email) document.getElementById("garmin-email").value = me.garmin_email;
 }
 
@@ -50,7 +51,7 @@ garminForm.addEventListener("submit", async (e) => {
   const submit = document.getElementById("garmin-submit");
   garminError.classList.add("hidden");
   submit.disabled = true;
-  submit.textContent = "Logging in to Garmin…";
+  submit.textContent = t("Logging in to Garmin…");
   try {
     setUser(
       await api("/api/garmin/connect", {
@@ -68,24 +69,24 @@ garminForm.addEventListener("submit", async (e) => {
     showStatus(garminError, err.message, true);
   } finally {
     submit.disabled = false;
-    submit.textContent = "Connect Garmin";
+    submit.textContent = t("Connect Garmin");
   }
 });
 
 document.getElementById("garmin-reconnect").addEventListener("click", () => {
-  setMenuOpen(false);
-  showGarminConnect("Log in to Garmin again to refresh the connection.");
+  closeMenus();
+  showGarminConnect(t("Log in to Garmin again to refresh the connection."));
 });
 
 document.getElementById("garmin-disconnect").addEventListener("click", async () => {
-  if (!confirm("Disconnect Garmin? Data already synced stays on the calendar.")) return;
+  if (!confirm(t("Disconnect Garmin? Data already synced stays on the calendar."))) return;
   try {
     setUser(await api("/api/garmin/connect", { method: "DELETE" }));
   } catch (err) {
-    if (err.status !== 401) alert(`Couldn't disconnect Garmin: ${err.message}`);
+    if (err.status !== 401) alert(t("Couldn't disconnect Garmin: {error}", { error: err.message }));
     return;
   }
-  setMenuOpen(false);
+  closeMenus();
   renderGarminState();
 });
 
@@ -100,9 +101,9 @@ let syncing = false;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function syncProgressText(job) {
-  if (job.state === "waiting") return "Waiting for the background sync of your account to finish…";
-  if (job.rounds === 0) return "Syncing with Garmin…";
-  return `Fetching older days and session details (step ${job.rounds + 1})…`;
+  if (job.state === "waiting") return t("Waiting for the background sync of your account to finish…");
+  if (job.rounds === 0) return t("Syncing with Garmin…");
+  return t("Fetching older days and session details (step {step})…", { step: job.rounds + 1 });
 }
 
 async function refreshAfterSync() {
@@ -130,18 +131,22 @@ export async function runSync(statusEl = syncStatus) {
         await loadCalendar();
       }
     }
-    if (job.state === "failed") throw new Error(job.error || "The sync failed.");
+    if (job.state === "failed") throw new Error(job.error || t("The sync failed."));
     await refreshAfterSync();
     if (job.state !== "done") {
-      showStatus(statusEl, "The sync is still running on the server. Refresh the page in a few minutes.");
+      showStatus(statusEl, t("The sync is still running on the server. Refresh the page in a few minutes."));
       return;
     }
     showStatus(
       statusEl,
-      `Synced ${job.activities_synced} ${job.activities_synced === 1 ? "activity" : "activities"}, ` +
-        `${plural(job.days_synced, "day")} of sleep and recovery` +
-        (job.details_synced ? `, effort, feel and laps for ${plural(job.details_synced, "session")}` : "") +
-        (job.more_to_sync ? ". Older data is still waiting: sync again to continue." : "."),
+      t("Synced {activities}, {days} of sleep and recovery", {
+        activities: plural(job.activities_synced, "activity", "activities"),
+        days: plural(job.days_synced, "day"),
+      }) +
+        (job.details_synced
+          ? t(", effort, feel and laps for {sessions}", { sessions: plural(job.details_synced, "session") })
+          : "") +
+        (job.more_to_sync ? t(". Older data is still waiting: sync again to continue.") : "."),
     );
     if (!job.more_to_sync) statusEl.classList.add("ok");
   } catch (err) {

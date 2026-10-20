@@ -5,6 +5,7 @@
 
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtLongDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";
+import { locale, t } from "../core/i18n.js";
 import { showStatus } from "../core/ui.js";
 import { showCalendarAround } from "./calendar.js";
 import { renderDraftPreview } from "./plan-preview.js";
@@ -30,14 +31,14 @@ function fillPlanStart(selectedIso) {
   const options = [];
   for (let i = 0; i < 27; i++) {
     const day = addDays(monday, i * 7);
-    let label = day.toLocaleDateString(undefined, {
+    let label = day.toLocaleDateString(locale(), {
       weekday: "short",
       month: "short",
       day: "numeric",
       ...(day.getFullYear() !== monday.getFullYear() ? { year: "numeric" } : {}),
     });
-    if (i === 0) label = `This week (${label})`;
-    if (i === 1) label = `Next week (${label})`;
+    if (i === 0) label = t("This week ({date})", { date: label });
+    if (i === 1) label = t("Next week ({date})", { date: label });
     options.push([isoDate(day), label]);
   }
   if (selectedIso && !options.some(([iso]) => iso === selectedIso))
@@ -57,13 +58,13 @@ function renderDraftErrors(errors) {
   draftErrors.classList.toggle("hidden", errors.length === 0);
   if (!errors.length) return;
   const title = document.createElement("strong");
-  title.textContent = `${plural(errors.length, "line")} to fix before this can go on the calendar:`;
+  title.textContent = t("{lines} to fix before this can go on the calendar:", { lines: plural(errors.length, "line") });
   const list = document.createElement("ul");
   for (const e of errors) {
     const item = document.createElement("li");
     const where = document.createElement("span");
     where.className = "error-line";
-    where.textContent = `Line ${e.line}: ${e.text}`;
+    where.textContent = t("Line {n}: {text}", { n: e.line, text: e.text });
     const why = document.createElement("span");
     why.textContent = e.message;
     item.append(where, why);
@@ -74,7 +75,7 @@ function renderDraftErrors(errors) {
 
 function resetConfirmButton() {
   confirmBtn.classList.remove("confirming");
-  confirmBtn.textContent = "Put this plan on the calendar";
+  confirmBtn.textContent = t("Put this plan on the calendar");
 }
 
 function renderConfirm(draft) {
@@ -83,16 +84,22 @@ function renderConfirm(draft) {
   const ready = draft.sessions_count > 0 && draft.errors.length === 0;
   confirmBtn.disabled = !ready;
   if (draft.errors.length) {
-    summary.textContent = `Fix the ${plural(draft.errors.length, "line")} flagged in the draft below first.`;
+    summary.textContent = t("Fix the {lines} flagged in the draft below first.", {
+      lines: plural(draft.errors.length, "line"),
+    });
   } else if (!draft.sessions_count) {
-    summary.textContent = "Nothing to put on the calendar yet.";
+    summary.textContent = t("Nothing to put on the calendar yet.");
   } else {
     const replaced = draft.existing_planned
-      ? `${plural(draft.existing_planned, "session")} already planned from ${fmtDate(draft.replace_from)} to ${fmtDate(draft.end_date)} will be replaced.`
-      : "Nothing is planned on those dates yet.";
+      ? t("{sessions} already planned from {from} to {to} will be replaced.", {
+          sessions: plural(draft.existing_planned, "session"),
+          from: fmtDate(draft.replace_from),
+          to: fmtDate(draft.end_date),
+        })
+      : t("Nothing is planned on those dates yet.");
     summary.textContent =
       `${plural(draft.sessions_count, "session")}, ${fmtSpan(draft.start_date, draft.end_date)}. ${replaced} ` +
-      "Activities you already did are never touched.";
+      t("Activities you already did are never touched.");
   }
 }
 
@@ -103,7 +110,7 @@ function applyDraft(draft, { fill = false } = {}) {
     if (![...planWeeks.options].some((o) => o.value === String(draft.weeks))) {
       const opt = document.createElement("option");
       opt.value = String(draft.weeks);
-      opt.textContent = `${draft.weeks} weeks`;
+      opt.textContent = plural(draft.weeks, "week");
       planWeeks.appendChild(opt);
     }
     planWeeks.value = String(draft.weeks);
@@ -130,8 +137,14 @@ async function saveDraft({ quiet = false } = {}) {
     applyDraft(draft);
     confirmView.classList.add("hidden");
     if (!quiet) {
-      const problems = draft.errors.length ? `, ${plural(draft.errors.length, "line")} to fix` : "";
-      showStatus(draftStatus, `Saved: ${plural(draft.sessions_count, "session")}${problems}. Not on the calendar yet.`);
+      const problems = draft.errors.length ? t(", {lines} to fix", { lines: plural(draft.errors.length, "line") }) : "";
+      showStatus(
+        draftStatus,
+        t("Saved: {sessions}{problems}. Not on the calendar yet.", {
+          sessions: plural(draft.sessions_count, "session"),
+          problems,
+        }),
+      );
       if (!draft.errors.length) draftStatus.classList.add("ok");
     }
     return draft;
@@ -179,16 +192,23 @@ confirmBtn.addEventListener("click", async () => {
   if (!planDraft || planDraft.errors.length || !planDraft.sessions_count) return;
   if (planDraft.existing_planned > 0 && !confirmBtn.classList.contains("confirming")) {
     confirmBtn.classList.add("confirming");
-    confirmBtn.textContent = `Click again: replaces ${plural(planDraft.existing_planned, "planned session")}`;
+    confirmBtn.textContent = t("Click again: replaces {sessions}", {
+      sessions: plural(planDraft.existing_planned, "planned session"),
+    });
     setTimeout(resetConfirmButton, 5000);
     return;
   }
   confirmBtn.disabled = true;
   try {
     const result = await api(`/api/plan/draft/confirm?today=${isoDate(new Date())}`, { method: "POST" });
-    const replaced = result.replaced ? `, replacing ${plural(result.replaced, "planned session")}` : "";
+    const replaced = result.replaced
+      ? t(", replacing {sessions}", { sessions: plural(result.replaced, "planned session") })
+      : "";
     applyDraft(await api(`/api/plan/draft?today=${isoDate(new Date())}`));
-    showStatus(confirmStatus, `Done: ${plural(result.added, "session")} are on the calendar${replaced}.`);
+    showStatus(
+      confirmStatus,
+      t("Done: {sessions} on the calendar{replaced}.", { sessions: plural(result.added, "session"), replaced }),
+    );
     confirmStatus.classList.add("ok");
     confirmView.classList.remove("hidden");
   } catch (err) {
@@ -206,7 +226,7 @@ async function saveRules() {
     rulesText.value = (
       await api("/api/plan/rules", { method: "PUT", body: JSON.stringify({ rules: rulesText.value }) })
     ).rules;
-    showStatus(rulesStatus, "Saved. It is now part of the History tab.");
+    showStatus(rulesStatus, t("Saved. It is now part of the History tab."));
     rulesStatus.classList.add("ok");
   } catch (err) {
     if (err.status !== 401) showStatus(rulesStatus, err.message, true);

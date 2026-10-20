@@ -1,24 +1,41 @@
 /* Athlete tab: objectives cards and the athlete's numbers. */
 
-.objectives-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
-.objectives-list > p { margin: 0; grid-column: 1 / -1; }
+/* One objective per row, its fields side by side: title, date, target, notes, actions.
+   The same columns on every card, so the fields line up from one objective to the next. */
+.objectives-list { display: flex; flex-direction: column; gap: 10px; }
+.objectives-list > p { margin: 0; }
 .objective-card {
+  --objective-columns: minmax(160px, 1.3fr) minmax(150px, 1fr) minmax(100px, 0.6fr) minmax(0, 2fr) auto;
+  display: grid;
+  grid-template-columns: var(--objective-columns);
+  align-items: start;
+  gap: 8px 24px;
+  padding: 14px 18px;
   border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
   border-radius: 10px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
-.objective-card h3 { margin: 0 0 4px; font-size: 1rem; }
-/* Label column and value column: every value starts at the same place, next to its label. */
-.objective-field { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); column-gap: 10px; align-items: baseline; font-size: 0.9rem; line-height: 1.4; }
+.objective-card h3 { margin: 0; font-size: 1rem; align-self: center; overflow-wrap: anywhere; }
+.objective-field { display: flex; flex-direction: column; gap: 2px; font-size: 0.9rem; line-height: 1.4; min-width: 0; }
 .objective-field > :last-child { overflow-wrap: anywhere; }
 .objective-field .subtle { font-size: inherit; }
-.objective-label { color: var(--muted); font-size: 0.85rem; }
+.objective-label { color: var(--muted); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
 .objective-countdown { display: block; color: var(--muted); font-size: 0.8rem; }
-.objective-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 6px; }
-.objective-form { gap: 6px; }
+.objective-actions { grid-column: -2 / -1; display: flex; justify-content: flex-end; align-items: center; gap: 12px; align-self: center; }
+/* Editing: the inputs take the same columns as the fields they edit. */
+.objective-card.editing { display: block; }
+.objective-form { gap: 8px; }
+.objective-inputs { display: grid; grid-template-columns: var(--objective-columns); gap: 8px 24px; align-items: end; }
+.objective-inputs > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.objective-inputs label { margin: 0; }
+.objective-inputs input { width: 100%; }
+.objective-form .objective-actions { margin-top: 4px; }
+
+@media (max-width: 760px) {
+  .objective-card, .objective-inputs { grid-template-columns: 1fr 1fr; }
+  .objective-card h3, .objective-field:has(.objective-notes), .objective-inputs > div:nth-child(4) { grid-column: 1 / -1; }
+  .objective-actions { grid-column: 1 / -1; }
+}
 
 .objective-actions .btn-link.danger.confirming { font-weight: 600; }
 

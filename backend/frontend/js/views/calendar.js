@@ -2,7 +2,8 @@
 // was planned, sleep badges per day and a summary column per week.
 
 import { api } from "../core/api.js";
-import { addDays, fmtDate, fmtHM, fmtHours, fmtLongDate, isoDate, thisMonday } from "../core/format.js";
+import { addDays, fmtDate, fmtHM, fmtHours, fmtLongDate, isoDate, plural, thisMonday } from "../core/format.js";
+import { locale, t } from "../core/i18n.js";
 import { activityIcon, sportLabel } from "../core/sports.js";
 import { showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
@@ -38,7 +39,8 @@ export function showCalendarAround(mondayIso) {
 
 // --- Day badges and the week summary column ---
 
-function sleepLevel(score) {
+// "good", "fair" or "poor": the colour of a sleep score (also on the landing page).
+export function sleepLevel(score) {
   if (score >= 80) return "good";
   if (score >= 60) return "fair";
   return "poor";
@@ -50,8 +52,10 @@ function makeSleepBadge(sleep) {
   const badge = document.createElement("span");
   badge.className = `sleep-badge ${sleepLevel(score)}`;
   badge.textContent = `😴 ${score}`;
-  const hours = sleep.total_sleep_seconds ? ` · ${fmtHours(sleep.total_sleep_seconds / 60)} of sleep` : "";
-  badge.title = `Sleep score ${score}${hours}`;
+  const hours = sleep.total_sleep_seconds
+    ? t(" · {time} of sleep", { time: fmtHours(sleep.total_sleep_seconds / 60) })
+    : "";
+  badge.title = t("Sleep score {score}", { score }) + hours;
   badge.setAttribute("aria-label", badge.title);
   return badge;
 }
@@ -62,7 +66,7 @@ function makeRestingHrBadge(sleep) {
   const badge = document.createElement("span");
   badge.className = "rhr-badge";
   badge.textContent = `❤️ ${bpm}`;
-  badge.title = `Resting heart rate ${bpm} bpm`;
+  badge.title = t("Resting heart rate {bpm} bpm", { bpm });
   badge.setAttribute("aria-label", badge.title);
   return badge;
 }
@@ -92,7 +96,9 @@ function renderWeekSummary(week) {
 
   const title = document.createElement("div");
   title.className = "week-title";
-  title.textContent = `Week of ${new Date(week[0].date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  title.textContent = t("Week of {date}", {
+    date: new Date(week[0].date + "T00:00:00").toLocaleDateString(locale(), { month: "short", day: "numeric" }),
+  });
   cell.appendChild(title);
 
   for (const [label, minutes, cls] of [
@@ -102,7 +108,7 @@ function renderWeekSummary(week) {
     const row = document.createElement("div");
     row.className = `week-row ${cls}`;
     const name = document.createElement("span");
-    name.textContent = label;
+    name.textContent = t(label);
     const value = document.createElement("strong");
     value.textContent = fmtHours(minutes);
     row.append(name, value);
@@ -112,28 +118,28 @@ function renderWeekSummary(week) {
   const loadRow = document.createElement("div");
   loadRow.className = "week-row load";
   const loadName = document.createElement("span");
-  loadName.textContent = "Load";
+  loadName.textContent = t("Load");
   const loadValue = document.createElement("strong");
   loadValue.textContent = loadCount ? String(Math.round(load)) : "—";
   loadRow.title = loadCount
-    ? `Total Garmin training load from ${loadCount} activit${loadCount > 1 ? "ies" : "y"}`
-    : "No training load this week";
+    ? t("Total Garmin training load from {activities}", { activities: plural(loadCount, "activity", "activities") })
+    : t("No training load this week");
   loadRow.append(loadName, loadValue);
   cell.appendChild(loadRow);
 
   const sleepRow = document.createElement("div");
   sleepRow.className = "week-row sleep";
   const sleepName = document.createElement("span");
-  sleepName.textContent = "Sleep avg";
+  sleepName.textContent = t("Sleep avg");
   const sleepValue = document.createElement("strong");
   if (sleepScores.length) {
     const avg = Math.round(sleepScores.reduce((a, b) => a + b, 0) / sleepScores.length);
     sleepValue.textContent = `😴 ${avg}`;
     sleepValue.className = sleepLevel(avg);
-    sleepRow.title = `Average sleep score over ${sleepScores.length} night${sleepScores.length > 1 ? "s" : ""}`;
+    sleepRow.title = t("Average sleep score over {nights}", { nights: plural(sleepScores.length, "night") });
   } else {
     sleepValue.textContent = "—";
-    sleepRow.title = "No sleep data this week";
+    sleepRow.title = t("No sleep data this week");
   }
   sleepRow.append(sleepName, sleepValue);
   cell.appendChild(sleepRow);
@@ -141,15 +147,18 @@ function renderWeekSummary(week) {
   const rhrRow = document.createElement("div");
   rhrRow.className = "week-row rhr";
   const rhrName = document.createElement("span");
-  rhrName.textContent = "Resting HR";
+  rhrName.textContent = t("Resting HR");
   const rhrValue = document.createElement("strong");
   if (restingHrs.length) {
     const avg = Math.round(restingHrs.reduce((a, b) => a + b, 0) / restingHrs.length);
     rhrValue.textContent = `❤️ ${avg}`;
-    rhrRow.title = `Average resting heart rate over ${restingHrs.length} day${restingHrs.length > 1 ? "s" : ""}: ${avg} bpm`;
+    rhrRow.title = t("Average resting heart rate over {days}: {bpm} bpm", {
+      days: plural(restingHrs.length, "day"),
+      bpm: avg,
+    });
   } else {
     rhrValue.textContent = "—";
-    rhrRow.title = "No resting heart rate this week";
+    rhrRow.title = t("No resting heart rate this week");
   }
   rhrRow.append(rhrName, rhrValue);
   cell.appendChild(rhrRow);
@@ -158,7 +167,7 @@ function renderWeekSummary(week) {
     const pct = Math.round((doneMin / plannedMin) * 100);
     const bar = document.createElement("div");
     bar.className = "week-bar";
-    bar.title = `${pct}% of planned time done`;
+    bar.title = t("{pct}% of planned time done", { pct });
     const fill = document.createElement("div");
     fill.style.width = `${Math.min(pct, 100)}%`;
     bar.appendChild(fill);
@@ -243,17 +252,24 @@ function makeEntry(className, type, detail, extra) {
 const FEEL_WORDS = { 0: "very weak", 25: "weak", 50: "normal", 75: "strong", 100: "very strong" };
 
 function effortText(a) {
-  const effort = a.perceived_effort ? `, effort ${a.perceived_effort}/10` : "";
-  const felt = a.feel != null ? `, felt ${FEEL_WORDS[a.feel] || `${a.feel}/100`}` : "";
+  const effort = a.perceived_effort ? t(", effort {effort}/10", { effort: a.perceived_effort }) : "";
+  const felt =
+    a.feel != null ? t(", felt {feel}", { feel: FEEL_WORDS[a.feel] ? t(FEEL_WORDS[a.feel]) : `${a.feel}/100` }) : "";
   return effort + felt;
 }
 
 function makeActivityEntry(className, a) {
   const detail = a.duration_seconds ? fmtHours(a.duration_seconds / 60) : "";
   const load = a.training_load != null ? Math.round(a.training_load) : null;
-  const entry = makeEntry(className, a.activity_type, detail, load != null ? ` · load ${load}` : "");
-  const te = a.aerobic_training_effect != null ? `, aerobic TE ${a.aerobic_training_effect.toFixed(1)}` : "";
-  entry.title = `Done (Garmin): ${a.name || sportLabel(a.activity_type)}, ${detail}${load != null ? `, training load ${load}` : ""}${te}${effortText(a)}${legsText(a, true)}`;
+  const entry = makeEntry(className, a.activity_type, detail, load != null ? t(" · load {load}", { load }) : "");
+  const te =
+    a.aerobic_training_effect != null ? t(", aerobic TE {te}", { te: a.aerobic_training_effect.toFixed(1) }) : "";
+  entry.title =
+    t("Done (Garmin): {name}, {time}", { name: a.name || sportLabel(a.activity_type), time: detail }) +
+    (load != null ? t(", training load {load}", { load }) : "") +
+    te +
+    effortText(a) +
+    legsText(a, true);
   entry.setAttribute("role", "note");
   entry.setAttribute("aria-label", entry.title);
   if (a.legs && a.legs.length) addNotes(entry, legsText(a));
@@ -273,10 +289,10 @@ function legsText(a, long = false) {
       continue;
     }
     const km = leg.distance_meters >= 100 ? ` ${(leg.distance_meters / 1000).toFixed(1)} km` : "";
-    const name = { swim: "Swim", bike: "Bike", run: "Run" }[leg.sport] || sportLabel(leg.type);
+    const name = { swim: t("Swim"), bike: t("Bike"), run: t("Run") }[leg.sport] || sportLabel(leg.type);
     parts.push(long ? `${name} ${time}${km}` : `${activityIcon(leg.type)} ${time}`);
   }
-  return long ? `. Legs: ${parts.join(", ")}` : parts.join(" · ");
+  return long ? t(". Legs: {legs}", { legs: parts.join(", ") }) : parts.join(" · ");
 }
 
 function addNotes(entry, notes) {
@@ -310,7 +326,7 @@ function renderCalendar(data) {
   for (const label of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Week total"]) {
     const head = document.createElement("div");
     head.className = "grid-head";
-    head.textContent = label;
+    head.textContent = t(label);
     grid.appendChild(head);
   }
 
@@ -340,10 +356,15 @@ function renderCalendar(data) {
 
       for (const { planned: p, activity: a, asPlanned } of pairs) {
         const entry = makeActivityEntry(asPlanned ? "completed" : "completed-off", a);
-        const load = a.training_load != null ? ` · load ${Math.round(a.training_load)}` : "";
+        const load = a.training_load != null ? t(" · load {load}", { load: Math.round(a.training_load) }) : "";
         entry.title =
-          `✓ ${asPlanned ? "Done as planned" : "Done, other duration"}: ${sportLabel(p.activity_type)}, planned ${fmtHours(p.planned_duration_minutes)}, ` +
-          `did ${fmtHours(a.duration_seconds / 60)}${load}${effortText(a)}${p.notes ? `. Plan: ${p.notes}` : ""}. Click to edit the plan.`;
+          `✓ ${asPlanned ? t("Done as planned") : t("Done, other duration")}: ` +
+          t("{sport}, planned {planned}, did {did}", {
+            sport: sportLabel(p.activity_type),
+            planned: fmtHours(p.planned_duration_minutes),
+            did: fmtHours(a.duration_seconds / 60),
+          }) +
+          `${load}${effortText(a)}${p.notes ? t(". Plan: {notes}", { notes: p.notes }) : ""}${t(". Click to edit the plan.")}`;
         addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
         cell.appendChild(entry);
@@ -355,7 +376,8 @@ function renderCalendar(data) {
         const detail = p.planned_duration_minutes ? fmtHours(p.planned_duration_minutes) : "";
         const entry = makeEntry("planned", p.activity_type, detail);
         entry.title =
-          `Planned ${sportLabel(p.activity_type)}, ${detail}` + `${p.notes ? `: ${p.notes}` : ""}. Click to edit.`;
+          t("Planned {sport}, {time}", { sport: sportLabel(p.activity_type), time: detail }) +
+          `${p.notes ? `: ${p.notes}` : ""}${t(". Click to edit.")}`;
         addNotes(entry, p.notes);
         makeEditable(entry, day.date, p);
         cell.appendChild(entry);
@@ -364,8 +386,11 @@ function renderCalendar(data) {
       const add = document.createElement("button");
       add.className = "add-btn";
       add.type = "button";
-      add.title = "Plan a session";
-      add.setAttribute("aria-label", `Plan a session on ${fmtLongDate(day.date)} (${day.date})`);
+      add.title = t("Plan a session");
+      add.setAttribute(
+        "aria-label",
+        t("Plan a session on {date} ({iso})", { date: fmtLongDate(day.date), iso: day.date }),
+      );
       add.addEventListener("click", () => openSessionDialog(day.date, null, loadCalendar));
       cell.appendChild(add);
 
@@ -382,11 +407,18 @@ export async function loadCalendar() {
     data = await api(`/api/calendar?start=${start}&end=${end}`);
   } catch (err) {
     if (err.status !== 401)
-      showStatus(document.getElementById("sync-status"), `Couldn't load the calendar: ${err.message}`, true);
+      showStatus(
+        document.getElementById("sync-status"),
+        t("Couldn't load the calendar: {error}", { error: err.message }),
+        true,
+      );
     return;
   }
   renderCalendar(data);
-  document.getElementById("cal-range").textContent = `Showing ${fmtLongDate(start)} to ${fmtLongDate(end)}`;
+  document.getElementById("cal-range").textContent = t("Showing {start} to {end}", {
+    start: fmtLongDate(start),
+    end: fmtLongDate(end),
+  });
   document.getElementById("cal-today").disabled = weekOffset === 0;
 }
 

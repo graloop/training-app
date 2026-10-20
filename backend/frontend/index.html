@@ -11,14 +11,45 @@
   <link rel="stylesheet" href="/css/history.css" />
   <link rel="stylesheet" href="/css/import.css" />
   <link rel="stylesheet" href="/css/admin.css" />
+  <link rel="stylesheet" href="/css/landing.css" />
 </head>
 <body>
   <header class="topbar">
     <h1 class="brand"><span class="logo" role="img" aria-label="graloop">gral<svg viewBox="-2 -2 116 60" fill="none" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M56 28 C66 12 78 4 86 4 C99 4 108 15 108 28 C108 41 99 52 86 52 C78 52 66 44 56 28 C46 12 34 4 26 4 C13 4 4 15 4 28 C4 41 13 52 26 52 C34 52 46 44 56 28 Z"></path></svg>p</span><span>Training App</span></h1>
-    <div id="user-actions" class="hidden">
-      <span id="user-name"></span>
+    <nav id="tabs" class="tabs hidden" aria-label="Sections">
+      <button id="tab-btn-calendar" type="button" class="tab active" aria-current="page">Calendar</button>
+      <button id="tab-btn-athlete" type="button" class="tab">Athlete</button>
+      <button id="tab-btn-plan" type="button" class="tab">Plan</button>
+      <button id="tab-btn-import" type="button" class="tab">Import</button>
+      <button id="tab-btn-history" type="button" class="tab">History</button>
+    </nav>
+    <!-- Logged in: the account menu (the badge with your name) and the settings gear. -->
+    <div id="user-actions" class="topbar-actions hidden">
       <div class="menu">
-        <button id="settings-btn" class="btn-ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-menu">⚙️ Settings</button>
+        <button id="account-btn" class="user-badge" aria-haspopup="dialog" aria-expanded="false" aria-controls="account-menu">
+          <span class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="9.5" r="4.5"></circle><path d="M2.5 25c0-5.5 4.3-9.5 9.5-9.5s9.5 4 9.5 9.5z"></path></svg></span>
+          <span id="user-name"></span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <div id="account-menu" class="menu-panel hidden" role="dialog" aria-label="Account">
+          <h3>Change password</h3>
+          <form id="password-form" class="menu-fields" novalidate>
+            <label for="pw-current">Current password</label>
+            <input id="pw-current" type="password" autocomplete="current-password" />
+            <label for="pw-new">New password (8+ characters)</label>
+            <input id="pw-new" type="password" autocomplete="new-password" minlength="8" />
+            <button type="submit" class="btn-ghost">Change password</button>
+          </form>
+          <p id="pw-status" class="status hidden" role="status"></p>
+          <hr />
+          <div class="menu-actions">
+            <button id="switch-account-btn" type="button" class="btn-link">Switch account</button>
+            <button id="logout-btn" type="button" class="btn-link">Log out</button>
+          </div>
+        </div>
+      </div>
+      <div class="menu">
+        <button id="settings-btn" class="icon-btn" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
         <div id="settings-menu" class="menu-panel hidden" role="dialog" aria-label="Settings">
           <div id="garmin-settings" class="menu-fields">
             <h3>Garmin</h3>
@@ -29,47 +60,160 @@
             </div>
             <hr />
           </div>
-          <h3>Change password</h3>
-          <form id="password-form" class="menu-fields" novalidate>
-            <label for="pw-current">Current password</label>
-            <input id="pw-current" type="password" autocomplete="current-password" />
-            <label for="pw-new">New password (8+ characters)</label>
-            <input id="pw-new" type="password" autocomplete="new-password" minlength="8" />
-            <button type="submit" class="btn-ghost">Change password</button>
-          </form>
-          <p id="pw-status" class="status hidden" role="status"></p>
+          <h3>Language</h3>
+          <select id="lang-select" aria-label="Language">
+            <option value="en" lang="en">English</option>
+            <option value="fr" lang="fr">Français</option>
+          </select>
+          <p id="lang-status" class="status hidden" role="status"></p>
+        </div>
+      </div>
+    </div>
 
-          <hr />
-          <button id="logout-btn" class="btn-link">Log out</button>
+    <!-- Not logged in (the landing page): the language and the Log in window. -->
+    <div id="guest-actions" class="topbar-actions hidden">
+      <button id="lang-toggle" type="button" class="btn-nav"></button>
+      <div class="menu">
+        <button id="login-btn" type="button" class="btn-login" aria-haspopup="dialog" aria-expanded="false" aria-controls="login-menu">Log in</button>
+        <div id="login-menu" class="menu-panel login-panel hidden" role="dialog" aria-labelledby="login-title">
+          <h2 id="login-title">Welcome back</h2>
+          <p class="hint">Use the username and password the admin gave you.</p>
+          <form id="auth-form">
+            <label for="auth-username">Username</label>
+            <input type="text" id="auth-username" required autocomplete="username" autocapitalize="none" spellcheck="false" />
+            <label for="auth-password">Password</label>
+            <input type="password" id="auth-password" required autocomplete="current-password" />
+            <button type="submit" id="auth-submit">Log in</button>
+            <p id="auth-error" class="error hidden" role="alert"></p>
+          </form>
+          <p class="hint login-request">No account yet? <a data-contact data-subject="Training App: account request">Ask Julien for one</a>.</p>
         </div>
       </div>
     </div>
   </header>
 
-  <main id="auth-view">
-    <div class="auth-card">
-      <h2>Log in</h2>
-      <p class="hint">Use the username and password the admin gave you.</p>
-      <form id="auth-form">
-        <label for="auth-username">Username</label>
-        <input type="text" id="auth-username" required autocomplete="username" autocapitalize="none" spellcheck="false" />
-        <label for="auth-password">Password</label>
-        <input type="password" id="auth-password" required autocomplete="current-password" />
-        <button type="submit" id="auth-submit">Log in</button>
-        <p id="auth-error" class="error hidden" role="alert"></p>
-      </form>
-    </div>
+  <!-- The landing page: what visitors without an account see. The mock-ups
+       (data-mock) are drawn and animated by js/views/landing-mocks.js. -->
+  <main id="auth-view" class="landing hidden">
+    <section class="hero">
+      <img class="hero-photo" src="/img/landing/race-run.webp" alt="" fetchpriority="high" />
+      <div class="hero-inner">
+        <p class="eyebrow">Swim · Bike · Run</p>
+        <h2 class="hero-title">Plan your training. Then see what you really did.</h2>
+        <p class="hero-lead">Training App puts every session you planned next to what your Garmin recorded, keeps your races in sight, and lets Claude write your next weeks from your real history.</p>
+        <div class="hero-actions">
+          <a class="btn-hero" href="#tour">See how it works</a>
+          <a class="btn-hero-outline" data-contact data-subject="Training App: account request">Request access</a>
+        </div>
+        <ul class="hero-facts">
+          <li><strong>Garmin</strong> <span>activities, sleep, recovery</span></li>
+          <li><strong>Claude</strong> <span>writes the plan with you</span></li>
+          <li><strong>Private</strong> <span>a few friends, by invitation</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="tour" class="landing-section">
+      <div class="section-head reveal">
+        <p class="eyebrow">The tour</p>
+        <h2>Everything about your training, in five tabs</h2>
+        <p>The examples below are the real app with made-up data.</p>
+      </div>
+
+      <article class="feature reveal">
+        <div class="feature-text">
+          <span class="feature-tag">Calendar</span>
+          <h3>Planned and done, side by side</h3>
+          <p>Each session you planned sits on its day. Once Garmin records it, it turns green: solid when you did it as planned, dashed when the duration was different. Sleep score and resting heart rate are on every day, and each week adds up its hours and load.</p>
+          <ul class="feature-points">
+            <li>Syncs with Garmin on its own, a few times a day</li>
+            <li>Plan, edit or move a session in two clicks</li>
+            <li>Weekly hours, training load, sleep and resting heart rate</li>
+          </ul>
+        </div>
+        <div class="mock" data-mock="calendar" aria-hidden="true"></div>
+      </article>
+
+      <article class="feature feature-flip reveal">
+        <div class="feature-text">
+          <span class="feature-tag">Plan</span>
+          <h3>Claude writes the plan. You decide.</h3>
+          <p>Ask Claude in Chrome to read your history and write the coming weeks, one line per session. The preview shows each week and its split by sport. Nothing reaches your calendar until you press the button.</p>
+          <ul class="feature-points">
+            <li>One to twelve weeks at a time</li>
+            <li>Your rules are followed: schedule, exams, rest days</li>
+            <li>Edit any line yourself before it goes on the calendar</li>
+          </ul>
+        </div>
+        <div class="mock" data-mock="plan" aria-hidden="true"></div>
+      </article>
+
+      <article class="feature reveal">
+        <div class="feature-text">
+          <span class="feature-tag">Athlete</span>
+          <h3>Your races and your numbers</h3>
+          <p>Your objectives with a countdown, your tested numbers and zones, and what Garmin knows about you. Everything here is read when a plan is written, so it is built for your next race.</p>
+          <ul class="feature-points">
+            <li>Race date, target time and what matters most</li>
+            <li>FTP, threshold pace, CSS and heart rate zones</li>
+            <li>Your own numbers win over Garmin's estimates</li>
+          </ul>
+        </div>
+        <div class="mock" data-mock="athlete" aria-hidden="true"></div>
+      </article>
+
+      <div class="card-grid">
+        <div class="mini-card reveal">
+          <span class="mini-icon" aria-hidden="true">🤝</span>
+          <h3>Import</h3>
+          <p>Training with a friend? Copy their planned weeks with their name and share code, onto your plan or straight onto your calendar.</p>
+        </div>
+        <div class="mini-card reveal">
+          <span class="mini-icon" aria-hidden="true">🧠</span>
+          <h3>History</h3>
+          <p>Every session with effort and feel, sleep and recovery, as one text Claude reads to coach you.</p>
+        </div>
+        <div class="mini-card reveal">
+          <span class="mini-icon" aria-hidden="true">🔒</span>
+          <h3>Private</h3>
+          <p>Accounts are made by hand. Your Garmin password is never stored, and friends only ever see the plans you share.</p>
+        </div>
+        <div class="mini-card reveal">
+          <span class="mini-icon" aria-hidden="true">🍁</span>
+          <h3>English or French</h3>
+          <p>The whole app, in the language you choose.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="photo-strip" aria-label="Swim, bike, run">
+      <figure class="reveal"><img src="/img/landing/swim.webp" alt="Triathletes swimming in open water" loading="lazy" width="640" height="800" /><figcaption>Swim</figcaption></figure>
+      <figure class="reveal"><img src="/img/landing/bike.webp" alt="A triathlete on a time trial bike" loading="lazy" width="640" height="800" /><figcaption>Bike</figcaption></figure>
+      <figure class="reveal"><img src="/img/landing/run.webp" alt="Triathletes running during a race" loading="lazy" width="640" height="800" /><figcaption>Run</figcaption></figure>
+    </section>
+
+    <section class="landing-section">
+      <div class="section-head reveal">
+        <p class="eyebrow">How it works</p>
+        <h2>From your watch to your next race</h2>
+      </div>
+      <ol class="steps">
+        <li class="reveal"><span class="step-number">1</span><h3>Connect Garmin</h3><p>Activities, sleep and recovery come in on their own.</p></li>
+        <li class="reveal"><span class="step-number">2</span><h3>Set your goals</h3><p>Your races, your numbers and your rules: when you can train, and how.</p></li>
+        <li class="reveal"><span class="step-number">3</span><h3>Get the plan</h3><p>Claude writes the next weeks; you adjust and put them on the calendar.</p></li>
+        <li class="reveal"><span class="step-number">4</span><h3>Train and compare</h3><p>See every week what was planned and what was done.</p></li>
+      </ol>
+    </section>
+
+    <section class="cta reveal">
+      <h2>Want to train with it?</h2>
+      <p>The app is private: Julien creates every account by hand, for friends and training partners. Send an email saying who you are and what you train for.</p>
+      <a class="btn-hero" data-contact data-subject="Training App: account request">Email Julien for access</a>
+      <p class="photo-credits">Photos: Victoire Joncheray, Markus Spiske, Tony Pham and Nodir Khalilov on Unsplash.</p>
+    </section>
   </main>
 
   <main id="app-view" class="hidden">
-    <nav class="tabs" aria-label="Sections">
-      <button id="tab-btn-calendar" type="button" class="tab active" aria-current="page">Calendar</button>
-      <button id="tab-btn-athlete" type="button" class="tab">Athlete</button>
-      <button id="tab-btn-plan" type="button" class="tab">Plan</button>
-      <button id="tab-btn-import" type="button" class="tab">Import</button>
-      <button id="tab-btn-history" type="button" class="tab">History</button>
-    </nav>
-
     <div id="tab-calendar">
     <section id="garmin-panel" class="panel hidden" aria-labelledby="garmin-title">
       <h2 id="garmin-title">Connect your Garmin account</h2>
@@ -184,7 +328,7 @@
     </div>
 
     <div id="tab-plan" class="hidden">
-      <p class="hint plan-intro">The plan for the coming weeks, and the rules it follows. Ask Claude in Chrome to write the plan, or type it in the draft further down. Nothing changes on the calendar until you press <strong>Put this plan on the calendar</strong>.</p>
+      <p class="hint plan-intro" data-i18n="plan.intro">The plan for the coming weeks, and the rules it follows. Ask Claude in Chrome to write the plan, or type it in the draft further down. Nothing changes on the calendar until you press <strong>Put this plan on the calendar</strong>.</p>
 
       <section id="plan-panel" class="panel" aria-labelledby="preview-title">
         <div class="panel-header">
@@ -220,11 +364,11 @@
         <h2 id="draft-title">Draft plan</h2>
         <p class="hint">The text the preview above is made from. Claude in Chrome writes it here, and you can edit it yourself.</p>
 
-        <label for="draft-text">Draft sessions, one per line: <code>date | sport | duration | details</code></label>
+        <label for="draft-text" data-i18n="plan.draftLabel">Draft sessions, one per line: <code>date | sport | duration | details</code></label>
         <textarea id="draft-text" rows="12" spellcheck="false" placeholder="Tue Oct 13 | run | 1:15 | Track: 2×6×400 m at 5K effort, 200 m jog between
 Wed Oct 14 | swim | 1:00 | 8×100 m steady, 20 s rest
 Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
-        <p id="draft-format" class="hint">Format: one session per line, written as <code>date | sport | duration | details</code>. Date like <code>Tue Oct 13</code> or <code>2026-10-13</code>. Sport: swim, bike, run or strength. Duration like <code>1:15</code> or <code>45 min</code>. Details are optional (the workout itself). Two sessions on one day are two lines. Lines starting with <code>#</code> are comments, and rest days need no line.</p>
+        <p id="draft-format" class="hint" data-i18n="plan.format">Format: one session per line, written as <code>date | sport | duration | details</code>. Date like <code>Tue Oct 13</code> or <code>2026-10-13</code>. Sport: swim, bike, run or strength. Duration like <code>1:15</code> or <code>45 min</code>. Details are optional (the workout itself). Two sessions on one day are two lines. Lines starting with <code>#</code> are comments, and rest days need no line.</p>
 
         <div class="form-row">
           <button id="draft-save" type="button">Save and preview</button>
@@ -250,7 +394,7 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
 
       <section class="panel" aria-labelledby="share-title">
         <h2 id="share-title">Your share code</h2>
-        <p class="hint">Give your name and this code to someone who wants to copy your plan. They see only your planned sessions (sport, duration, details), never your Garmin activities, sleep or health data. <strong>New code</strong> stops the old one working.</p>
+        <p class="hint" data-i18n="import.shareHint">Give your name and this code to someone who wants to copy your plan. They see only your planned sessions (sport, duration, details), never your Garmin activities, sleep or health data. <strong>New code</strong> stops the old one working.</p>
         <div class="share-card">
           <div class="share-item"><span class="subtle">Name</span><strong id="share-username"></strong></div>
           <div class="share-item"><span class="subtle">Share code</span><strong id="share-code" class="share-code"></strong></div>
@@ -306,7 +450,7 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
             <button id="friend-to-calendar" type="button">Import to calendar</button>
             <button id="friend-view" type="button" class="btn-ghost hidden">View on the calendar</button>
           </div>
-          <p class="hint friend-choices"><strong>Import to plan</strong> makes it your draft on the Plan tab, to adjust before it goes on the calendar. <strong>Import to calendar</strong> puts it on your calendar now.</p>
+          <p class="hint friend-choices" data-i18n="import.choices"><strong>Import to plan</strong> makes it your draft on the Plan tab, to adjust before it goes on the calendar. <strong>Import to calendar</strong> puts it on your calendar now.</p>
           <p id="friend-status" class="status hidden" role="status"></p>
         </div>
       </section>
@@ -461,7 +605,7 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
     </form>
   </dialog>
 
-  <footer class="site-footer">Created by Julien Tremblay · Version __APP_VERSION__</footer>
+  <footer class="site-footer"><span>Created by Julien Tremblay</span> · <a class="contact-link" data-contact></a> · Version __APP_VERSION__</footer>
 
   <script type="module" src="/js/main.js"></script>
 </body>

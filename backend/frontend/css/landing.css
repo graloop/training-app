@@ -1,0 +1,246 @@
+/* Landing page (what visitors see before logging in): hero photo, the tour of
+   the tabs with their mock-ups, swim/bike/run photos, how it works, contact. */
+
+#auth-view.landing { max-width: none; padding: 0; }
+.landing { --landing-width: 1160px; overflow-x: clip; }
+.landing h2, .landing h3, .landing h4 { letter-spacing: -0.02em; }
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* --- Hero: the race photo under a navy gradient, text on the left --- */
+
+.hero { position: relative; isolation: isolate; min-height: min(640px, 88vh); display: flex; align-items: center; color: #fff; }
+.hero-photo { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; object-position: 60% 30%; }
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(100deg, rgba(11, 22, 49, 0.95) 0%, rgba(11, 22, 49, 0.82) 42%, rgba(11, 22, 49, 0.25) 100%);
+}
+.hero-inner { width: min(var(--landing-width), 100% - 48px); margin: 0 auto; padding: 72px 0; }
+.hero .eyebrow { color: #93c5fd; }
+.hero-title { max-width: 15ch; margin: 0; font-size: clamp(2.3rem, 5.2vw, 4rem); font-weight: 800; line-height: 1.05; }
+.hero-lead { max-width: 54ch; margin: 20px 0 30px; font-size: clamp(1rem, 1.6vw, 1.2rem); line-height: 1.55; color: rgba(255, 255, 255, 0.85); }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.hero-facts { display: flex; flex-wrap: wrap; gap: 14px 36px; margin: 44px 0 0; padding: 0; list-style: none; }
+.hero-facts li { display: flex; flex-direction: column; gap: 2px; padding-left: 14px; border-left: 2px solid var(--accent); }
+.hero-facts span { font-size: 0.85rem; color: rgba(255, 255, 255, 0.7); }
+
+/* The hero's words come in one after the other when the page opens. */
+.hero-inner > * { animation: rise 0.7s both cubic-bezier(0.2, 0.7, 0.2, 1); }
+.hero-inner > :nth-child(2) { animation-delay: 0.08s; }
+.hero-inner > :nth-child(3) { animation-delay: 0.16s; }
+.hero-inner > :nth-child(4) { animation-delay: 0.24s; }
+.hero-inner > :nth-child(5) { animation-delay: 0.32s; }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } }
+
+.btn-hero, .btn-hero-outline {
+  display: inline-block;
+  padding: 13px 26px;
+  border-radius: 999px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+}
+.btn-hero { background: var(--accent); color: #fff; box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35); }
+.btn-hero:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.btn-hero-outline { border: 1px solid rgba(255, 255, 255, 0.5); color: #fff; }
+.btn-hero-outline:hover { background: rgba(255, 255, 255, 0.1); transform: translateY(-1px); }
+
+/* --- Sections --- */
+
+.landing-section { width: min(var(--landing-width), 100% - 48px); margin: 0 auto; padding: 96px 0 24px; scroll-margin-top: 60px; }
+.section-head { max-width: 640px; margin: 0 auto 56px; text-align: center; }
+.section-head h2 { margin: 0 0 12px; font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.15; }
+.section-head p:last-child { margin: 0; color: var(--muted); font-size: 1.05rem; }
+
+/* A feature: words on one side, its mock-up on the other (flipped every other one). */
+.feature { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: center; gap: 56px; margin-bottom: 104px; }
+.feature-flip .feature-text { order: 2; }
+.feature-tag { display: inline-block; margin-bottom: 14px; padding: 4px 12px; border-radius: 999px; background: var(--planned); color: var(--accent-hover); font-size: 0.8rem; font-weight: 700; }
+.feature h3 { margin: 0 0 14px; font-size: clamp(1.5rem, 2.6vw, 2rem); line-height: 1.15; }
+.feature-text > p { margin: 0 0 18px; color: var(--muted); font-size: 1.02rem; line-height: 1.6; }
+.feature-points { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.feature-points li { position: relative; padding-left: 28px; line-height: 1.45; }
+.feature-points li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #d1fae5;
+  color: #047857;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.mini-card { padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); transition: transform 0.2s, box-shadow 0.2s; }
+.mini-card:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08); }
+.mini-icon { font-size: 1.6rem; }
+.mini-card h3 { margin: 10px 0 6px; font-size: 1.1rem; }
+.mini-card p { margin: 0; color: var(--muted); line-height: 1.5; }
+
+/* --- Swim, bike, run --- */
+
+.photo-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 72px; }
+.photo-strip figure { position: relative; margin: 0; overflow: hidden; aspect-ratio: 4 / 5; max-height: 560px; }
+.photo-strip img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.8s; }
+.photo-strip figure:hover img { transform: scale(1.04); }
+.photo-strip figcaption {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 60px 24px 22px;
+  background: linear-gradient(transparent, rgba(11, 22, 49, 0.85));
+  color: #fff;
+  font-size: clamp(1.3rem, 2.6vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 28px; margin: 0; padding: 0; list-style: none; }
+.steps h3 { margin: 14px 0 6px; font-size: 1.1rem; }
+.steps p { margin: 0; color: var(--muted); line-height: 1.5; }
+.step-number { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--nav-bg); color: #fff; font-weight: 700; }
+
+.cta {
+  width: min(var(--landing-width), 100% - 48px);
+  margin: 88px auto 56px;
+  padding: 56px 32px;
+  border-radius: 24px;
+  background: radial-gradient(circle at 20% 0%, #1e3a8a, var(--nav-bg) 60%);
+  color: #fff;
+  text-align: center;
+}
+.cta h2 { margin: 0 0 12px; font-size: clamp(1.7rem, 3.4vw, 2.4rem); }
+.cta > p { max-width: 56ch; margin: 0 auto 28px; color: rgba(255, 255, 255, 0.8); line-height: 1.6; }
+.cta .photo-credits { margin: 32px 0 0; font-size: 0.75rem; color: rgba(255, 255, 255, 0.5); }
+
+/* --- Coming into view (only when landing.js runs: without it, everything shows) --- */
+
+.can-reveal .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s, transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.can-reveal .reveal.is-visible { opacity: 1; transform: none; }
+.can-reveal .card-grid .reveal:nth-child(2), .can-reveal .steps .reveal:nth-child(2), .can-reveal .photo-strip .reveal:nth-child(2) { transition-delay: 0.1s; }
+.can-reveal .card-grid .reveal:nth-child(3), .can-reveal .steps .reveal:nth-child(3), .can-reveal .photo-strip .reveal:nth-child(3) { transition-delay: 0.2s; }
+.can-reveal .card-grid .reveal:nth-child(4), .can-reveal .steps .reveal:nth-child(4) { transition-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-inner > * { animation: none; }
+  .can-reveal .reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* --- Mock-ups: a window frame around a small copy of the app --- */
+
+.mock {
+  position: relative;
+  min-height: 300px;
+  padding: 44px 18px 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 30px 60px -20px rgba(15, 23, 42, 0.25), 0 0 0 6px rgba(37, 99, 235, 0.05);
+  font-size: 0.8rem;
+}
+/* The three dots of a window's title bar. */
+.mock::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f87171;
+  box-shadow: 16px 0 #fbbf24, 32px 0 #34d399;
+}
+.mock-title { margin-bottom: 10px; font-weight: 700; font-size: 0.9rem; }
+
+/* Calendar */
+.mock-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.mock-day { min-height: 128px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; }
+.mock-day-head { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-bottom: 6px; }
+.mock-day-head .day-date { margin: 0; font-size: 0.72rem; }
+.mock-day .entry { flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 5px; font-size: 0.72rem; transition: background 0.4s, border-color 0.4s; }
+.mock-day .entry-notes { font-size: 0.66rem; }
+.mock-week-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; margin-top: 12px; font-size: 0.85rem; }
+.mock-week-summary .planned-value { color: var(--accent); }
+.mock-week-summary .done-value { color: #047857; }
+.mock-week-summary .week-bar { flex-basis: 100%; height: 8px; margin-top: 6px; border-radius: 4px; }
+.mock-week-summary .week-bar div { width: 0; transition: width 0.5s; }
+
+/* Plan */
+.mock-claude { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 4px 12px; border-radius: 999px; background: #fef3c7; color: #92400e; font-weight: 600; }
+.mock-claude::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s infinite alternate; }
+.mock-claude.done { background: #d1fae5; color: #065f46; }
+.mock-claude.done::before { animation: none; }
+@keyframes pulse { to { opacity: 0.25; } }
+.mock-draft {
+  min-height: 112px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--nav-bg);
+  color: #c7d2fe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.mock-draft-line { display: block; }
+.mock-draft-line:last-child::after { content: "▍"; color: #fff; animation: pulse 0.6s infinite alternate; }
+.mock-preview-row { display: grid; grid-template-columns: 2.6rem auto minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--border); animation: rise 0.35s both; }
+.mock-preview-day { color: var(--muted); font-weight: 600; }
+.mock-preview-details { color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mock-split { display: grid; gap: 6px; margin-top: 12px; }
+.mock-split-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 3rem; align-items: center; gap: 10px; }
+.mock-split-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+.mock-split-track { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+.mock-split-fill { width: 0; height: 100%; border-radius: 4px; transition: width 0.8s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.mock-split-row.swim .mock-split-fill { background: #0ea5e9; }
+.mock-split-row.bike .mock-split-fill { background: #8b5cf6; }
+.mock-split-row.run .mock-split-fill { background: #f97316; }
+.mock-split-total { text-align: right; font-weight: 700; }
+
+/* Athlete */
+.mock-objectives { display: grid; gap: 10px; }
+.mock-objective { display: flex; align-items: center; gap: 16px; padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 10px; }
+.mock-countdown { display: flex; flex-direction: column; align-items: center; min-width: 4.5rem; color: var(--muted); font-size: 0.7rem; }
+.mock-countdown-value { color: var(--text); font-size: 1.9rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.mock-objective-info { display: flex; flex-direction: column; gap: 2px; }
+.mock-objective-info h4 { margin: 0; font-size: 1rem; }
+.mock-target { font-weight: 600; }
+.mock-numbers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 14px; }
+.mock-number { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
+.mock-number span { color: var(--muted); font-size: 0.72rem; }
+.mock-number strong { font-size: 1.05rem; }
+
+/* --- Narrow screens: one column, the calendar mock-up scrolls sideways --- */
+
+@media (max-width: 860px) {
+  .feature { grid-template-columns: 1fr; gap: 28px; margin-bottom: 72px; }
+  .feature-flip .feature-text { order: 0; }
+  .mock[data-mock="calendar"] { overflow-x: auto; }
+  .mock-week { min-width: 560px; }
+  .landing-section { padding-top: 72px; }
+}
+@media (max-width: 600px) {
+  .hero { min-height: 0; }
+  .hero-inner { padding: 56px 0 48px; }
+  .hero-facts { gap: 12px 24px; }
+  .photo-strip { grid-template-columns: 1fr 1fr 1fr; }
+  .photo-strip figcaption { padding: 30px 10px 12px; }
+  .cta { padding: 40px 20px; border-radius: 18px; }
+}

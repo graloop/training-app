@@ -3,6 +3,7 @@
 // says what to refresh once a session is saved, moved or deleted.
 
 import { api } from "../core/api.js";
+import { locale, t } from "../core/i18n.js";
 import { SPORTS, activityIcon, sportLabel } from "../core/sports.js";
 import { showStatus } from "../core/ui.js";
 
@@ -22,8 +23,7 @@ let target = null; // { date, existing, onSaved }
 function renderSportOptions(extraType) {
   planSports.innerHTML = "";
   const sports = [...SPORTS];
-  if (extraType && !SPORTS.some((s) => s.type === extraType))
-    sports.push({ type: extraType, label: sportLabel(extraType) });
+  if (extraType && !SPORTS.some((s) => s.type === extraType)) sports.push({ type: extraType });
   for (const sport of sports) {
     const label = document.createElement("label");
     label.className = "sport-option";
@@ -36,7 +36,7 @@ function renderSportOptions(extraType) {
     icon.className = "sport-icon";
     icon.textContent = activityIcon(sport.type);
     const text = document.createElement("span");
-    text.textContent = sport.label;
+    text.textContent = sportLabel(sport.type);
     label.append(input, icon, text);
     planSports.appendChild(label);
   }
@@ -46,8 +46,8 @@ function renderSportOptions(extraType) {
 export function openSessionDialog(date, existing, onSaved) {
   target = { date, existing, onSaved };
   renderSportOptions(existing && existing.activity_type);
-  document.getElementById("plan-title").textContent = existing ? "Edit session" : "Plan a session";
-  document.getElementById("plan-date").textContent = new Date(date + "T00:00:00").toLocaleDateString(undefined, {
+  document.getElementById("plan-title").textContent = existing ? t("Edit session") : t("Plan a session");
+  document.getElementById("plan-date").textContent = new Date(date + "T00:00:00").toLocaleDateString(locale(), {
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -73,12 +73,12 @@ planForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const sport = planForm.querySelector('input[name="sport"]:checked');
   const minutes = (Number(planHours.value) || 0) * 60 + (Number(planMinutes.value) || 0);
-  if (!sport) return showStatus(planError, "Pick a sport.", true);
-  if (minutes <= 0) return showStatus(planError, "Set how long the session is.", true);
+  if (!sport) return showStatus(planError, t("Pick a sport."), true);
+  if (minutes <= 0) return showStatus(planError, t("Set how long the session is."), true);
 
   const body = { activity_type: sport.value, planned_duration_minutes: minutes, notes: planNotes.value.trim() || null };
   const moving = target.existing && !planMoveField.classList.contains("hidden");
-  if (moving && !planMoveDate.value) return showStatus(planError, "Pick the day to move it to.", true);
+  if (moving && !planMoveDate.value) return showStatus(planError, t("Pick the day to move it to."), true);
   if (moving && planMoveDate.value !== target.date) body.date = planMoveDate.value;
   try {
     if (target.existing) {

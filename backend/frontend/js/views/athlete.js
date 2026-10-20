@@ -3,6 +3,7 @@
 
 import { api } from "../core/api.js";
 import { isoDate } from "../core/format.js";
+import { t } from "../core/i18n.js";
 import { showStatus } from "../core/ui.js";
 
 const profileForm = document.getElementById("profile-form");
@@ -53,7 +54,9 @@ profileForm.addEventListener("submit", async (e) => {
     if (body[key] && !/^\d{1,2}:\d{2}$/.test(body[key])) {
       showStatus(
         profileStatus,
-        `Write the ${key === "css_pace" ? "CSS" : "threshold pace"} as min:sec, like 4:30.`,
+        key === "css_pace"
+          ? t("Write the CSS as min:sec, like 1:45.")
+          : t("Write the threshold pace as min:sec, like 4:30."),
         true,
       );
       return document.getElementById(`pf-${key}`).focus();
@@ -61,13 +64,13 @@ profileForm.addEventListener("submit", async (e) => {
   }
   try {
     fillProfile(await api(`/api/athlete?today=${isoDate(new Date())}`, { method: "PUT", body: JSON.stringify(body) }));
-    showStatus(profileStatus, "Saved. It is now part of the History tab.");
+    showStatus(profileStatus, t("Saved. It is now part of the History tab."));
     profileStatus.classList.add("ok");
   } catch (err) {
     if (err.status !== 401)
       showStatus(
         profileStatus,
-        err.status === 422 ? "One of the numbers is out of range: check them and save again." : err.message,
+        err.status === 422 ? t("One of the numbers is out of range: check them and save again.") : err.message,
         true,
       );
   }

@@ -14,6 +14,9 @@
   --planned: #dbeafe; /* light blue = planned */
   --planned-border: #93c5fd;
   --done: #ecfdf5;
+  --nav-bg: #0b1631; /* the top bar */
+  --nav-text: rgba(255, 255, 255, 0.72);
+  --nav-hover: rgba(255, 255, 255, 0.08);
 }
 
 * { box-sizing: border-box; }
@@ -27,17 +30,28 @@ body {
 
 .hidden { display: none !important; }
 
+/* Top bar: brand on the left, the tabs in the middle, who is logged in and
+   the settings gear on the right. Each part keeps its column when another is hidden. */
 .topbar {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  padding: 14px 24px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
+  gap: 16px;
+  min-height: 60px;
+  padding: 8px 24px;
+  background: var(--nav-bg);
+  color: #fff;
+  z-index: 30;
+  transition: box-shadow 0.2s;
 }
+/* On the landing page the top bar stays in view, so Log in is always one click away. */
+body[data-view="auth-view"] .topbar { position: sticky; top: 0; }
+.topbar.scrolled { box-shadow: 0 6px 24px rgba(11, 22, 49, 0.25); }
+.topbar :focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
 
 .topbar h1 { font-size: 1.1rem; margin: 0; }
-.brand { display: flex; align-items: center; gap: 10px; }
+.brand { grid-column: 1; display: flex; align-items: center; gap: 10px; letter-spacing: 0.01em; }
+.topbar .logo { background: none; padding: 0; }
 /* The graloop logo: the "oo" is an infinity loop drawn in the accent colour. */
 .logo {
   display: inline-block;
@@ -53,8 +67,75 @@ body {
 }
 .logo svg { height: 0.5em; width: 0.97em; margin: 0 0.03em 0 0.01em; vertical-align: baseline; stroke: var(--accent); }
 .site-footer { padding: 8px 16px 28px; text-align: center; font-size: 0.8rem; color: var(--muted); }
+.site-footer a { color: inherit; }
 
-#user-actions { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
+.topbar-actions { grid-column: 3; justify-self: end; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
+
+/* You, as a badge: opens the account menu. */
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 12px 3px 3px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: var(--nav-hover);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.user-badge:hover, .user-badge[aria-expanded="true"] { background: rgba(255, 255, 255, 0.16); }
+.user-badge .chevron { width: 14px; height: 14px; opacity: 0.7; transition: transform 0.15s; }
+.user-badge[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #c3cad6;
+}
+.avatar svg { width: 100%; height: 100%; fill: #fff; }
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--nav-text);
+}
+.icon-btn svg { width: 21px; height: 21px; }
+.icon-btn:hover, .icon-btn[aria-expanded="true"] { background: var(--nav-hover); color: #fff; }
+
+/* Landing page: the language (a small pill) and the big Log in button. */
+.btn-nav {
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: none;
+  color: var(--nav-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.btn-nav:hover { background: var(--nav-hover); color: #fff; }
+.btn-login {
+  padding: 10px 26px;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+}
+.btn-login[aria-expanded="true"] { background: var(--accent-hover); }
+.login-panel { width: min(340px, calc(100vw - 32px)); padding: 22px; gap: 8px; }
+.login-panel h2 { margin: 0; font-size: 1.2rem; }
+.login-panel .hint { font-size: 0.85rem; }
+.login-panel form button { margin-top: 6px; padding: 11px; font-weight: 600; }
+.login-request { padding-top: 10px; border-top: 1px solid var(--border); }
 
 .btn-link {
   background: none;
@@ -66,18 +147,6 @@ body {
 }
 
 main { max-width: min(1600px, 96vw); margin: 0 auto; padding: 24px; }
-
-.auth-card {
-  max-width: 360px;
-  margin: 60px auto;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 24px;
-}
-
-.auth-card h2 { margin: 0 0 8px; }
-.auth-card .hint { font-size: 0.8rem; color: var(--muted); margin: 0 0 16px; }
 
 form { display: flex; flex-direction: column; gap: 8px; }
 label { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
@@ -181,24 +250,32 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 .users-table th { text-align: left; font-size: 0.75rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
 .users-table th, .users-table td { padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 
-/* --- Calendar / Plan tabs --- */
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+/* --- The tabs, in the middle of the top bar --- */
+.tabs { grid-column: 2; display: flex; gap: 4px; }
 .tab {
   background: none;
-  color: var(--muted);
-  border-radius: 8px 8px 0 0;
-  border-bottom: 2px solid transparent;
-  padding: 8px 16px;
-  font-weight: 600;
+  color: var(--nav-text);
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.tab:hover { background: var(--card); color: var(--text); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:hover { background: var(--nav-hover); color: #fff; }
+.tab.active { background: rgba(255, 255, 255, 0.12); color: #fff; }
 
 .plan-intro { font-size: 0.9rem; color: var(--muted); margin: 0 0 16px; max-width: 80ch; }
 .inline-label { margin: 0; }
 
+/* Narrow screens: the tabs get a row of their own and scroll sideways. */
+@media (max-width: 860px) {
+  .topbar { grid-template-columns: 1fr auto; padding: 8px 16px; row-gap: 6px; }
+  .topbar-actions { grid-column: 2; }
+  .tabs { grid-column: 1 / -1; grid-row: 2; overflow-x: auto; margin: 0 -16px; padding: 0 16px 4px; }
+  .tab { padding: 8px 14px; font-size: 0.95rem; }
+}
 @media (max-width: 600px) {
-  .topbar { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
   main { padding: 16px; }
-  #user-name { display: none; }
+  #user-name, .brand > span:last-child { display: none; }
+  .btn-login { padding: 9px 20px; }
 }

@@ -4,6 +4,7 @@
 // errors and weeks_preview.
 
 import { addDays, fmtDate, fmtHM, fmtSpan, isoDate } from "../core/format.js";
+import { t } from "../core/i18n.js";
 import { activityIcon, sportLabel } from "../core/sports.js";
 
 export function renderDraftPreview(draft, container, emptyText = null) {
@@ -14,8 +15,10 @@ export function renderDraftPreview(draft, container, emptyText = null) {
     empty.textContent =
       emptyText ||
       (draft.errors.length
-        ? "None of the draft's lines can be read yet."
-        : "No plan for these weeks yet. Ask Claude in Chrome to write one, or type the sessions in the draft below.");
+        ? t("None of the draft's lines can be read yet.")
+        : t(
+            "No plan for these weeks yet. Ask Claude in Chrome to write one, or type the sessions in the draft below.",
+          ));
     container.appendChild(empty);
     return;
   }
@@ -24,14 +27,14 @@ export function renderDraftPreview(draft, container, emptyText = null) {
   draft.weeks_preview.forEach((week, index) => {
     const heading = document.createElement("h3");
     heading.className = "plan-week-title";
-    heading.textContent = `Week ${index + 1} · ${fmtSpan(week.start, week.end)} · ${fmtHM(week.total_minutes)}`;
+    heading.textContent = `${t("Week {n}", { n: index + 1 })} · ${fmtSpan(week.start, week.end)} · ${fmtHM(week.total_minutes)}`;
     const table = document.createElement("table");
     table.className = "users-table plan-table";
     const head = table.createTHead().insertRow();
     for (const name of ["Day", "Sessions", "Time"]) {
       const th = document.createElement("th");
       th.scope = "col";
-      th.textContent = name;
+      th.textContent = t(name);
       head.appendChild(th);
     }
     const body = table.createTBody();
@@ -44,7 +47,7 @@ export function renderDraftPreview(draft, container, emptyText = null) {
       dayCell.className = "plan-day";
       const sessionsCell = row.insertCell();
       if (!sessions.length) {
-        sessionsCell.textContent = iso < today ? "(already past)" : "–";
+        sessionsCell.textContent = iso < today ? t("(already past)") : "–";
         sessionsCell.className = "subtle";
       }
       for (const s of sessions) {
@@ -73,14 +76,14 @@ export function renderDraftPreview(draft, container, emptyText = null) {
   ].filter(([key], i) => i < 3 || draft.weeks_preview.some((w) => w.minutes_by_sport[key] > 0));
   const heading = document.createElement("h3");
   heading.className = "plan-week-title";
-  heading.textContent = "Weekly split";
+  heading.textContent = t("Weekly split");
   const table = document.createElement("table");
   table.className = "users-table plan-table split-table";
   const head = table.createTHead().insertRow();
   for (const name of ["Week", ...sports.map(([, label]) => label), "Total"]) {
     const th = document.createElement("th");
     th.scope = "col";
-    th.textContent = name;
+    th.textContent = t(name);
     head.appendChild(th);
   }
   const body = table.createTBody();

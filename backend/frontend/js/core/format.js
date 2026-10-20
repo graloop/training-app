@@ -1,6 +1,8 @@
 // Dates, durations and words, formatted the same way on every tab.
 // Dates from the server are "YYYY-MM-DD" strings (local days, no time).
 
+import { isSingular, locale, t } from "./i18n.js";
+
 export function isoDate(d) {
   return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
 }
@@ -19,7 +21,7 @@ export function thisMonday() {
 
 // "Tue, Oct 13"
 export function fmtDate(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+  return new Date(iso + "T00:00:00").toLocaleDateString(locale(), {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -28,7 +30,7 @@ export function fmtDate(iso) {
 
 // "Tue, Oct 13, 2026"
 export function fmtLongDate(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+  return new Date(iso + "T00:00:00").toLocaleDateString(locale(), {
     weekday: "short",
     year: "numeric",
     month: "short",
@@ -41,7 +43,10 @@ export function fmtSpan(startIso, endIso) {
   const start = new Date(startIso + "T00:00:00");
   const end = new Date(endIso + "T00:00:00");
   const opts = { weekday: "short", month: "short", day: "numeric" };
-  return `${start.toLocaleDateString(undefined, opts)} to ${end.toLocaleDateString(undefined, { ...opts, year: "numeric" })}`;
+  return t("{start} to {end}", {
+    start: start.toLocaleDateString(locale(), opts),
+    end: end.toLocaleDateString(locale(), { ...opts, year: "numeric" }),
+  });
 }
 
 // "45 min", "1 h", "1 h 05"
@@ -59,7 +64,7 @@ export function fmtHM(minutes) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-// "1 session", "3 sessions"
-export function plural(n, word) {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
+// "1 session", "3 sessions", in the page's language (fr.js has both forms).
+export function plural(n, word, many = word + "s") {
+  return `${n} ${t(isSingular(n) ? word : many)}`;
 }

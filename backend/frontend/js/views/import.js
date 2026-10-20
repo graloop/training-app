@@ -3,6 +3,7 @@
 
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";
+import { isSingular, locale, t } from "../core/i18n.js";
 import { showTab } from "../core/tabs.js";
 import { selectContents, showStatus } from "../core/ui.js";
 import { showCalendarAround } from "./calendar.js";
@@ -32,15 +33,15 @@ function fillMondays(select, firstWeek, lastWeek) {
   select.innerHTML = "";
   for (let i = firstWeek; i <= lastWeek; i++) {
     const day = addDays(monday, i * 7);
-    let label = day.toLocaleDateString(undefined, {
+    let label = day.toLocaleDateString(locale(), {
       weekday: "short",
       month: "short",
       day: "numeric",
       ...(day.getFullYear() !== monday.getFullYear() ? { year: "numeric" } : {}),
     });
-    if (i === -1) label = `Last week (${label})`;
-    if (i === 0) label = `This week (${label})`;
-    if (i === 1) label = `Next week (${label})`;
+    if (i === -1) label = t("Last week ({date})", { date: label });
+    if (i === 0) label = t("This week ({date})", { date: label });
+    if (i === 1) label = t("Next week ({date})", { date: label });
     const opt = document.createElement("option");
     opt.value = isoDate(day);
     opt.textContent = label;
@@ -74,14 +75,17 @@ export async function loadImportPage() {
 // --- Your share code ---
 
 document.getElementById("share-copy").addEventListener("click", async () => {
-  const text = `Name: ${document.getElementById("share-username").textContent} · Share code: ${shareCode.textContent}`;
+  const text = t("Name: {name} · Share code: {code}", {
+    name: document.getElementById("share-username").textContent,
+    code: shareCode.textContent,
+  });
   try {
     await navigator.clipboard.writeText(text);
-    showStatus(shareStatus, "Copied. Send it to the person who wants to copy your plan.");
+    showStatus(shareStatus, t("Copied. Send it to the person who wants to copy your plan."));
     shareStatus.classList.add("ok");
   } catch (_) {
     selectContents(shareCode);
-    showStatus(shareStatus, "Couldn't copy automatically. The code is selected: press Cmd+C.", true);
+    showStatus(shareStatus, t("Couldn't copy automatically. The code is selected: press Cmd+C."), true);
   }
 });
 
@@ -89,18 +93,18 @@ document.getElementById("share-copy").addEventListener("click", async () => {
 shareNew.addEventListener("click", async () => {
   if (!shareNew.classList.contains("confirming")) {
     shareNew.classList.add("confirming");
-    shareNew.textContent = "Click again: the old code stops working";
+    shareNew.textContent = t("Click again: the old code stops working");
     setTimeout(() => {
       shareNew.classList.remove("confirming");
-      shareNew.textContent = "New code";
+      shareNew.textContent = t("New code");
     }, 5000);
     return;
   }
   shareNew.classList.remove("confirming");
-  shareNew.textContent = "New code";
+  shareNew.textContent = t("New code");
   try {
     shareCode.textContent = (await api("/api/share/code", { method: "POST" })).share_code;
-    showStatus(shareStatus, "New code ready. The old one no longer works.");
+    showStatus(shareStatus, t("New code ready. The old one no longer works."));
     shareStatus.classList.add("ok");
   } catch (err) {
     if (err.status !== 401) showStatus(shareStatus, err.message, true);
@@ -121,9 +125,9 @@ function friendRequest() {
 
 function resetFriendButtons() {
   friendToPlan.classList.remove("confirming");
-  friendToPlan.textContent = "Import to plan";
+  friendToPlan.textContent = t("Import to plan");
   friendToCalendar.classList.remove("confirming");
-  friendToCalendar.textContent = "Import to calendar";
+  friendToCalendar.textContent = t("Import to calendar");
 }
 
 // What you see is what gets imported: any change hides the old preview.
@@ -140,7 +144,8 @@ friendTarget.addEventListener("change", () => {
 friendForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const body = friendRequest();
-  if (!body.username || !body.share_code) return showStatus(friendFormStatus, "Enter their name and share code.", true);
+  if (!body.username || !body.share_code)
+    return showStatus(friendFormStatus, t("Enter their name and share code."), true);
   friendFormStatus.classList.add("hidden");
   try {
     const preview = await api(`/api/share/import/preview?today=${isoDate(new Date())}`, {
@@ -151,20 +156,39 @@ friendForm.addEventListener("submit", async (e) => {
     renderDraftPreview(
       preview,
       document.getElementById("friend-preview"),
-      `${preview.from_username} has no planned sessions in those weeks.`,
+      t("{name} has no planned sessions in those weeks.", { name: preview.from_username }),
     );
     let summary = "";
     if (preview.sessions_count) {
       const weeks =
         preview.source_start === preview.start_date
-          ? `the weeks of ${fmtSpan(preview.start_date, preview.end_date)}`
-          : `their weeks of ${fmtSpan(preview.source_start, preview.source_end)}, onto your weeks of ${fmtSpan(preview.start_date, preview.end_date)}`;
-      summary = `${plural(preview.sessions_count, "session")} from ${preview.from_username}, ${weeks}.`;
+          ? t("the weeks of {span}", { span: fmtSpan(preview.start_date, preview.end_date) })
+          : t("their weeks of {theirs}, onto your weeks of {yours}", {
+              theirs: fmtSpan(preview.source_start, preview.source_end),
+              yours: fmtSpan(preview.start_date, preview.end_date),
+            });
+      summary = t("{sessions} from {name}, {weeks}.", {
+        sessions: plural(preview.sessions_count, "session"),
+        name: preview.from_username,
+        weeks,
+      });
       if (preview.skipped_past)
-        summary += ` ${plural(preview.skipped_past, "session")} on days already past ${preview.skipped_past === 1 ? "is" : "are"} left out.`;
+        summary +=
+          " " +
+          t(
+            isSingular(preview.skipped_past)
+              ? "{sessions} on days already past is left out."
+              : "{sessions} on days already past are left out.",
+            { sessions: plural(preview.skipped_past, "session") },
+          );
       summary += preview.existing_planned
-        ? ` Import to calendar replaces the ${plural(preview.existing_planned, "session")} already planned from ${fmtDate(preview.replace_from)} to ${fmtDate(preview.end_date)}.`
-        : " Nothing is planned on your calendar on those dates yet.";
+        ? " " +
+          t("Import to calendar replaces the {sessions} already planned from {from} to {to}.", {
+            sessions: plural(preview.existing_planned, "session"),
+            from: fmtDate(preview.replace_from),
+            to: fmtDate(preview.end_date),
+          })
+        : " " + t("Nothing is planned on your calendar on those dates yet.");
     }
     friendSummary.textContent = summary;
     friendSummary.classList.toggle("hidden", !summary);
@@ -184,13 +208,13 @@ friendForm.addEventListener("submit", async (e) => {
 function armed(btn, count, noun, where = "") {
   if (!count || btn.classList.contains("confirming")) return false;
   btn.classList.add("confirming");
-  btn.textContent = `Click again: replaces ${plural(count, noun)}${where}`;
+  btn.textContent = t("Click again: replaces {sessions}", { sessions: plural(count, noun) }) + where;
   setTimeout(resetFriendButtons, 5000);
   return true;
 }
 
 friendToPlan.addEventListener("click", async () => {
-  if (!friendPreview || armed(friendToPlan, friendPreview.draft_sessions, "session", " in your draft")) return;
+  if (!friendPreview || armed(friendToPlan, friendPreview.draft_sessions, "session", t(" in your draft"))) return;
   friendToPlan.disabled = true;
   try {
     await api(`/api/share/import/plan?today=${isoDate(new Date())}`, {
@@ -215,8 +239,13 @@ friendToCalendar.addEventListener("click", async () => {
       method: "POST",
       body: JSON.stringify(friendRequest()),
     });
-    const replaced = result.replaced ? `, replacing ${plural(result.replaced, "planned session")}` : "";
-    showStatus(friendStatus, `Done: ${plural(result.added, "session")} are on your calendar${replaced}.`);
+    const replaced = result.replaced
+      ? t(", replacing {sessions}", { sessions: plural(result.replaced, "planned session") })
+      : "";
+    showStatus(
+      friendStatus,
+      t("Done: {sessions} on your calendar{replaced}.", { sessions: plural(result.added, "session"), replaced }),
+    );
     friendStatus.classList.add("ok");
     friendView.classList.remove("hidden");
     friendPreview = { ...friendPreview, existing_planned: result.added }; // importing again would replace these

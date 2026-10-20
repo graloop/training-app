@@ -3,6 +3,7 @@
 
 import { api } from "../core/api.js";
 import { plural } from "../core/format.js";
+import { locale, t } from "../core/i18n.js";
 import { clearSession, getUser } from "../core/session.js";
 import { showStatus, showView } from "../core/ui.js";
 
@@ -19,7 +20,7 @@ function randomPassword() {
 }
 
 function fmtDateTime(iso) {
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(locale(), {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -32,15 +33,15 @@ function fmtDateTime(iso) {
 function fmtAgo(iso) {
   const then = new Date(iso);
   const minutes = Math.floor((Date.now() - then.getTime()) / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ago`;
+  if (minutes < 1) return t("Just now");
+  if (minutes < 60) return t("{n} min ago", { n: minutes });
+  if (minutes < 24 * 60) return t("{n} h ago", { n: Math.floor(minutes / 60) });
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const days = Math.ceil((startOfToday.getTime() - then.getTime()) / 86400000);
-  if (days <= 1) return "Yesterday";
-  if (days < 30) return `${days} days ago`;
-  return then.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  if (days <= 1) return t("Yesterday");
+  if (days < 30) return t("{n} days ago", { n: days });
+  return then.toLocaleDateString(locale(), { year: "numeric", month: "short", day: "numeric" });
 }
 
 function timeCell(iso, emptyText) {
@@ -73,7 +74,7 @@ function renderLoginsChart(days) {
   if (peak === 0) {
     const empty = document.createElement("p");
     empty.className = "subtle chart-empty";
-    empty.textContent = "No logins in the last 7 days.";
+    empty.textContent = t("No logins in the last 7 days.");
     chart.appendChild(empty);
     return;
   }
@@ -94,14 +95,14 @@ function renderLoginsChart(days) {
   plot.setAttribute("role", "list");
   for (const day of days) {
     const date = new Date(day.date + "T00:00:00");
-    const summary = `${plural(day.logins, "login")}` + (day.failed ? ` · ${plural(day.failed, "failed attempt")}` : "");
+    const summary = plural(day.logins, "login") + (day.failed ? ` · ${plural(day.failed, "failed attempt")}` : "");
     const col = document.createElement("div");
     col.className = "bar-col" + (day.date === todayIso ? " today" : "");
     col.setAttribute("role", "listitem");
     col.tabIndex = 0;
     col.setAttribute(
       "aria-label",
-      `${date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}: ${summary}`,
+      `${date.toLocaleDateString(locale(), { weekday: "long", month: "long", day: "numeric" })}: ${summary}`,
     );
 
     const track = document.createElement("div");
@@ -123,12 +124,12 @@ function renderLoginsChart(days) {
     const tipValue = document.createElement("strong");
     tipValue.textContent = summary;
     const tipLabel = document.createElement("span");
-    tipLabel.textContent = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    tipLabel.textContent = date.toLocaleDateString(locale(), { weekday: "short", month: "short", day: "numeric" });
     tip.append(tipValue, tipLabel);
 
     const label = document.createElement("span");
     label.className = "bar-label";
-    label.textContent = day.date === todayIso ? "Today" : date.toLocaleDateString(undefined, { weekday: "short" });
+    label.textContent = day.date === todayIso ? t("Today") : date.toLocaleDateString(locale(), { weekday: "short" });
 
     col.append(track, tip, label);
     plot.appendChild(col);
@@ -158,7 +159,7 @@ function renderActivity(activity) {
     const result = document.createElement("td");
     const badge = document.createElement("span");
     badge.className = `result-badge ${event.success ? "ok" : "failed"}`;
-    badge.textContent = event.success ? "✓ Logged in" : "✕ Wrong password";
+    badge.textContent = event.success ? t("✓ Logged in") : t("✕ Wrong password");
     result.appendChild(badge);
     row.append(when, account, result);
     body.appendChild(row);
@@ -208,7 +209,7 @@ function renderResetForm(row, u) {
   form.noValidate = true;
   const label = document.createElement("label");
   label.htmlFor = `reset-pw-${u.id}`;
-  label.textContent = `New password for ${u.username} (8+ characters)`;
+  label.textContent = t("New password for {name} (8+ characters)", { name: u.username });
   const input = document.createElement("input");
   input.id = `reset-pw-${u.id}`;
   input.type = "text";
@@ -217,7 +218,7 @@ function renderResetForm(row, u) {
   input.value = randomPassword();
   const save = document.createElement("button");
   save.type = "submit";
-  save.textContent = "Set password";
+  save.textContent = t("Set password");
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.className = "btn-ghost";
@@ -227,7 +228,7 @@ function renderResetForm(row, u) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const pw = input.value;
-    if (pw.length < 8) return showStatus(userStatus, "The password needs 8+ characters.", true);
+    if (pw.length < 8) return showStatus(userStatus, t("The password needs 8+ characters."), true);
     try {
       await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ password: pw }) });
       if (u.id === getUser().id) {
@@ -237,7 +238,13 @@ function renderResetForm(row, u) {
         return;
       }
       await loadDashboard();
-      showStatus(userStatus, `Password for ${u.username} is now: ${pw}  (they are logged out everywhere)`);
+      showStatus(
+        userStatus,
+        t("Password for {name} is now: {password}  (they are logged out everywhere)", {
+          name: u.username,
+          password: pw,
+        }),
+      );
       userStatus.classList.add("ok");
     } catch (err) {
       showStatus(userStatus, err.message, true);
@@ -259,9 +266,11 @@ function describeAccountData(data) {
     [data.objectives, "objective", "objectives"],
   ]
     .filter(([n]) => n > 0)
-    .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+    .map(([n, one, many]) => plural(n, one, many));
   if (!parts.length) return "";
-  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return parts.length === 1
+    ? parts[0]
+    : t("{list} and {last}", { list: parts.slice(0, -1).join(", "), last: parts[parts.length - 1] });
 }
 
 // Deleting can't be undone, so it says what will be lost and needs the username typed.
@@ -281,12 +290,12 @@ function renderDeleteForm(row, u) {
   const warning = document.createElement("p");
   warning.className = "delete-warning";
   warning.textContent = held
-    ? `Deleting ${u.username} also deletes its ${held}. This can't be undone.`
-    : `${u.username} holds no training data. Deleting it can't be undone.`;
+    ? t("Deleting {name} also deletes its {held}. This can't be undone.", { name: u.username, held })
+    : t("{name} holds no training data. Deleting it can't be undone.", { name: u.username });
 
   const label = document.createElement("label");
   label.htmlFor = `delete-confirm-${u.id}`;
-  label.textContent = `Type ${u.username} to confirm`;
+  label.textContent = t("Type {name} to confirm", { name: u.username });
   const input = document.createElement("input");
   input.id = `delete-confirm-${u.id}`;
   input.type = "text";
@@ -296,7 +305,7 @@ function renderDeleteForm(row, u) {
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.className = "btn-danger";
-  submit.textContent = "Delete account";
+  submit.textContent = t("Delete account");
   submit.disabled = true;
   const cancel = document.createElement("button");
   cancel.type = "button";
@@ -313,7 +322,12 @@ function renderDeleteForm(row, u) {
     try {
       await api(`/api/admin/users/${u.id}?confirm=${encodeURIComponent(input.value.trim())}`, { method: "DELETE" });
       await loadDashboard();
-      showStatus(userStatus, `Deleted ${u.username}${held ? ` and its ${held}` : ""}.`);
+      showStatus(
+        userStatus,
+        held
+          ? t("Deleted {name} and its {held}.", { name: u.username, held })
+          : t("Deleted {name}.", { name: u.username }),
+      );
     } catch (err) {
       showStatus(userStatus, err.message, true);
     }
@@ -334,16 +348,16 @@ function renderUsers(users) {
     const isMe = u.id === getUser().id;
     const row = document.createElement("tr");
     const name = document.createElement("td");
-    name.textContent = u.username + (isMe ? " (you)" : "");
+    name.textContent = u.username + (isMe ? t(" (you)") : "");
     const role = document.createElement("td");
-    role.textContent = u.is_admin ? "Admin" : "User";
-    if (!u.has_password) role.textContent += " · no password";
-    const lastLogin = timeCell(u.last_login_at, "Never");
+    role.textContent = u.is_admin ? t("Admin") : t("User");
+    if (!u.has_password) role.textContent += t(" · no password");
+    const lastLogin = timeCell(u.last_login_at, t("Never"));
     const garmin = document.createElement("td");
-    garmin.textContent = u.is_admin ? "–" : u.garmin_connected ? "Connected" : "Not connected";
+    garmin.textContent = u.is_admin ? "–" : u.garmin_connected ? t("Connected") : t("Not connected");
     const created = document.createElement("td");
     created.textContent = u.created_at
-      ? new Date(u.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+      ? new Date(u.created_at).toLocaleDateString(locale(), { year: "numeric", month: "short", day: "numeric" })
       : "–";
     const actions = document.createElement("td");
     actions.className = "row-actions";
@@ -351,8 +365,8 @@ function renderUsers(users) {
     const reset = document.createElement("button");
     reset.type = "button";
     reset.className = "btn-link";
-    reset.textContent = "Reset password";
-    reset.setAttribute("aria-label", `Reset password for ${u.username}`);
+    reset.textContent = t("Reset password");
+    reset.setAttribute("aria-label", t("Reset password for {name}", { name: u.username }));
     reset.addEventListener("click", () => renderResetForm(row, u));
     actions.appendChild(reset);
 
@@ -360,13 +374,18 @@ function renderUsers(users) {
       const makeAdmin = !u.is_admin;
       actions.appendChild(
         confirmButton(
-          makeAdmin ? "Make admin" : "Make user",
-          makeAdmin ? "Click again: they lose the calendar view" : "Click again to remove admin rights",
+          makeAdmin ? t("Make admin") : t("Make user"),
+          makeAdmin ? t("Click again: they lose the calendar view") : t("Click again to remove admin rights"),
           u.username,
           async () => {
             await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_admin: makeAdmin }) });
             await loadDashboard();
-            showStatus(userStatus, `${u.username} is now ${makeAdmin ? "an admin" : "a regular user"}.`);
+            showStatus(
+              userStatus,
+              makeAdmin
+                ? t("{name} is now an admin.", { name: u.username })
+                : t("{name} is now a regular user.", { name: u.username }),
+            );
             userStatus.classList.add("ok");
           },
         ),
@@ -374,8 +393,8 @@ function renderUsers(users) {
       const del = document.createElement("button");
       del.type = "button";
       del.className = "btn-link danger";
-      del.textContent = "Delete";
-      del.setAttribute("aria-label", `Delete ${u.username}`);
+      del.textContent = t("Delete");
+      del.setAttribute("aria-label", t("Delete {name}", { name: u.username }));
       del.addEventListener("click", () => renderDeleteForm(row, u));
       actions.appendChild(del);
     }
@@ -396,7 +415,8 @@ async function loadDashboard() {
     renderActivity(activity);
     renderUsers(users.users);
   } catch (err) {
-    if (err.status !== 401) showStatus(dashError, `Couldn't load the dashboard: ${err.message}`, true);
+    if (err.status !== 401)
+      showStatus(dashError, t("Couldn't load the dashboard: {error}", { error: err.message }), true);
   }
 }
 
@@ -417,8 +437,8 @@ document.getElementById("user-form").addEventListener("submit", async (e) => {
   const username = document.getElementById("new-username").value.trim().toLowerCase();
   const password = document.getElementById("new-password").value;
   if (!/^[a-z0-9._@-]{3,64}$/.test(username))
-    return showStatus(createStatus, "Usernames are 3–64 characters: letters, digits, . _ - @", true);
-  if (password.length < 8) return showStatus(createStatus, "The password needs 8+ characters.", true);
+    return showStatus(createStatus, t("Usernames are 3–64 characters: letters, digits, . _ - @"), true);
+  if (password.length < 8) return showStatus(createStatus, t("The password needs 8+ characters."), true);
   try {
     await api("/api/admin/users", {
       method: "POST",
@@ -428,7 +448,10 @@ document.getElementById("user-form").addEventListener("submit", async (e) => {
     document.getElementById("new-admin").checked = false;
     document.getElementById("new-password").value = randomPassword();
     await loadDashboard();
-    showStatus(createStatus, `Created ${username}. Send them: username ${username} · password ${password}`);
+    showStatus(
+      createStatus,
+      t("Created {name}. Send them: username {name} · password {password}", { name: username, password }),
+    );
     createStatus.classList.add("ok");
   } catch (err) {
     showStatus(createStatus, err.message, true);

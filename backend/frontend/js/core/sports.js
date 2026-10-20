@@ -2,6 +2,8 @@
 // Garmin's activity types ("trail_running", "virtual_ride"...) are matched by
 // the words they contain.
 
+import { t } from "./i18n.js";
+
 export const SPORTS = [
   { type: "swimming", label: "Swimming" },
   { type: "cycling", label: "Cycling" },
@@ -38,5 +40,5 @@ export function activityIcon(type) {
 
 export function sportLabel(type) {
   const sport = SPORTS.find((s) => s.type === type);
-  return sport ? sport.label : (type || "").replace(/_/g, " ");
+  return sport ? t(sport.label) : (type || "").replace(/_/g, " ");
 }

@@ -3,7 +3,8 @@
 // how to write the plan and the current draft.
 
 import { api } from "../core/api.js";
-import { fmtLongDate, fmtSpan, isoDate } from "../core/format.js";
+import { fmtLongDate, fmtSpan, isoDate, plural } from "../core/format.js";
+import { t } from "../core/i18n.js";
 import { selectContents, showStatus } from "../core/ui.js";
 import { runSync } from "./garmin.js";
 
@@ -23,11 +24,12 @@ async function loadLog() {
     logEl.textContent = data.text;
     logStatus.classList.add("hidden");
   } catch (err) {
-    if (err.status !== 401) showStatus(logStatus, `Couldn't load the log: ${err.message}`, true);
+    if (err.status !== 401) showStatus(logStatus, t("Couldn't load the log: {error}", { error: err.message }), true);
   }
 }
 
-// The weeks being planned, the line format and the current draft.
+// The weeks being planned, the line format and the current draft. In English
+// whatever the page's language: it is read by Claude with the English log above.
 function planContextText(draft) {
   const parts = [
     "HOW TO WRITE THE PLAN",
@@ -61,26 +63,28 @@ document.getElementById("log-copy").addEventListener("click", async () => {
   const text = `${logEl.textContent}\n\n${logContext.textContent}`;
   try {
     await navigator.clipboard.writeText(text);
-    showStatus(logStatus, "Copied. Paste it into a Claude conversation and ask for the plan.");
+    showStatus(logStatus, t("Copied. Paste it into a Claude conversation and ask for the plan."));
     logStatus.classList.add("ok");
   } catch (_) {
     selectContents(logEl);
-    showStatus(logStatus, "Couldn't copy automatically. The log is selected: press Cmd+C.", true);
+    showStatus(logStatus, t("Couldn't copy automatically. The log is selected: press Cmd+C."), true);
   }
 });
 
 // Older activities come as one list from Garmin: enough for the long-term weekly totals.
 importBtn.addEventListener("click", async () => {
   importBtn.disabled = true;
-  showStatus(importStatus, "Asking Garmin for your older activities…");
+  showStatus(importStatus, t("Asking Garmin for your older activities…"));
   try {
     const months = Number(document.getElementById("import-months").value);
     const result = await api("/api/garmin/import-history", { method: "POST", body: JSON.stringify({ months }) });
     await loadHistoryPage(); // first: it clears the status lines
     showStatus(
       importStatus,
-      `Imported ${result.activities_imported} older ${result.activities_imported === 1 ? "activity" : "activities"} back to ` +
-        `${fmtLongDate(result.since)}. They are in the log under "Earlier weeks".`,
+      t('Imported {activities} back to {date}. They are in the log under "Earlier weeks".', {
+        activities: plural(result.activities_imported, "older activity", "older activities"),
+        date: fmtLongDate(result.since),
+      }),
     );
     importStatus.classList.add("ok");
   } catch (err) {
