@@ -15,7 +15,13 @@ services:
       retries: 10
 
   backend:
-    build: ./backend
+    # Built by GitHub Actions (.github/workflows/ci.yml) on every push to main
+    # and published to GitHub's registry, so Portainer only has to pull it
+    # (Portainer can't build images through a Portainer Agent). Tags: latest
+    # and sha-<short commit>; set BACKEND_TAG=sha-xxxxxxx in the stack to roll
+    # back to an earlier build. To build it yourself instead, add
+    # -f docker-compose.build.yml (see README).
+    image: ghcr.io/graloop/training-app:${BACKEND_TAG:-latest}
     restart: unless-stopped
     depends_on:
       db:

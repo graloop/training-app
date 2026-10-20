@@ -176,6 +176,7 @@ There's no separate frontend server/container: FastAPI serves the API under
 ├── .github/workflows/    CI: tests, lint and the Docker build on every push
 ├── scripts/dev.sh         local dev launcher (venv, .env, uvicorn --reload)
 ├── docker-compose.yml     production stack: postgres + backend (+ optional Cloudflare Tunnel)
+├── docker-compose.build.yml  optional override: build the backend locally instead of pulling it
 ├── .env.example           template for secrets/config (copy to .env)
 ├── docs/TROUBLESHOOTING.md  logs, error messages, account rescue, backups
 └── backend/
@@ -308,8 +309,17 @@ says where to look.
      Deploy the stack.
    - **Command line:** copy `.env.example` to `.env`, fill it in, then
      ```bash
-     docker compose up -d --build
+     docker compose up -d
      ```
+     To build the image from your checkout instead of pulling the published
+     one, use `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+
+   The backend image is built by GitHub Actions on every push to `main` and
+   published as `ghcr.io/graloop/training-app` (tags `latest`
+   and `sha-<short commit>`). To update, wait for the CI run to finish, then
+   in Portainer use **Pull and redeploy** with *Re-pull image* on. To roll
+   back, set `BACKEND_TAG` to an earlier `sha-…` tag in the stack's
+   environment variables and redeploy.
 
    The admin account is created on the first start. `ADMIN_PASSWORD` is only
    used to create it, so changing the password in the app later sticks. The
@@ -477,6 +487,7 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `APP_DOMAIN`                 | backend         | The public name friends open (e.g. `training.example.com`); when set the app only answers on `https://` that name. Empty (default) = no check |
 | `COMPOSE_PROFILES`           | docker-compose  | `tunnel` starts the optional Cloudflare Tunnel container             |
 | `CLOUDFLARE_TUNNEL_TOKEN`    | docker-compose  | Token of the Cloudflare Tunnel, only with `COMPOSE_PROFILES=tunnel`  |
+| `BACKEND_TAG`                | docker-compose  | Backend image tag to run (default `latest`; `sha-xxxxxxx` to roll back) |
 
 ## Data model
 
