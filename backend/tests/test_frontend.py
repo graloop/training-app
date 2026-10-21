@@ -58,3 +58,13 @@ def test_modules_never_import_each_other_in_a_circle():
 
     for node in graph:
         visit(node, [])
+
+
+def test_no_script_hides_the_translation_function():
+    """A local variable named t hides t() from i18n.js: the page then fails
+    with "t is not a function", as the admin dashboard once did."""
+    for path in JS_FILES:
+        text = path.read_text()
+        if not re.search(r"import \{[^}]*\bt\b[^}]*\} from", text):
+            continue
+        assert re.findall(r"\b(?:const|let|var|function)\s+t\b|[(,]\s*t\s*[,)=]", text) == [], path.name

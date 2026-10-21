@@ -138,11 +138,11 @@ function renderLoginsChart(days) {
 }
 
 function renderActivity(activity) {
-  const t = activity.totals;
-  document.getElementById("stat-accounts").textContent = t.accounts;
-  document.getElementById("stat-active").textContent = t.active_accounts;
-  document.getElementById("stat-logins").textContent = t.logins;
-  document.getElementById("stat-failed").textContent = t.failed;
+  const totals = activity.totals;
+  document.getElementById("stat-accounts").textContent = totals.accounts;
+  document.getElementById("stat-active").textContent = totals.active_accounts;
+  document.getElementById("stat-logins").textContent = totals.logins;
+  document.getElementById("stat-failed").textContent = totals.failed;
   renderLoginsChart(activity.days);
 
   const body = document.getElementById("events-body");
