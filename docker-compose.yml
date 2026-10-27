@@ -61,7 +61,7 @@ services:
   # shows when you create the tunnel. In Cloudflare, point the public name at
   # http://backend:8000.
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.1
+    image: cloudflare/cloudflared:2026.10.3
     profiles: ["tunnel"]
     restart: unless-stopped
     depends_on:
