@@ -16,3 +16,4 @@
 
 #tab-history .log-text { max-height: none; }
 .log-subtitle { margin: 20px 0 8px; font-size: 0.95rem; }
+.log-session { display: block; width: 100%; max-width: 100%; margin-bottom: 8px; }

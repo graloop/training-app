@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session, defer
 
 from .. import models
-from .activity_text import detail_lines, fmt_activity
+from .activity_text import detail_lines, fmt_activity, rep_summary
 from .basics import (
     DAY_NAMES,
     MATCH_TOLERANCE,
@@ -26,6 +26,9 @@ from .basics import (
     sport_minutes,
     sport_of,
 )
+from .session_detail import trace_lines
+
+FULL_DETAIL_WEEKS = 4  # this week and the 3 before: older weeks keep one line per session and their reps
 
 # --- Day labels and Garmin's training status ------------------------------------
 
@@ -330,9 +333,10 @@ class _Stored:
     sleep: dict[datetime.date, models.SleepRecord]
     daily: dict[datetime.date, models.DailyMetrics]
     data_start: datetime.date | None  # where this account's Garmin data begins
+    traces: dict[int, models.ActivityTrace]  # activity id ->, full detail only
 
 
-def _load(db: Session, user: models.User, start: datetime.date, today: datetime.date) -> _Stored:
+def _load(db: Session, user: models.User, start: datetime.date, today: datetime.date, full: bool) -> _Stored:
     activities = (
         db.query(models.Activity)
         .filter(
@@ -372,10 +376,19 @@ def _load(db: Session, user: models.User, start: datetime.date, today: datetime.
     plans_by_day: dict[datetime.date, list[models.PlannedTraining]] = {}
     for p in planned:
         plans_by_day.setdefault(p.date, []).append(p)
-    return _Stored(activities, acts_by_day, planned, plans_by_day, sleep, daily, min(starts) if starts else None)
+    traces = {}
+    if full:
+        detailed_from = max(start, monday_of(today) - datetime.timedelta(weeks=FULL_DETAIL_WEEKS - 1))
+        traces = {
+            trace.activity_id: trace
+            for trace in db.query(models.ActivityTrace).join(models.Activity).filter(
+                models.Activity.user_id == user.id, models.ActivityTrace.fetched_at.is_not(None),
+                models.Activity.start_time >= datetime.datetime.combine(detailed_from, datetime.time.min))
+        }
+    return _Stored(activities, acts_by_day, planned, plans_by_day, sleep, daily, min(starts) if starts else None, traces)
 
 
-def _intro_lines(user: models.User, today: datetime.date, start: datetime.date, weeks: int, stored: _Stored) -> list[str]:
+def _intro_lines(user: models.User, today: datetime.date, start: datetime.date, weeks: int, stored: _Stored, full: bool) -> list[str]:
     lines = [
         f"TRAINING LOG · {user.username}",
         f"Today is {DAY_NAMES[today.weekday()]} {MONTH_NAMES[today.month - 1]} {today.day}, {today.year}. "
@@ -383,6 +396,10 @@ def _intro_lines(user: models.User, today: datetime.date, start: datetime.date, 
         "Times are h:mm. \"plan\" lines are what was planned for that day. Effort (1-10) and \"felt\" are what "
         "the athlete answered on the watch after the session; \"effort not answered\" means the prompt was skipped.",
     ]
+    if full:
+        lines.append(f"The last {FULL_DETAIL_WEEKS} weeks have every lap with heart rate; older weeks have one line per session "
+                     "and its reps. For any one session, every lap and heart rate, pace and power every 5 seconds, see "
+                     "\"One session in detail\" under this log.")
     unsynced = sum(1 for a in stored.activities if a.details_synced_at is None)
     if unsynced:
         lines.append(f"NOTE: {unsynced} session{'s' if unsynced != 1 else ''} below still wait{'s' if unsynced == 1 else ''} "
@@ -420,8 +437,9 @@ def _athlete_section(db: Session, user: models.User, today: datetime.date) -> li
     return lines
 
 
-def _week_lines(week_start: datetime.date, today: datetime.date, stored: _Stored, full: bool) -> list[str]:
-    """One week: a header with the totals, then each day up to today."""
+def _week_lines(week_start: datetime.date, today: datetime.date, stored: _Stored, full: bool, reps: bool = False) -> list[str]:
+    """One week: a header with the totals, then each day up to today. `full`
+    adds every detail of each session; `reps` only the reps, in one line."""
     days = [week_start + datetime.timedelta(days=i) for i in range(7)]
     if stored.data_start is None or days[-1] < stored.data_start:
         return ["", f"WEEK OF {fmt_day(week_start).upper()} · not synced"
@@ -489,7 +507,9 @@ def _week_lines(week_start: datetime.date, today: datetime.date, stored: _Stored
         for a in day_acts:
             lines.append(f"  done  {fmt_activity(a)}")
             if full:
-                lines += [f"        {extra}" for extra in detail_lines(a)]
+                lines += [f"        {extra}" for extra in detail_lines(a) + trace_lines(a, stored.traces.get(a.id))]
+            elif reps and rep_summary(a):
+                lines.append(f"        {rep_summary(a)}")
         lines += [f"  plan  {_fmt_planned(p, matched.get(p.id))}" for p in day_plans]
     return lines
 
@@ -516,21 +536,23 @@ def _ahead_lines(planned: list[models.PlannedTraining], today: datetime.date) ->
 
 def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, detail: str = "full") -> tuple[str, datetime.date]:
     """Plain-text log of the last `weeks` weeks (this week included) plus what
-    is already planned ahead. `detail` "full" adds per-session zones, laps and
-    recovery numbers; "summary" keeps one line per session.
+    is already planned ahead. `detail` "full" adds zones, laps and recovery
+    numbers over the last FULL_DETAIL_WEEKS weeks, and the reps of older
+    sessions; "summary" keeps one line per session.
     Returns (text, first day covered)."""
     full = detail == "full"
     start = monday_of(today) - datetime.timedelta(weeks=weeks - 1)
-    stored = _load(db, user, start, today)
+    detailed_from = monday_of(today) - datetime.timedelta(weeks=FULL_DETAIL_WEEKS - 1)
+    stored = _load(db, user, start, today, full)
 
-    lines = _intro_lines(user, today, start, weeks, stored)
+    lines = _intro_lines(user, today, start, weeks, stored, full)
     lines += _objective_lines(db, user, today)
     lines += _athlete_section(db, user, today)
     lines += ["", "EARLIER HISTORY (from Garmin's activity list: duration, distance, pace, avg HR and load; "
               "no effort, laps or recovery)"] + _earlier_weeks(db, user, start, today)
     week_start = start
     while week_start <= today:
-        lines += _week_lines(week_start, today, stored, full)
+        lines += _week_lines(week_start, today, stored, full and week_start >= detailed_from, reps=full)
         week_start += datetime.timedelta(days=7)
     lines += _ahead_lines(stored.planned, today)
     return "\n".join(lines), start

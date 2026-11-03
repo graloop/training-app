@@ -171,3 +171,8 @@ def fetch_daily_stats(api: Garmin, day: datetime.date) -> dict[str, Any]:
 
 def fetch_activity_weather(api: Garmin, activity_id: str) -> dict[str, Any]:
     return api.get_activity_weather(activity_id) or {}
+
+
+def fetch_activity_file(api: Garmin, activity_id: str) -> bytes:
+    """The file the watch or Zwift sent to Garmin, zipped."""
+    return api.download_activity(activity_id, dl_fmt=api.ActivityDownloadFormat.ORIGINAL)

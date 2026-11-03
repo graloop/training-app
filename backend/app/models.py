@@ -95,11 +95,29 @@ class Activity(Base):
     raw_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="activities")
+    trace: Mapped["ActivityTrace | None"] = relationship(back_populates="activity", cascade="all, delete-orphan", uselist=False)
 
     @property
     def legs(self) -> list[dict]:
         """A multisport race's legs (swim, transitions, bike, run), once synced."""
         return (self.extras or {}).get("legs") or []
+
+
+class ActivityTrace(Base):
+    """What a recent session's original file says second by second. Its own
+    table: activities are often loaded whole, and these are deleted after
+    TRACE_DAYS days (garmin/sync.py)."""
+
+    __tablename__ = "activity_traces"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"), nullable=False, unique=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # failed downloads or unreadable files
+    fetched_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # None: not got yet
+    samples: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)  # t, hr, speed, power, cadence
+    laps: Mapped[list | None] = mapped_column(JSON(none_as_null=True), nullable=True)  # when each lap began: start, duration
+
+    activity: Mapped["Activity"] = relationship(back_populates="trace")
 
 
 class SleepRecord(Base):

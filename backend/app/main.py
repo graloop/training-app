@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 import re
@@ -35,6 +36,7 @@ def startup() -> None:
     add_missing_columns()
     with SessionLocal() as db:
         garmin_sync.trim_stored_sleep(db)  # nights stored whole by versions before 15
+        garmin_sync.purge_old_traces(db, datetime.date.today())  # a sync may never run: AUTO_SYNC_HOURS=0
     bootstrap_admin()
     seed_test_accounts()
     autosync.start(settings.auto_sync_hours)

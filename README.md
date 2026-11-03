@@ -104,7 +104,8 @@ adjust sessions — it edits the page like you would.
      the rule set is first saved, their text is shown in it, so nothing is
      lost.
 - **History tab** — for the AI, not for reading: the whole training
-  history as text for Claude in Chrome (26 weeks in full detail by default),
+  history as text for Claude in Chrome (26 weeks by default, the last 4 in
+  full detail and older ones as one line per session plus its reps),
   then the plan being written (the weeks, the line format and the current
   draft). **Copy log for Claude** copies the
   same text for a normal Claude conversation. The history holds, per session:
@@ -112,9 +113,16 @@ adjust sessions — it edits the page like you would.
      and feel you answered on the watch**. In *Full* detail also time in each
      HR zone, max HR, Garmin's session type and training effect, bike power,
      cadence, climb, weather and sweat loss, interval totals, fastest
-     splits, and the **reps** of interval runs (separated from warm-up and
-     recoveries) or the laps of steady runs and swim sets (with rests, pool
-     length, strokes and SWOLF). Per day: the morning **Training
+     splits, and the **reps** of interval runs and rides (separated from
+     warm-up and recoveries, which are listed after them) or the laps of
+     steady sessions and swim sets (with rests, pool length, strokes and
+     SWOLF). Ride laps show watts and km/h; an outdoor ride cut every 5 km by
+     the watch stays on one line. From each session's file, kept as a trace
+     for 28 days: how each rep went inside (heart rate from start to peak,
+     pace or power first half vs second half), or the heart-rate drift of a
+     steady session. **One session in detail**, under the log, shows any
+     session of the last 90 days with every lap, and heart rate, pace, power
+     and cadence every 5 seconds while its trace is kept. Per day: the morning **Training
      Readiness**, sleep score, duration and stages, resting HR, overnight
      HRV, stress and body battery. Plus weekly totals, your objectives, what
      is already planned, the **numbers you entered on the Athlete tab**, an
@@ -202,12 +210,14 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── planning/       the training log and the draft plan
     │   │   ├── basics.py         days, durations, sports
     │   │   ├── activity_text.py  one activity as text (pace, HR, effort, laps, weather)
+    │   │   ├── session_detail.py what a session's trace adds, and one session in full
     │   │   ├── training_log.py   the History tab's log (build_log, one function per section)
     │   │   ├── draft_parser.py   "date | sport | duration | details" lines -> sessions or errors
     │   │   └── drafts.py         a draft as the page sees it, putting sessions on the calendar
     │   └── garmin/         everything that talks to Garmin Connect
     │       ├── client.py     the only file that calls Garmin (wraps garth/garminconnect)
     │       ├── sync.py       one sync of one account: what is fetched and how it is stored
+    │       ├── activity_file.py  an activity's original file -> a trace (no GPS; the file isn't kept)
     │       └── autosync.py   background syncs every few hours + the jobs the Sync button starts
     └── frontend/             static, no build step (native ES modules)
         ├── index.html        every screen's markup; loads css/*.css and js/main.js
@@ -511,8 +521,12 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   typed and the block notes. Not on the calendar until confirmed.
 - **Activity** — one row per completed Garmin activity: type, start time,
   duration, distance, avg HR, aerobic/anaerobic training effect, training load, calories,
-  perceived effort (1-10) and feel, the laps of runs and swims, weather and sweat loss,
-  plus the raw Garmin payload for anything not modeled explicitly.
+  perceived effort (1-10) and feel, the laps of runs, rides and swims, weather and sweat
+  loss, plus the raw Garmin payload for anything not modeled explicitly.
+- **ActivityTrace** — one per recent run, ride or swim: heart rate, speed, power
+  and cadence every 5 seconds and when each lap began, read from the activity's
+  original file. The file itself and its GPS positions are not kept, and a trace
+  is deleted 28 days after the session. A few dozen KB per session.
 - **SleepRecord** — per-night sleep: total/deep/REM/light minutes, sleep
   score, resting heart rate, and the few parts of Garmin's answer that are
   read (overnight HRV and its status, body battery). The rest of that
@@ -542,6 +556,8 @@ New nullable columns are added to existing databases on startup
 | `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day, with multisport legs |
 | `/api/objectives`        | GET/POST | List / add objectives (title, event date, target time)      |
 | `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |
+| `/api/plan/sessions`     | GET    | The last 90 days' sessions, to open one in detail. |
+| `/api/plan/sessions/{id}`| GET    | One session as text: every lap and, while it is kept, its trace. Your own sessions only. |
 | `/api/plan/log`          | GET    | Training log as text (`?weeks=6&detail=full|summary`): sessions, effort/feel, laps, sleep and recovery, athlete profile, objectives, what's planned |
 | `/api/athlete`           | GET/PUT | The athlete's own numbers (FTP, zones, CSS, equipment…), plus what Garmin knows as text |
 | `/api/plan/rules`        | GET/PUT | The rule set: free text the plan follows, added to the history |
@@ -599,6 +615,9 @@ and `garminconnect` 0.2.x. What to know:
 
 - Garmin accounts with two-step verification (MFA) can't connect yet —
   `/api/garmin/connect` returns an "MFA not supported" error for those.
+- Reading original files has been tried on sample device recordings, not yet
+  on a download from a real account. A file that can't be fetched or read only
+  means that session has no 5-second data; its laps are unaffected.
 - Garmin's API is unofficial and undocumented, so a change on Garmin's side
   can break part of the sync until the libraries catch up.
 - Garmin sessions do eventually expire; `/api/garmin/sync` surfaces expiry

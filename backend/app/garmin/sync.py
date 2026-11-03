@@ -1,8 +1,9 @@
 """One sync of one account (sync_user): the activity list, sleep and recovery
 day by day, then per-activity details (perceived effort, feel, laps, weather),
-multisport legs and the athlete profile Garmin keeps (zones, thresholds,
-records), and how each is stored. Each activity's details are fetched only
-once. Only the activity list can fail a sync; nothing else here is allowed to."""
+multisport legs, the second-by-second trace of recent sessions and the athlete
+profile Garmin keeps (zones, thresholds, records), and how each is stored. Each
+activity's details are fetched only once. Only the activity list can fail a
+sync; nothing else here is allowed to."""
 
 import datetime
 import logging
@@ -12,8 +13,9 @@ from sqlalchemy import Text, cast, func, or_
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..planning.basics import sport_of
+from ..planning.basics import TRACE_DAYS, sport_of
 from ..security import decrypt_text, encrypt_text
+from . import activity_file
 from . import client as garmin_client
 
 log = logging.getLogger("trainer.garmin")
@@ -28,6 +30,9 @@ RECHECK_DAYS = 2  # effort/feel can be answered a little after the activity is s
 GIVE_UP_AFTER_FAILURES = 3  # consecutive: Garmin is refusing, try again next sync
 MAX_MULTISPORT_PER_SYNC = 3  # races: one request for the race, one per leg
 MULTISPORT_TYPE = "multi_sport"
+MAX_TRACES_PER_SYNC = 10  # one download each: the last 4 weeks catch up over a few syncs
+MAX_TRACE_ATTEMPTS = 5  # then stop asking for a file Garmin won't give or we can't read
+TRACE_SPORTS = ("run", "bike", "swim")
 
 
 def effort_and_feel(summary: dict[str, Any]) -> tuple[int | None, int | None]:
@@ -50,7 +55,8 @@ def compact_laps(laps: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "avg_hr": lap.get("averageHR"),
             "max_hr": lap.get("maxHR"),
             "avg_power": lap.get("averagePower"),
-            "cadence": lap.get("averageRunCadence"),
+            "norm_power": lap.get("normalizedPower"),
+            "cadence": lap.get("averageRunCadence") or lap.get("averageBikeCadence"),
             "stroke": (lap.get("swimStroke") or "").lower() or None,
             "swolf": lap.get("averageSWOLF") or None,
             # "interval" is what Garmin calls every manual lap: it says nothing
@@ -61,8 +67,8 @@ def compact_laps(laps: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _wants_laps(activity: models.Activity) -> bool:
-    # Run and swim laps are the reps; ride laps are mostly automatic 5 km marks.
-    return sport_of(activity.activity_type) in ("run", "swim") and ((activity.raw_json or {}).get("lapCount") or 0) > 1
+    # The log leaves out the laps of a ride cut every 5 km by the watch.
+    return sport_of(activity.activity_type) in ("run", "swim", "bike") and ((activity.raw_json or {}).get("lapCount") or 0) > 1
 
 
 def weather_fields(weather: dict[str, Any]) -> dict[str, Any]:
@@ -149,6 +155,32 @@ def enrich_activities(db: Session, api: Any, user: models.User, limit: int = MAX
     return done
 
 
+def backfill_ride_laps(db: Session, api: Any, user: models.User, limit: int = MAX_ACTIVITIES_PER_SYNC) -> int:
+    """Rides whose details were fetched when ride laps weren't kept yet. Their
+    details aren't asked again, so their laps are asked for on their own."""
+    window = datetime.datetime.now() - datetime.timedelta(days=DETAILS_WINDOW_DAYS)
+    rides = [
+        a for a in db.query(models.Activity)
+        .filter(models.Activity.user_id == user.id, models.Activity.details_synced_at.is_not(None),
+                models.Activity.laps.is_(None), models.Activity.start_time >= window)
+        .order_by(models.Activity.start_time.desc())
+        if sport_of(a.activity_type) == "bike" and _wants_laps(a)
+    ]
+    done = failures = 0
+    for ride in rides[:limit]:
+        try:
+            ride.laps = compact_laps(garmin_client.fetch_activity_laps(api, ride.garmin_activity_id))
+        except Exception as exc:  # noqa: BLE001 - leave it for the next sync
+            log.warning("Laps of ride %s not fetched, asked again next sync: %s", ride.garmin_activity_id, exc)
+            failures += 1
+            if failures >= GIVE_UP_AFTER_FAILURES:
+                break
+            continue
+        failures = 0
+        done += 1
+    return done
+
+
 # --- Multisport races ----------------------------------------------------------
 # Garmin's list has a triathlon as one "multi_sport" activity. Its legs (swim,
 # transitions, bike, run) are separate activities that only the race's own
@@ -191,6 +223,59 @@ def multisport_legs(db: Session, api: Any, user: models.User, limit: int = MAX_M
     return done
 
 
+# --- Second by second: the last few weeks -----------------------------------------
+
+
+def _traces_from(today: datetime.date) -> datetime.datetime:
+    return datetime.datetime.combine(today - datetime.timedelta(days=TRACE_DAYS), datetime.time.min)
+
+
+def fetch_traces(db: Session, api: Any, user: models.User, today: datetime.date, limit: int = MAX_TRACES_PER_SYNC) -> int:
+    """Download and read the original file of recent sessions that have no
+    trace yet, newest first, those that failed before last. Returns how many
+    were stored."""
+    rows = (
+        db.query(models.Activity.id, models.Activity.garmin_activity_id, models.Activity.activity_type,
+                 models.ActivityTrace.attempts, models.ActivityTrace.fetched_at)
+        .outerjoin(models.ActivityTrace, models.ActivityTrace.activity_id == models.Activity.id)
+        .filter(models.Activity.user_id == user.id, models.Activity.start_time >= _traces_from(today))
+        .order_by(models.Activity.start_time.desc())
+        .all()
+    )
+    pending = [row for row in rows if row.fetched_at is None and (row.attempts or 0) < MAX_TRACE_ATTEMPTS
+               and sport_of(row.activity_type) in TRACE_SPORTS]
+    pending.sort(key=lambda row: row.attempts or 0)  # stable: newest first among equals
+    done = failures = 0
+    for row in pending[:limit]:
+        trace = db.query(models.ActivityTrace).filter_by(activity_id=row.id).first() or models.ActivityTrace(activity_id=row.id, attempts=0)
+        db.add(trace)
+        try:
+            data = garmin_client.fetch_activity_file(api, row.garmin_activity_id)
+            read = activity_file.read_trace(data, running=sport_of(row.activity_type) == "run")
+        except Exception as exc:  # noqa: BLE001 - asked again next sync, a few times
+            log.warning("File of activity %s not read, asked again next sync: %s", row.garmin_activity_id, exc)
+            trace.attempts += 1
+            db.commit()
+            failures += 1
+            if failures >= GIVE_UP_AFTER_FAILURES:
+                break
+            continue
+        failures = 0
+        trace.samples, trace.laps, trace.fetched_at = read["samples"], read["laps"], models.utcnow()
+        db.commit()  # one at a time: a file is big, and what is read stays read
+        done += 1
+    return done
+
+
+def purge_old_traces(db: Session, today: datetime.date) -> int:
+    """Delete traces past their time, for every account: also those whose Garmin
+    session expired, as those aren't synced any more. Returns how many."""
+    old = db.query(models.Activity.id).filter(models.Activity.start_time < _traces_from(today))
+    purged = db.query(models.ActivityTrace).filter(models.ActivityTrace.activity_id.in_(old)).delete(synchronize_session=False)
+    db.commit()
+    return purged
+
+
 # --- One sync ---------------------------------------------------------------------
 
 
@@ -217,7 +302,7 @@ def save_session(db: Session, api: Any, user: models.User) -> bool:
 
 def sync_user(db: Session, api: Any, user: models.User, today: datetime.date, lookback_days: int) -> dict[str, Any]:
     """One batch for one account (the fields of schemas.GarminSyncResponse): activities, then missing days, activity
-    details, multisport legs and the profile. Only the activity list can fail
+    details, ride laps, multisport legs, traces and the profile. Only the activity list can fail
     it (the exception is raised); every later step is saved on its own, and
     what Garmin doesn't answer now is asked again next time."""
     start = today - datetime.timedelta(days=lookback_days)
@@ -239,7 +324,9 @@ def sync_user(db: Session, api: Any, user: models.User, today: datetime.date, lo
         log.exception("Sync of %r: activity details failed", user.username)
         db.rollback()
         details_synced = 0
-    for name, step in (("multisport legs", lambda: multisport_legs(db, api, user)),
+    for name, step in (("ride laps", lambda: backfill_ride_laps(db, api, user)),
+                       ("multisport legs", lambda: multisport_legs(db, api, user)),
+                       ("traces", lambda: fetch_traces(db, api, user, today)),
                        ("athlete profile", lambda: refresh_profile(db, api, user, today))):
         try:
             step()

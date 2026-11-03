@@ -13,6 +13,9 @@ const logWeeks = document.getElementById("log-weeks");
 const logDetail = document.getElementById("log-detail");
 const logStatus = document.getElementById("log-status");
 const logContext = document.getElementById("log-context");
+const sessionPick = document.getElementById("log-session");
+const sessionStatus = document.getElementById("log-session-status");
+const sessionText = document.getElementById("log-session-text");
 const importBtn = document.getElementById("import-btn");
 const importStatus = document.getElementById("import-status");
 
@@ -25,6 +28,31 @@ async function loadLog() {
     logStatus.classList.add("hidden");
   } catch (err) {
     if (err.status !== 401) showStatus(logStatus, t("Couldn't load the log: {error}", { error: err.message }), true);
+  }
+}
+
+// The list of sessions to open, keeping the one that was open if it's still there.
+async function loadSessionChoices() {
+  const open = sessionPick.value;
+  const sessions = await api(`/api/plan/sessions?today=${isoDate(new Date())}`);
+  sessionPick.innerHTML = "";
+  sessionPick.appendChild(new Option(t("Pick a session"), ""));
+  for (const session of sessions) sessionPick.appendChild(new Option(session.label, session.id));
+  sessionPick.value = sessions.some((session) => String(session.id) === open) ? open : "";
+  await showSession();
+}
+
+async function showSession() {
+  sessionStatus.classList.add("hidden");
+  sessionText.classList.toggle("hidden", !sessionPick.value);
+  if (!sessionPick.value) return;
+  try {
+    const { text } = await api(`/api/plan/sessions/${sessionPick.value}`);
+    sessionText.textContent = text;
+  } catch (err) {
+    sessionText.classList.add("hidden");
+    if (err.status !== 401)
+      showStatus(sessionStatus, t("Couldn't load the session: {error}", { error: err.message }), true);
   }
 }
 
@@ -47,7 +75,11 @@ function planContextText(draft) {
 export async function loadHistoryPage() {
   for (const el of [logStatus, importStatus]) el.classList.add("hidden");
   try {
-    const [draft] = await Promise.all([api(`/api/plan/draft?today=${isoDate(new Date())}`), loadLog()]);
+    const [draft] = await Promise.all([
+      api(`/api/plan/draft?today=${isoDate(new Date())}`),
+      loadLog(),
+      loadSessionChoices(),
+    ]);
     logContext.textContent = planContextText(draft);
   } catch (err) {
     if (err.status !== 401) showStatus(logStatus, err.message, true);
@@ -56,6 +88,7 @@ export async function loadHistoryPage() {
 
 logWeeks.addEventListener("change", loadLog);
 logDetail.addEventListener("change", loadLog);
+sessionPick.addEventListener("change", showSession);
 document.getElementById("log-sync").addEventListener("click", () => runSync(logStatus));
 
 // The same text, ready to paste into a normal Claude conversation.

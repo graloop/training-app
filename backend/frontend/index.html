@@ -475,7 +475,7 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
             </select>
             <label for="log-detail" class="inline-label">Detail</label>
             <select id="log-detail" aria-label="How much detail the training log shows">
-              <option value="full" selected>Full (zones, laps, recovery)</option>
+              <option value="full" selected>Full (last 4 weeks in detail)</option>
               <option value="summary">Summary (one line per session)</option>
             </select>
             <button id="log-sync" type="button" class="btn-ghost">Sync with Garmin</button>
@@ -485,6 +485,11 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
         <p class="hint">Objectives, the athlete's numbers and Garmin's, the rule set, every session with effort and feel, sleep and recovery, what is planned, earlier weeks as totals, then the plan being written.</p>
         <p id="log-status" class="status hidden" role="status"></p>
         <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
+        <h3 class="log-subtitle">One session in detail</h3>
+        <p class="hint">Every lap, with heart rate, pace and power every 5 seconds for the last 28 days. Pick a session and it shows below, for Claude to read.</p>
+        <select id="log-session" class="log-session" aria-label="Which session to show in detail"></select>
+        <p id="log-session-status" class="status hidden" role="status"></p>
+        <pre id="log-session-text" class="log-text hidden" tabindex="0" aria-label="The session in detail"></pre>
         <h3 class="log-subtitle">The plan being written</h3>
         <pre id="log-context" class="log-text" tabindex="0" aria-label="The weeks being planned and the current draft"></pre>
         <div class="form-row import-row">

@@ -691,7 +691,7 @@ def test_history_older_than_two_years_comes_by_month(client, auth):
     assert f"{month} · 4:00 (swim 1:00 · bike 2:00 · run 1:00) · 3 sessions · load 150" in earlier
     assert earlier[1].startswith("By month, before ") and earlier[2].startswith(month)
     months = [line for line in earlier if line.startswith("Month of")]
-    assert 12 <= len(months) <= 14  # every month up to two years ago, empty ones included
+    assert 11 <= len(months) <= 14  # every month up to two years ago, empty ones included; a last part-month without sessions has no line
     assert any(line.startswith("By week, every session listed from") for line in earlier)
 
 

@@ -148,17 +148,17 @@ def test_sync_fetches_effort_feel_laps_and_profile_once(client, auth, monkeypatc
     assert (acts["1"]["perceived_effort"], acts["1"]["feel"]) == (7, 75)
     assert (acts["2"]["perceived_effort"], acts["2"]["feel"]) == (3, 50)
     assert sorted(calls["summary"]) == ["1", "2", "3", "4"]
-    assert sorted(calls["laps"]) == ["1", "3"]  # run and swim with several laps; not the ride, not a 1-lap run
+    assert sorted(calls["laps"]) == ["1", "2", "3"]  # anything with several laps; not a 1-lap run
     with SessionLocal() as db:
         by_id = {a.garmin_activity_id: a for a in db.query(models.Activity)}
         assert by_id["1"].laps == [{"distance": 1000, "duration": 240.0, "avg_hr": 170}, {"distance": 400, "duration": 150.0}]
-        assert by_id["2"].laps is None and by_id["4"].laps is None
+        assert by_id["2"].laps and by_id["4"].laps is None
         user = db.query(models.User).filter_by(username="athlete").one()
         assert user.garmin_profile["max_hr"] == 192
 
     # A second sync asks Garmin for nothing it already has.
     res = client.post("/api/garmin/sync", headers=auth).json()
-    assert res["details_synced"] == 0 and len(calls["summary"]) == 4 and len(calls["laps"]) == 2
+    assert res["details_synced"] == 0 and len(calls["summary"]) == 4 and len(calls["laps"]) == 3
     assert calls["profile"] == 1  # four requests to Garmin: refreshed once a day, not on every sync
     assert _calendar_activities(client, auth)["1"]["perceived_effort"] == 7  # kept when the list is re-synced
 
@@ -279,6 +279,30 @@ def test_stats_and_weather_fields():
     assert garmin_sync.weather_fields({"temp": 50, "windSpeed": 10, "relativeHumidity": 60.4}) == {
         "temp_c": 10, "wind_kmh": 16, "humidity": 60}
     assert garmin_sync.weather_fields({"temp": None}) == {}
+
+
+def test_compact_laps_read_bike_cadence_and_normalized_power():
+    laps = [{"distance": 5000.0, "duration": 480.0, "averagePower": 280.4, "normalizedPower": 285.2, "averageBikeCadence": 91.6}]
+    assert garmin_sync.compact_laps(laps) == [
+        {"distance": 5000, "duration": 480.0, "avg_power": 280, "norm_power": 285, "cadence": 92},
+    ]
+
+
+def test_rides_synced_before_ride_laps_get_them_once(client, auth, monkeypatch):
+    calls = _stub(monkeypatch, [_activity("1", "virtual_ride", laps=12), _activity("2", "cycling", laps=1),
+                                _activity("3", "virtual_ride", days_ago=200, laps=12)])
+    client.post("/api/garmin/sync", headers=auth)
+    with SessionLocal() as db:  # as an older version left them: details fetched, no laps
+        for a in db.query(models.Activity):
+            a.laps = None
+            a.details_synced_at = datetime.datetime(2026, 1, 1)
+            a.extras = {}
+        db.commit()
+    calls["laps"].clear()
+    client.post("/api/garmin/sync", headers=auth)
+    assert calls["laps"] == ["1"]  # not a one-lap ride, not one older than the details window
+    client.post("/api/garmin/sync", headers=auth)
+    assert calls["laps"] == ["1"]  # and only once
 
 
 def test_compact_laps_keep_kind_stroke_and_cadence():

@@ -296,6 +296,16 @@ class TrainingLog(BaseModel):
     detail: str  # "full" | "summary"
 
 
+class SessionChoice(BaseModel):
+    id: int
+    label: str
+
+
+class SessionDetail(BaseModel):
+    id: int
+    text: str
+
+
 class AthleteNotes(BaseModel):
     """Availability, constraints and anything Garmin doesn't know, in the athlete's words."""
 

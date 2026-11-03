@@ -358,7 +358,12 @@ export const FR = {
   "How many weeks of training log to show": "Nombre de semaines du journal d'entraînement à afficher",
   Detail: "Détail",
   "How much detail the training log shows": "Niveau de détail du journal d'entraînement",
-  "Full (zones, laps, recovery)": "Complet (zones, tours, récupération)",
+  "Full (last 4 weeks in detail)": "Complet (4 dernières semaines en détail)",
+  "One session in detail": "Une séance en détail",
+  "Every lap, with heart rate, pace and power every 5 seconds for the last 28 days. Pick a session and it shows below, for Claude to read.":
+    "Tous les tours, avec la fréquence cardiaque, l'allure et la puissance toutes les 5 secondes pour les 28 derniers jours. Choisissez une séance : elle s'affiche ci-dessous pour que Claude la lise.",
+  "Pick a session": "Choisir une séance",
+  "Couldn't load the session: {error}": "Impossible de charger la séance : {error}",
   "Summary (one line per session)": "Résumé (une ligne par séance)",
   "Copy log for Claude": "Copier le journal pour Claude",
   "Objectives, the athlete's numbers and Garmin's, the rule set, every session with effort and feel, sleep and recovery, what is planned, earlier weeks as totals, then the plan being written.":

@@ -5,6 +5,7 @@ import datetime
 
 SPORTS = ("swim", "bike", "run", "strength", "other")
 MATCH_TOLERANCE = 0.15  # same rule as the calendar: done within 15% of the plan
+TRACE_DAYS = 28  # how long a session's second-by-second data is kept
 
 DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

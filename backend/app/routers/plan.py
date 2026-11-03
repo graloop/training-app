@@ -1,17 +1,21 @@
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_member
 from ..planning import drafts
-from ..planning.basics import monday_of
+from ..planning.activity_text import fmt_activity
+from ..planning.basics import fmt_day, monday_of
 from ..planning.draft_parser import parse_draft
+from ..planning.session_detail import session_text
 from ..planning.training_log import build_log, rule_set_text
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
+
+SESSIONS_LISTED_DAYS = 90  # as far back as laps are fetched
 
 
 @router.get("/log", response_model=schemas.TrainingLog)
@@ -24,10 +28,39 @@ def training_log(
 ):
     """The last `weeks` weeks as text (sessions with pace/HR/load/effort, sleep,
     weekly totals, objectives, the athlete's profile, what's already planned):
-    what a plan is written from. `detail=full` adds zones, laps and recovery."""
+    what a plan is written from. `detail=full` adds zones, laps and recovery
+    over the last 4 weeks, and the reps of older sessions."""
     day = drafts.client_today(today)
     text, start = build_log(db, user, weeks, day, detail)
     return schemas.TrainingLog(text=text, start=start, end=day, weeks=weeks, detail=detail)
+
+
+@router.get("/sessions", response_model=list[schemas.SessionChoice])
+def list_sessions(
+    today: datetime.date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_member),
+):
+    """The sessions that can be opened in detail, newest first."""
+    since = drafts.client_today(today) - datetime.timedelta(days=SESSIONS_LISTED_DAYS)
+    activities = (
+        db.query(models.Activity)
+        .options(defer(models.Activity.raw_json), defer(models.Activity.laps))
+        .filter(models.Activity.user_id == user.id,
+                models.Activity.start_time >= datetime.datetime.combine(since, datetime.time.min))
+        .order_by(models.Activity.start_time.desc())
+        .all()
+    )
+    return [schemas.SessionChoice(id=a.id, label=f"{fmt_day(a.start_time.date())} · {fmt_activity(a, effort=False)}") for a in activities]
+
+
+@router.get("/sessions/{activity_id}", response_model=schemas.SessionDetail)
+def get_session(activity_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_member)):
+    """Everything stored about one session, as text: every lap and, while it is kept, its trace."""
+    activity = db.query(models.Activity).filter_by(id=activity_id, user_id=user.id).first()
+    if activity is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    return schemas.SessionDetail(id=activity.id, text=session_text(activity, activity.trace))
 
 
 @router.get("/rules", response_model=schemas.RuleSet)

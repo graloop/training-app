@@ -84,6 +84,8 @@ def sync_account(user_id: int, today: datetime.date | None = None) -> bool:
 
 def sync_all() -> int:
     """Sync every connected account, one after the other. Returns how many worked."""
+    with SessionLocal() as db:
+        garmin_sync.purge_old_traces(db, datetime.date.today())
     synced = 0
     for i, user_id in enumerate(connected_accounts()):
         if i:
