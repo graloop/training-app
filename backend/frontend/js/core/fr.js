@@ -358,6 +358,7 @@ export const FR = {
   "How many weeks of training log to show": "Nombre de semaines du journal d'entraînement à afficher",
   Detail: "Détail",
   "How much detail the training log shows": "Niveau de détail du journal d'entraînement",
+  "Night mode": "Mode nuit",
   "Full (last 4 weeks in detail)": "Complet (4 dernières semaines en détail)",
   "One session in detail": "Une séance en détail",
   "Every lap, with heart rate, pace and power every 5 seconds for the last 28 days. Pick a session and it shows below, for Claude to read.":

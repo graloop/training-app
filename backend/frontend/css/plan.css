@@ -13,8 +13,8 @@
 .draft-errors {
   margin-top: 12px;
   padding: 10px 14px;
-  border: 1px solid #fecaca;
-  background: #fef2f2;
+  border: 1px solid var(--error-border);
+  background: var(--error-bg);
   border-radius: 8px;
   font-size: 0.85rem;
 }

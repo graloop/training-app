@@ -40,7 +40,7 @@
   padding: 0;
   border-radius: 50%;
   background: var(--bg);
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid var(--border);
   opacity: 0; /* only shown while hovering the day */
   transition: opacity 0.15s;
@@ -66,30 +66,27 @@
 .day-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 /* Sleep score + resting HR, top right; they stack when the day is narrow. */
 .day-stats { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; margin-left: auto; }
-.rhr-badge {
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 999px;
-  white-space: nowrap;
-  background: #fce7f3;
-  color: #9d174d;
-}
-.day-head .day-date { margin-bottom: 0; }
-.sleep-badge {
+/* Sleep score and resting HR: a plain line icon and the number, no coloured pill.
+   The sleep number keeps its good / fair / poor colour. */
+.sleep-badge, .rhr-badge {
+  display: inline-flex;
   flex-shrink: 0;
-  font-size: 0.7rem;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 2px;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 999px;
   white-space: nowrap;
+  color: var(--text);
 }
-.sleep-badge.good { background: #d1fae5; color: #065f46; }
-.sleep-badge.fair { background: #fef3c7; color: #92400e; }
-.sleep-badge.poor { background: #fee2e2; color: #991b1b; }
-.week-row.sleep strong.good { color: #047857; }
-.week-row.sleep strong.fair { color: #b45309; }
-.week-row.sleep strong.poor { color: #b91c1c; }
+.stat-icon { width: 1.05em; height: 1.05em; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; color: var(--muted); }
+.day-head .day-date { margin-bottom: 0; }
+.sleep-badge.good { color: var(--ok-text); }
+.sleep-badge.fair { color: var(--warn-text); }
+.sleep-badge.poor { color: var(--bad-text); }
+.week-row.sleep strong.good { color: var(--ok-text); }
+.week-row.sleep strong.fair { color: var(--warn-text); }
+.week-row.sleep strong.poor { color: var(--bad-text); }
 
 .week-summary {
   border-radius: 8px;
@@ -103,10 +100,11 @@
 }
 .week-title { font-weight: 600; margin-bottom: 2px; }
 .week-row { display: flex; justify-content: space-between; gap: 6px; }
-.week-row.planned strong { color: var(--accent); }
-.week-row.done strong { color: #047857; }
-.week-row.load strong { color: #7c3aed; }
-.week-row.rhr strong { color: #9d174d; }
+.week-row strong { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.week-row.planned strong { color: var(--accent-text); }
+.week-row.done strong { color: var(--ok-text); }
+.week-row.load strong { color: var(--load-text); }
+.week-row.rhr strong { color: var(--rhr-fg); }
 .week-bar { height: 6px; border-radius: 3px; background: var(--planned); overflow: hidden; margin-top: 2px; }
 .week-bar div { height: 100%; background: #10b981; }
 
@@ -126,11 +124,11 @@
 }
 .entry.done { background: var(--done); }
 /* A planned session that was done within 15% of its planned time. */
-.entry.completed { background: #6ee7b7; color: #064e3b; border: 1px solid #059669; font-weight: 600; }
-.entry.completed .entry-extra { color: #065f46; font-weight: 400; }
+.entry.completed { background: var(--completed-bg); color: var(--completed-fg); border: 1px solid var(--completed-border); font-weight: 600; }
+.entry.completed .entry-extra { color: var(--completed-extra); font-weight: 400; }
 /* Done, but more than 15% off the planned time: same green family, lighter, dashed. */
-.entry.completed-off { background: #d1fae5; color: #064e3b; border: 1px dashed #059669; }
-.entry.completed-off .entry-extra, .entry.completed-off .entry-notes { color: #065f46; }
+.entry.completed-off { background: var(--completed-off-bg); color: var(--completed-fg); border: 1px dashed var(--completed-border); }
+.entry.completed-off .entry-extra, .entry.completed-off .entry-notes { color: var(--completed-extra); }
 .entry.planned { background: var(--planned); border: 1px dashed var(--planned-border); }
 .day-cell .entry.planned { cursor: pointer; }
 .day-cell .entry.planned:hover { border-style: solid; }
@@ -154,7 +152,7 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.entry.completed .entry-notes { color: #065f46; font-weight: 400; }
+.entry.completed .entry-notes { color: var(--completed-extra); font-weight: 400; }
 
 dialog#plan-dialog {
   border: 1px solid var(--border);

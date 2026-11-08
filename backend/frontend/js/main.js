@@ -18,6 +18,7 @@ import { loadObjectives } from "./views/objectives.js";
 import { loadPlanPage } from "./views/plan.js";
 import "./views/account.js";
 import "./views/landing.js";
+import "./views/night-mode.js";
 import "./views/settings.js";
 
 translatePage();

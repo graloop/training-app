@@ -1,5 +1,6 @@
 /* Shared by every screen: colours, top bar, forms, buttons, panels, tabs, tables.
-   Loaded first; the per-section files below only add to it. */
+   Loaded first; the per-section files below only add to it. Every colour is a
+   variable here, so night mode (further down) only has to change this list. */
 
 :root {
   color-scheme: light;
@@ -17,7 +18,62 @@
   --nav-bg: #0b1631; /* the top bar */
   --nav-text: rgba(255, 255, 255, 0.72);
   --nav-hover: rgba(255, 255, 255, 0.08);
+  --accent-text: #2563eb; /* links and numbers in the accent colour */
+  --danger-text: #dc2626;
+  --ok-text: #047857;
+  --warn-text: #b45309;
+  --bad-text: #b91c1c;
+  --load-text: #7c3aed;
+  --good-bg: #d1fae5;
+  --good-fg: #065f46;
+  --fair-bg: #fef3c7;
+  --fair-fg: #92400e;
+  --poor-fg: #991b1b;
+  --rhr-fg: #9d174d;
+  --error-bg: #fef2f2;
+  --error-border: #fecaca;
+  --completed-bg: #6ee7b7; /* a planned session done as planned */
+  --completed-fg: #064e3b;
+  --completed-extra: #065f46;
+  --completed-border: #059669;
+  --completed-off-bg: #d1fae5;
 }
+
+/* Night mode: the switch in the top bar sets data-theme (js/views/night-mode.js). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f141c;
+  --card: #171d27;
+  --border: #2b3442;
+  --text: #e5e8ee;
+  --muted: #9aa4b2;
+  --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --planned: #172a46;
+  --planned-border: #3b6fb6;
+  --done: #11291f;
+  --nav-bg: #0a0f18;
+  --accent-text: #60a5fa;
+  --danger-text: #f87171;
+  --ok-text: #34d399;
+  --warn-text: #fbbf24;
+  --bad-text: #f87171;
+  --load-text: #a78bfa;
+  --good-bg: #0f3b2c;
+  --good-fg: #6ee7b7;
+  --fair-bg: #3a2c0b;
+  --fair-fg: #fcd34d;
+  --poor-fg: #fca5a5;
+  --rhr-fg: #f9a8d4;
+  --error-bg: #2a1215;
+  --error-border: #7f1d1d;
+  --completed-bg: #065f46;
+  --completed-fg: #ecfdf5;
+  --completed-extra: #a7f3d0;
+  --completed-border: #10b981;
+  --completed-off-bg: #0f3b2c;
+}
+:root[data-theme="dark"] .topbar { box-shadow: inset 0 -1px var(--border); }
 
 * { box-sizing: border-box; }
 
@@ -109,6 +165,39 @@ body[data-view="auth-view"] .topbar { position: sticky; top: 0; }
   color: var(--nav-text);
 }
 .icon-btn svg { width: 21px; height: 21px; }
+
+/* Night mode switch: a sun by day, a moon by night. */
+.theme-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 50px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: var(--nav-hover);
+  transition: background 0.2s, border-color 0.2s;
+}
+.theme-switch:hover { background: rgba(255, 255, 255, 0.16); }
+.theme-switch[aria-checked="true"] { background: #1e3a8a; border-color: #3b82f6; }
+.theme-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  color: #d97706;
+  transition: transform 0.2s;
+}
+.theme-switch[aria-checked="true"] .theme-knob { transform: translateX(22px); background: #0b1631; color: #fde68a; }
+.theme-knob svg { width: 13px; height: 13px; }
+.theme-switch .moon, .theme-switch[aria-checked="true"] .sun { display: none; }
+.theme-switch[aria-checked="true"] .moon { display: block; }
+@media (prefers-reduced-motion: reduce) { .theme-switch, .theme-knob { transition: none; } }
 .icon-btn:hover, .icon-btn[aria-expanded="true"] { background: var(--nav-hover); color: #fff; }
 
 /* Landing page: the language (a small pill) and the big Log in button. */
@@ -140,7 +229,7 @@ body[data-view="auth-view"] .topbar { position: sticky; top: 0; }
 .btn-link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
   padding: 0;
   font-size: 0.9rem;
@@ -154,6 +243,8 @@ input, textarea, select {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
   font-size: 0.95rem;
   font-family: inherit;
 }
@@ -196,17 +287,17 @@ button:hover { background: var(--accent-hover); }
 }
 .menu-panel h3 { margin: 0 0 4px; font-size: 0.95rem; }
 .menu-panel .hint { font-size: 0.8rem; color: var(--muted); margin: 0; }
-.menu-panel a { color: var(--accent); }
+.menu-panel a { color: var(--accent-text); }
 .menu-panel hr { width: 100%; border: none; border-top: 1px solid var(--border); margin: 8px 0 4px; }
 .menu-panel #logout-btn { align-self: flex-start; }
 .menu-fields { display: flex; flex-direction: column; gap: 6px; }
 .btn-link:hover { background: none; text-decoration: underline; }
-.status.ok { color: #047857; }
+.status.ok { color: var(--ok-text); }
 .menu-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
 
 .subtle { font-weight: 400; font-size: 0.85rem; color: var(--muted); }
 
-.error { color: var(--danger); font-size: 0.85rem; overflow-wrap: anywhere; }
+.error { color: var(--danger-text); font-size: 0.85rem; overflow-wrap: anywhere; }
 .status { color: var(--muted); font-size: 0.85rem; }
 
 .panel {
@@ -240,7 +331,7 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 .calendar-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .calendar-nav button:disabled { opacity: 0.45; cursor: default; }
 
-.btn-link.danger { color: var(--danger); }
+.btn-link.danger { color: var(--danger-text); }
 
 .btn-danger { background: var(--danger); }
 .btn-danger:hover { background: #b91c1c; }

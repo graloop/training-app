@@ -6,7 +6,7 @@
 import { addDays, fmtDate, fmtHM, fmtHours, fmtLongDate, isoDate, plural, thisMonday } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
 import { activityIcon, sportLabel } from "../core/sports.js";
-import { sleepLevel } from "./calendar.js";
+import { sleepLevel, statIcon } from "./calendar.js";
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -57,7 +57,11 @@ async function playCalendar(root, animate) {
     const cell = el("div", "mock-day");
     const head = el("div", "mock-day-head");
     head.appendChild(el("span", "day-date", fmtDate(isoDate(addDays(monday, i)))));
-    if (day.sleep) head.appendChild(el("span", `sleep-badge ${sleepLevel(day.sleep)}`, `😴 ${day.sleep}`));
+    if (day.sleep) {
+      const badge = el("span", `sleep-badge ${sleepLevel(day.sleep)}`, String(day.sleep));
+      badge.prepend(statIcon("sleep"));
+      head.appendChild(badge);
+    }
     cell.appendChild(head);
     for (const session of day.sessions) {
       const entry = calendarEntry(session);

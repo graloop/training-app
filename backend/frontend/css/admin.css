@@ -97,7 +97,7 @@
   padding: 6px 10px;
   white-space: nowrap;
   background: var(--text);
-  color: white;
+  color: var(--card);
   border-radius: 8px;
   font-size: 0.75rem;
   pointer-events: none;
@@ -109,12 +109,12 @@
 
 /* Result of a login attempt: icon + words, colour is only a reinforcement. */
 .result-badge { font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
-.result-badge.ok { color: #047857; }
-.result-badge.failed { color: #b91c1c; }
+.result-badge.ok { color: var(--ok-text); }
+.result-badge.failed { color: var(--bad-text); }
 
 .reset-row td { background: var(--bg); }
-.delete-row td { background: #fef2f2; }
-.delete-warning { flex-basis: 100%; margin: 0; font-size: 0.85rem; font-weight: 600; color: #991b1b; }
+.delete-row td { background: var(--error-bg); }
+.delete-warning { flex-basis: 100%; margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--poor-fg); }
 
 .reset-form { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
 .reset-form label { margin: 0; }

@@ -11,6 +11,9 @@ adjust sessions — it edits the page like you would.
 
 ## Features
 
+- **Night mode** — the sun/moon switch in the top bar (on the landing page
+  too). The choice is kept in the browser; until one is made, the device's
+  own light or dark setting is followed.
 - **Private accounts** — only people the admin created can log in (username
   + password, no sign-up). Everyone can change their own password in
   ⚙️ Settings. Five wrong passwords lock that username for 15 minutes, and

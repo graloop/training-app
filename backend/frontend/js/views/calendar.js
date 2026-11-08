@@ -46,12 +46,29 @@ export function sleepLevel(score) {
   return "poor";
 }
 
+const STAT_ICONS = {
+  sleep: "M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z", // a moon
+  heart: "M12 20.5S3.5 15.4 3.5 9.4A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8.5 2.4c0 6-8.5 11.1-8.5 11.1z",
+};
+
+// A small line icon in one plain colour, for sleep and resting heart rate (also on the landing page).
+export function statIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "stat-icon");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", STAT_ICONS[name]);
+  svg.appendChild(path);
+  return svg;
+}
+
 function makeSleepBadge(sleep) {
   if (!sleep || sleep.sleep_score == null) return null;
   const score = Math.round(sleep.sleep_score);
   const badge = document.createElement("span");
   badge.className = `sleep-badge ${sleepLevel(score)}`;
-  badge.textContent = `😴 ${score}`;
+  badge.append(statIcon("sleep"), String(score));
   const hours = sleep.total_sleep_seconds
     ? t(" · {time} of sleep", { time: fmtHours(sleep.total_sleep_seconds / 60) })
     : "";
@@ -65,7 +82,7 @@ function makeRestingHrBadge(sleep) {
   const bpm = Math.round(sleep.resting_heart_rate);
   const badge = document.createElement("span");
   badge.className = "rhr-badge";
-  badge.textContent = `❤️ ${bpm}`;
+  badge.append(statIcon("heart"), String(bpm));
   badge.title = t("Resting heart rate {bpm} bpm", { bpm });
   badge.setAttribute("aria-label", badge.title);
   return badge;
@@ -134,7 +151,7 @@ function renderWeekSummary(week) {
   const sleepValue = document.createElement("strong");
   if (sleepScores.length) {
     const avg = Math.round(sleepScores.reduce((a, b) => a + b, 0) / sleepScores.length);
-    sleepValue.textContent = `😴 ${avg}`;
+    sleepValue.append(statIcon("sleep"), String(avg));
     sleepValue.className = sleepLevel(avg);
     sleepRow.title = t("Average sleep score over {nights}", { nights: plural(sleepScores.length, "night") });
   } else {
@@ -151,7 +168,7 @@ function renderWeekSummary(week) {
   const rhrValue = document.createElement("strong");
   if (restingHrs.length) {
     const avg = Math.round(restingHrs.reduce((a, b) => a + b, 0) / restingHrs.length);
-    rhrValue.textContent = `❤️ ${avg}`;
+    rhrValue.append(statIcon("heart"), String(avg));
     rhrRow.title = t("Average resting heart rate over {days}: {bpm} bpm", {
       days: plural(restingHrs.length, "day"),
       bpm: avg,
