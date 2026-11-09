@@ -1,3 +1,7 @@
+"""/api/garmin: linking a Garmin account, and syncing. The page uses
+POST /sync/start + GET /sync/status (a job on the server, garmin/autosync.py);
+POST /sync runs one batch in the request. What a sync fetches is in garmin/sync.py."""
+
 import datetime
 import logging
 
@@ -76,6 +80,7 @@ def start_sync(user: models.User = Depends(get_current_member)):
 
 @router.get("/sync/status", response_model=schemas.SyncJob)
 def sync_status(user: models.User = Depends(get_current_member)):
+    """How the job started by POST /sync/start is going (the page asks every 1.5 s)."""
     job = autosync.job_status(user.id)
     return schemas.SyncJob(**job) if job else schemas.SyncJob(state="idle")
 

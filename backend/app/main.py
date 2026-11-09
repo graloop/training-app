@@ -1,3 +1,18 @@
+"""The FastAPI application: what runs when the server starts (`uvicorn app.main:app`).
+
+Read top to bottom, this file:
+1. runs `startup()` once before the first request (tables, first admin,
+   background Garmin sync);
+2. adds the security middleware every response goes through (public-address
+   redirect, security headers, no caching of /api/*);
+3. mounts the API routers (routers/*.py, one per URL prefix under /api);
+4. serves the page itself: index.html with versioned asset URLs, then every
+   other file under frontend/ as static files.
+
+There is no separate frontend server: this one process answers both the API
+and the page. Settings come from the environment (config.py).
+"""
+
 import datetime
 import logging
 import os
@@ -23,8 +38,13 @@ settings = get_settings()
 setup_logging(settings.log_level)
 log = logging.getLogger("trainer.main")
 
+
+# --- Startup ------------------------------------------------------------------
+
+
 def startup() -> None:
-    """Runs once before the app answers: tables, first admin, background sync."""
+    """Runs once before the app answers: tables, first admin, background sync.
+    Every step here must be safe to run on every restart."""
     log.info(
         "Training App version %s starting · database %s · background sync %s · public address %s",
         VERSION,
@@ -32,10 +52,10 @@ def startup() -> None:
         f"every {settings.auto_sync_hours:g} h" if settings.auto_sync_hours > 0 else "off",
         f"https://{settings.app_domain}" if settings.app_domain else "none (local network only)",
     )
-    Base.metadata.create_all(bind=engine)
-    add_missing_columns()
+    Base.metadata.create_all(bind=engine)  # new tables only; never alters existing ones
+    add_missing_columns()  # ... so new nullable columns are added here (database.py)
     with SessionLocal() as db:
-        garmin_sync.trim_stored_sleep(db)  # nights stored whole by versions before 15
+        garmin_sync.trim_stored_sleep(db)  # LEGACY: nights stored whole by versions before 15 (garmin/sync.py)
         garmin_sync.purge_old_traces(db, datetime.date.today())  # a sync may never run: AUTO_SYNC_HOURS=0
     bootstrap_admin()
     seed_test_accounts()
@@ -48,10 +68,14 @@ async def lifespan(_app: FastAPI):
     yield
 
 
+# --- The app and its middleware -------------------------------------------------
+
+# Swagger UI (/docs) and the OpenAPI schema only exist with ENABLE_API_DOCS=true.
 docs = {} if settings.enable_api_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 app = FastAPI(title="Training App", version=VERSION, lifespan=lifespan, **docs)
 _API_DOCS_PATHS = ("/docs", "/redoc") if settings.enable_api_docs else ()
 
+# Off by default: the page is served by this app, so the browser never needs CORS.
 if settings.cors_allow_origins.strip():
     origins = ["*"] if settings.cors_allow_origins.strip() == "*" else [
         o.strip() for o in settings.cors_allow_origins.split(",") if o.strip()
@@ -79,6 +103,7 @@ _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def _requested_host(request: Request) -> str:
+    """The name the visitor typed, without the port: "training.example.com"."""
     host = request.headers.get("host", "").strip().lower()
     if host.startswith("["):  # [::1]:8000
         return host[1:].split("]")[0]
@@ -86,6 +111,7 @@ def _requested_host(request: Request) -> str:
 
 
 def _to_public_address(request: Request, domain: str):
+    """The answer to a request that didn't come in on https://APP_DOMAIN."""
     if request.method not in ("GET", "HEAD"):
         # Not redirected: the browser would repeat a password that already
         # travelled unencrypted. The page itself was redirected before this.
@@ -99,6 +125,9 @@ def _to_public_address(request: Request, domain: str):
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    """Every request passes here first. With APP_DOMAIN set, anything not on
+    https://APP_DOMAIN (or localhost, for health checks) is sent there instead
+    of being answered. Every response then gets the security headers."""
     domain = settings.app_domain
     host = _requested_host(request)
     on_public_address = bool(domain) and host == domain and is_https(request)
@@ -119,6 +148,9 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+# --- The API ------------------------------------------------------------------------
+# One router per URL prefix; each file's docstring lists what it answers.
+
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(garmin.router)
@@ -132,19 +164,16 @@ app.include_router(share.router)
 
 @app.get("/api/health")
 def health():
+    """For Docker's HEALTHCHECK (Dockerfile): answers as soon as the app is up."""
     return {"status": "ok"}
+
+
+# --- The page ---------------------------------------------------------------------
 
 
 class RevalidatingStaticFiles(StaticFiles):
     """Make browsers re-check the frontend on every load (a cheap 304 when
-    unchanged), so an updated app.js/styles.css is never hidden by the cache.
-    Range headers are dropped: the page never needs part of a file, and a
-    crafted one makes this Starlette version burn CPU (CVE-2025-62727)."""
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            scope = {**scope, "headers": [(k, v) for k, v in scope["headers"] if k != b"range"]}
-        await super().__call__(scope, receive, send)
+    unchanged), so an updated script or stylesheet is never hidden by the cache."""
 
     def file_response(self, *args, **kwargs):
         response = super().file_response(*args, **kwargs)
@@ -177,5 +206,6 @@ def index():
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
 
+# Last, so every /api route above is matched first. Missing only in odd test setups.
 if os.path.isdir(_FRONTEND_DIR):
     app.mount("/", RevalidatingStaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

@@ -1,5 +1,11 @@
 // Admin dashboard (admin accounts see this instead of the calendar): the
 // connections of the last week, and creating / managing accounts.
+// API: GET /api/admin/activity, GET/POST /api/admin/users, PATCH/DELETE
+// /api/admin/users/{id} (backend/app/routers/admin.py). Markup: #admin-view.
+// Styles: css/admin.css. Opened by main.js through showDashboard().
+//
+// Everything is redrawn from the server's answer after each change
+// (loadDashboard), so the page never keeps its own copy of the accounts.
 
 import { api } from "../core/api.js";
 import { plural } from "../core/format.js";
@@ -137,6 +143,7 @@ function renderLoginsChart(days) {
   chart.append(axis, plot);
 }
 
+// The stat tiles, the chart and the table of recent attempts, from GET /api/admin/activity.
 function renderActivity(activity) {
   const totals = activity.totals;
   document.getElementById("stat-accounts").textContent = totals.accounts;
@@ -170,6 +177,8 @@ function renderActivity(activity) {
 
 // --- Accounts ---
 
+// A danger button that needs two clicks: the first arms it (shows `armedLabel`
+// for 4 s), the second runs `action`; an error lands in the accounts status line.
 // Two clicks instead of confirm(): a native dialog would block tools driving the page.
 function confirmButton(label, armedLabel, ariaName, action) {
   const btn = document.createElement("button");
@@ -196,6 +205,7 @@ function confirmButton(label, armedLabel, ariaName, action) {
   return btn;
 }
 
+// Opens a row under the account with a generated password to give them (PATCH resets it and logs them out).
 function renderResetForm(row, u) {
   const existing = usersBody.querySelector("tr.reset-row");
   if (existing) existing.remove();
@@ -338,6 +348,7 @@ function renderDeleteForm(row, u) {
   input.focus();
 }
 
+// The accounts table: one row each with its role, last login, Garmin, created date and actions.
 function renderUsers(users) {
   usersBody.innerHTML = "";
   const admins = users.filter((u) => u.is_admin).length;
@@ -404,6 +415,7 @@ function renderUsers(users) {
   }
 }
 
+// Fetches both parts at once and redraws them. The timezone offset makes the server count days in the admin's own time.
 async function loadDashboard() {
   dashError.classList.add("hidden");
   try {

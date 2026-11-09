@@ -1,3 +1,13 @@
+"""Who is calling: the FastAPI dependencies every protected endpoint declares.
+
+    user = Depends(get_current_user)    any logged-in account
+    user = Depends(get_current_member)  a regular account (calendar, plan, Garmin...)
+    user = Depends(get_current_admin)   an admin account (/api/admin/*)
+
+401 = not logged in or the session is over (the page shows the login);
+403 = logged in, but the wrong kind of account.
+"""
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -13,6 +23,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> models.User:
+    """The account the request's bearer token belongs to, or a 401."""
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 

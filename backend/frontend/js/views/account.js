@@ -1,5 +1,6 @@
 // The account menu, opened from the badge with your name in the top bar:
 // changing your own password, switching to another account, logging out.
+// API: POST /api/auth/password (returns a fresh token: the others stop working).
 
 import { api } from "../core/api.js";
 import { t } from "../core/i18n.js";

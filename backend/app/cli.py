@@ -15,9 +15,8 @@ import sys
 
 from . import accounts, models
 from .database import SessionLocal
+from .schemas import PASSWORD_MIN as MIN_PASSWORD_LENGTH  # the same rule as the dashboard
 from .security import hash_password
-
-MIN_PASSWORD_LENGTH = 8  # same as the dashboard
 
 
 def list_users() -> int:

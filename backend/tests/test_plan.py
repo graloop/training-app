@@ -1,3 +1,8 @@
+"""The Plan and History tabs (routers/plan.py, routers/athlete.py, planning/):
+reading draft lines (draft_parser.py: durations, sports, dates, errors), saving
+and confirming a draft (drafts.py), the training log text (training_log.py,
+activity_text.py), the rule set and the athlete's own numbers."""
+
 import datetime
 
 import pytest

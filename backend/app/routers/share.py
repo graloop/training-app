@@ -1,3 +1,7 @@
+"""/api/share: the Import tab. Your share code, and copying someone's planned
+sessions (with their username and code) to your draft or your calendar.
+Wrong name/code pairs are limited per account (accounts.py)."""
+
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

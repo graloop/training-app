@@ -1,3 +1,6 @@
+"""/api/athlete: the Athlete tab's numbers (FTP, zones, CSS...) as the athlete
+entered them, plus what Garmin knows as text lines. Objectives have their own router."""
+
 import datetime
 
 from fastapi import APIRouter, Depends, Query

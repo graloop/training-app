@@ -7,6 +7,11 @@
 - The Sync button starts a job here and the page asks how it is going. A long
   catch-up then never hits the proxy's time limit (Cloudflare gives up after
   100 s), and the page stays usable meanwhile.
+
+Both kinds run sync.sync_user in a thread and share one lock per account
+(user_lock), so the same account is never synced twice at once. Jobs and locks
+live in this process's memory: the app runs as one uvicorn process, and a
+restart just forgets the job (the page then shows "idle"; the data is saved).
 """
 
 import datetime

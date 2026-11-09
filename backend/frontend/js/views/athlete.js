@@ -1,5 +1,7 @@
 // Athlete tab: the athlete's own numbers (weight, zones, FTP...) and what
 // Garmin knows about them. The objectives on the same tab are in objectives.js.
+// API: GET/PUT /api/athlete (backend/app/routers/athlete.py). Markup: the
+// #profile-form and #athlete-garmin of #tab-athlete. Styles: css/athlete.css.
 
 import { api } from "../core/api.js";
 import { isoDate } from "../core/format.js";

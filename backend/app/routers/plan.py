@@ -1,3 +1,7 @@
+"""/api/plan: the Plan and History tabs. The training log as text (/log), one
+session in detail (/sessions), the rule set, and the draft: saved and parsed
+(/draft), then put on the calendar (/draft/confirm). The logic is in planning/."""
+
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -65,6 +69,7 @@ def get_session(activity_id: int, db: Session = Depends(get_db), user: models.Us
 
 @router.get("/rules", response_model=schemas.RuleSet)
 def get_rules(user: models.User = Depends(get_current_member)):
+    """The rule set (or, until it is first saved, the older notes standing in for it)."""
     return schemas.RuleSet(rules=rule_set_text(user))
 
 
@@ -86,6 +91,7 @@ def get_draft(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
+    """The saved draft parsed, or an empty one starting next Monday."""
     return drafts.draft_out(db, user, user.plan_draft, drafts.client_today(today))
 
 

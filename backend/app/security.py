@@ -1,3 +1,14 @@
+"""The three secrets-related jobs, standard library and two small packages only:
+
+- passwords: salted scrypt hashes ("scrypt$N$r$p$salt$digest"), never stored in clear;
+- session tokens: JWTs signed with JWT_SECRET, carrying the user id and their
+  token_version (deps.py refuses a token whose version is out of date);
+- encryption at rest: the stored Garmin session, with Fernet and FERNET_KEY.
+
+Losing JWT_SECRET logs everyone out; losing FERNET_KEY means everyone must
+reconnect Garmin. Both live in .env (see README, "Security notes").
+"""
+
 import base64
 import datetime
 import hashlib
@@ -22,6 +33,8 @@ def _b64(data: bytes) -> str:
 
 
 def hash_password(password: str) -> str:
+    """A new salted hash. The cost parameters are stored with it, so they can be
+    raised later without breaking existing passwords."""
     salt = secrets.token_bytes(16)
     digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32)
     return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${_b64(salt)}${_b64(digest)}"
@@ -33,6 +46,9 @@ _DUMMY_HASH = hash_password(secrets.token_hex(16))
 
 
 def verify_password(password: str, stored: str | None) -> bool:
+    """True when `password` matches `stored`. With no stored hash (unknown
+    username, or an account without a password) it still does the work and
+    returns False, so the answer takes the same time either way."""
     if not stored:
         stored, ok = _DUMMY_HASH, False
     else:
@@ -51,7 +67,9 @@ def verify_password(password: str, stored: str | None) -> bool:
 
 # --- Session tokens ---
 
+
 def create_access_token(user_id: int, token_version: int | None) -> str:
+    """The token the page sends as "Authorization: Bearer ..." (ACCESS_TOKEN_EXPIRE_MINUTES, 1 week)."""
     expire = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
         minutes=settings.access_token_expire_minutes
     )
@@ -68,7 +86,8 @@ def decode_access_token(token: str) -> tuple[int, int] | None:
         return None
 
 
-# --- Encryption at rest (Garmin sessions, AI keys) ---
+# --- Encryption at rest (the stored Garmin session) ---
+
 
 def _fernet() -> Fernet:
     if not settings.fernet_key:

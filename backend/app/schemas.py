@@ -1,3 +1,12 @@
+"""What the API accepts and sends back (Pydantic models), grouped by area in
+the same order as the routers. FastAPI validates every request body against
+the *In / *Create / *Update / *Request models (a bad one is a 422 before any
+router code runs) and shapes every answer with the *Out / *Response models.
+
+Database tables are in models.py; these are deliberately separate, so a column
+can change without changing what the page receives, and the reverse.
+"""
+
 import datetime
 from typing import Annotated
 
@@ -306,12 +315,6 @@ class SessionDetail(BaseModel):
     text: str
 
 
-class AthleteNotes(BaseModel):
-    """Availability, constraints and anything Garmin doesn't know, in the athlete's words."""
-
-    notes: str = Field(default="", max_length=10000)
-
-
 class RuleSet(BaseModel):
     """The Plan tab's rules: availability, constraints, rules of thumb, in the athlete's words."""
 
@@ -351,7 +354,9 @@ class DraftIn(BaseModel):
     start_date: datetime.date  # any day of the first week to plan
     weeks: int = Field(ge=1, le=MAX_PLAN_WEEKS)
     text: str = Field(default="", max_length=30000)
-    notes: str | None = Field(default=None, max_length=20000)  # older block notes: kept unless sent
+    # LEGACY (block notes, replaced by the rule set in v14, 2026-10-17): the page no
+    # longer sends this; kept so older notes survive until the rule set is saved.
+    notes: str | None = Field(default=None, max_length=20000)
 
 
 class DraftSessionOut(BaseModel):

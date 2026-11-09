@@ -1,6 +1,11 @@
 """A draft as the page sees it (parsed, with weekly totals and what it would
 replace), and putting sessions on the calendar. Used by the Plan tab
-(routers/plan.py) and the Import tab (routers/share.py)."""
+(routers/plan.py) and the Import tab (routers/share.py).
+
+A draft is plain text (PlanDraft.text) parsed again on every read: nothing
+parsed is stored until put_on_calendar() turns the sessions into
+PlannedTraining rows. "today" is the browser's day (client_today), so a session
+the user sees as tomorrow isn't refused as past by a server in another timezone."""
 
 import datetime
 
@@ -46,6 +51,8 @@ def weeks_preview(sessions: list[DraftSession], start: datetime.date, weeks: int
 
 
 def planned_between(db: Session, user: models.User, first: datetime.date, last: datetime.date) -> Query:
+    """The user's planned sessions from `first` to `last`, both included, as a
+    query: callers .count() it (what confirming would replace) or .delete() it."""
     return db.query(models.PlannedTraining).filter(
         models.PlannedTraining.user_id == user.id,
         models.PlannedTraining.date >= first,

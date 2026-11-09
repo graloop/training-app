@@ -1,5 +1,12 @@
 // Import tab: your share code (so a friend can copy your plan), and copying a
 // friend's planned sessions to your draft or straight onto your calendar.
+// API: GET /api/share, POST /api/share/code, POST /api/share/import/preview,
+// /import/plan, /import/calendar (backend/app/routers/share.py). Markup:
+// #tab-import. Styles: css/import.css, weekly tables from css/plan.css.
+//
+// Flow: the form asks for a preview (changes nothing) and shows it with
+// plan-preview.js; the two buttons then send the same request to import it.
+// Any change to the form hides the preview, so what was seen is what is imported.
 
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";

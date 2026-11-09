@@ -1,3 +1,18 @@
+"""The database tables. Everything a user owns hangs off User and is deleted
+with it (cascade), which is how the admin's "delete account" removes all data.
+
+    User ─┬─ Activity ── ActivityTrace   done sessions, from Garmin (+ 5-second data, 28 days)
+          ├─ SleepRecord                one row per night, from Garmin
+          ├─ DailyMetrics               one row per day: readiness, training status, stress
+          ├─ PlannedTraining            sessions on the calendar, typed or from a confirmed plan
+          ├─ PlanDraft                  the Plan tab's draft (at most one)
+          ├─ Objective                  target events
+          └─ LoginEvent                 the connection log (admin dashboard)
+
+Every new column must be nullable: that is all database.add_missing_columns()
+can add to an existing database. What the API sends is in schemas.py.
+"""
+
 import datetime
 
 from sqlalchemy import (
@@ -17,10 +32,14 @@ from .database import Base
 
 
 def utcnow() -> datetime.datetime:
+    """Timestamps are stored in UTC (SQLite gives them back without the offset: see schemas.UtcDatetime)."""
     return datetime.datetime.now(datetime.UTC)
 
 
 class User(Base):
+    """An account, created by an admin (there is no sign-up). An admin account
+    only manages the others: it has no calendar or Garmin connection."""
+
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -43,7 +62,8 @@ class User(Base):
     # refreshed on each sync (see garmin/sync.py, normalize_profile).
     garmin_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The athlete's own words: availability, constraints, what Garmin doesn't know.
-    athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)  # older "About you" text, read until rule_set is saved
+    # LEGACY ("About you", before v14, 2026-10-17): read by training_log.rule_set_text until rule_set is saved.
+    athlete_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # What the athlete enters on the Athlete tab: FTP, zones, CSS, equipment... (schemas.AthleteProfile).
     athlete_profile: Mapped[dict | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     # The Plan tab's rule set: availability, constraints and rules of thumb the plan must follow.
@@ -68,6 +88,10 @@ class User(Base):
 
 
 class Activity(Base):
+    """A done session, as Garmin's activity list gives it (garmin/sync.py,
+    save_activities), completed later by the per-activity details: effort,
+    feel, laps, weather (enrich_activities). Times are the athlete's local time."""
+
     __tablename__ = "activities"
     __table_args__ = (UniqueConstraint("user_id", "garmin_activity_id", name="uq_activity_user_garmin_id"),)
 
@@ -121,6 +145,9 @@ class ActivityTrace(Base):
 
 
 class SleepRecord(Base):
+    """One night, dated by the morning it ends. raw_json keeps only the few parts
+    of Garmin's answer that are read (garmin/sync.py, SLEEP_KEPT)."""
+
     __tablename__ = "sleep_records"
     __table_args__ = (UniqueConstraint("user_id", "date", name="uq_sleep_user_date"),)
 
@@ -140,6 +167,9 @@ class SleepRecord(Base):
 
 
 class PlannedTraining(Base):
+    """A session on the calendar that is still to do. `source` says where it came
+    from: "manual" (the calendar's dialog), "plan" (a confirmed draft) or "import"."""
+
     __tablename__ = "planned_training"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

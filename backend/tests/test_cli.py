@@ -1,3 +1,5 @@
+"""Account rescue from the command line (cli.py): list-users and reset-password."""
+
 from conftest import login
 
 from app import cli

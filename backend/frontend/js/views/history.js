@@ -1,6 +1,10 @@
 // History tab: everything Claude in Chrome needs, on one page. The training
-// log is written by the server (backend/app/planning.py, build_log); below it,
-// how to write the plan and the current draft.
+// log is written by the server (backend/app/planning/training_log.py,
+// build_log); one session in full by planning/session_detail.py; below the
+// log, how to write the plan and the current draft.
+// API: GET /api/plan/log, /api/plan/sessions, /api/plan/sessions/{id},
+// /api/plan/draft, POST /api/garmin/import-history. Markup: #tab-history.
+// Styles: css/history.css.
 
 import { api } from "../core/api.js";
 import { fmtLongDate, fmtSpan, isoDate, plural } from "../core/format.js";
@@ -114,7 +118,7 @@ importBtn.addEventListener("click", async () => {
     await loadHistoryPage(); // first: it clears the status lines
     showStatus(
       importStatus,
-      t('Imported {activities} back to {date}. They are in the log under "Earlier weeks".', {
+      t('Imported {activities} back to {date}. They are in the log under "EARLIER HISTORY".', {
         activities: plural(result.activities_imported, "older activity", "older activities"),
         date: fmtLongDate(result.since),
       }),

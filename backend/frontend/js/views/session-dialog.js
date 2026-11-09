@@ -1,6 +1,8 @@
 // The "Plan a session" / "Edit session" dialog, opened from a day of the
 // calendar. An existing session can also be moved to another day. The caller
 // says what to refresh once a session is saved, moved or deleted.
+// API: POST /api/planned, PATCH/DELETE /api/planned/{id}. Markup: <dialog
+// id="plan-dialog"> at the end of index.html. Styles: css/calendar.css.
 
 import { api } from "../core/api.js";
 import { locale, t } from "../core/i18n.js";

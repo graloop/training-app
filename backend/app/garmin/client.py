@@ -1,24 +1,25 @@
-"""
-Thin wrapper around the unofficial `garminconnect` / `garth` libraries.
+"""The only file that talks to Garmin Connect.
 
-IMPORTANT — NOT TESTED AGAINST A REAL GARMIN ACCOUNT:
-This module has not been exercised against a live Garmin Connect login. The
-`garth`/`garminconnect` libraries change their session-serialization API
-across versions (some expose `Client.dumps()`/`Client.loads()` for in-memory
-JSON strings, older ones only support `Client.dump(dir)`/`Client.load(dir)`
-against a filesystem directory). `_export_session`/`_import_session` below
-try the string-based API first and fall back to the directory-based one, but
-this needs a real login to confirm it actually round-trips a resumable
-session. Garmin's login can also require MFA/2FA for some accounts, which
-this code does not handle — a login that requires MFA will raise and surface
-as a generic "Garmin login failed" error.
+It wraps the unofficial `garth` (login, tokens) and `garminconnect` (one method
+per Garmin endpoint) libraries, held at garth 0.4.x and garminconnect 0.2.x in
+requirements.txt. Both are used with real accounts: logging in, resuming a
+stored session, activities, sleep, recovery, effort and feel, laps.
+
+- Logging in: the Garmin password is sent to Garmin once
+  (login_and_export_session) and never stored. What comes back is garth's
+  session (OAuth tokens) as a string, which routers/garmin.py stores encrypted.
+- Every later request resumes that session (get_authenticated_client).
+- One fetch_* function per Garmin request, so sync.py never touches the
+  libraries and tests can swap any one of them for a fake.
+
+Login and resume problems are raised as GarminAuthError, with a short message
+the page can show. Accounts with two-step verification (MFA) are refused with
+a clear message rather than left waiting for a code. A fetch_* function that
+fails raises whatever the library raised; sync.py decides what a failure means.
 """
 
 import datetime
-import json
 import logging
-import os
-import tempfile
 from typing import Any
 
 import garth
@@ -28,35 +29,19 @@ log = logging.getLogger("trainer.garmin")
 
 
 class GarminAuthError(Exception):
-    pass
+    """Garmin refused the login, or a stored session can't be resumed: the user
+    has to connect Garmin again. The message is short enough to show as is."""
+
+
+# --- Login and the stored session ------------------------------------------------
 
 
 def _export_session(client: garth.Client) -> str:
-    try:
-        return client.dumps()
-    except AttributeError:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            client.dump(tmp_dir)
-            data: dict[str, str] = {}
-            for fname in os.listdir(tmp_dir):
-                with open(os.path.join(tmp_dir, fname), encoding="utf-8") as f:
-                    data[fname] = f.read()
-            return json.dumps(data)
+    return client.dumps()
 
 
 def _import_session(client: garth.Client, session_data: str) -> None:
-    try:
-        client.loads(session_data)
-        return
-    except AttributeError:
-        pass
-
-    data = json.loads(session_data)
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        for fname, content in data.items():
-            with open(os.path.join(tmp_dir, fname), "w", encoding="utf-8") as f:
-                f.write(content)
-        client.load(tmp_dir)
+    client.loads(session_data)
 
 
 def login_and_export_session(email: str, password: str) -> str:
@@ -116,11 +101,20 @@ def get_authenticated_client(session_data: str) -> Garmin:
     return api
 
 
+# --- One function per Garmin request -------------------------------------------------
+# What each answer looks like is read in sync.py (and activity_file.py for files).
+
+
 def fetch_activities(api: Garmin, start_date: datetime.date, end_date: datetime.date) -> list[dict[str, Any]]:
+    """Garmin's activity list between two days, both included: one dict per
+    activity (activityId, activityType.typeKey, startTimeLocal, duration,
+    distance, averageHR, activityTrainingLoad...), without effort, feel or laps."""
     return api.get_activities_by_date(start_date.isoformat(), end_date.isoformat())
 
 
 def fetch_sleep(api: Garmin, day: datetime.date) -> dict[str, Any] | None:
+    """The night that ended on `day` (dailySleepDTO, restingHeartRate, HRV...),
+    or None when Garmin has nothing for it."""
     try:
         return api.get_sleep_data(day.isoformat())
     except Exception as exc:  # noqa: BLE001 - some days simply have no data
@@ -135,6 +129,8 @@ def fetch_activity_summary(api: Garmin, activity_id: str) -> dict[str, Any]:
 
 
 def fetch_activity_laps(api: Garmin, activity_id: str) -> list[dict[str, Any]]:
+    """The activity's laps (Garmin's lapDTOs), each with distance, duration,
+    heart rate, power, cadence and, in a structured workout, intensityType."""
     return (api.get_activity_splits(activity_id) or {}).get("lapDTOs") or []
 
 
@@ -158,21 +154,28 @@ def fetch_profile(api: Garmin) -> dict[str, Any]:
 
 
 def fetch_training_readiness(api: Garmin, day: datetime.date) -> list[dict[str, Any]]:
+    """Every Training Readiness reading of the day (Garmin recomputes it during
+    the day); sync.morning_readiness picks the wake-up one."""
     return api.get_training_readiness(day.isoformat()) or []
 
 
 def fetch_training_status(api: Garmin, day: datetime.date) -> dict[str, Any]:
+    """Training Status as of `day`: status phrase, acute and chronic load, VO2max
+    and load by intensity, per device (read by sync.status_fields)."""
     return api.get_training_status(day.isoformat()) or {}
 
 
 def fetch_daily_stats(api: Garmin, day: datetime.date) -> dict[str, Any]:
+    """The day's summary: stress, body battery, steps (read by sync.stats_fields)."""
     return api.get_stats(day.isoformat()) or {}
 
 
 def fetch_activity_weather(api: Garmin, activity_id: str) -> dict[str, Any]:
+    """The weather Garmin recorded for an outdoor activity, in °F and mph
+    (converted by sync.weather_fields)."""
     return api.get_activity_weather(activity_id) or {}
 
 
 def fetch_activity_file(api: Garmin, activity_id: str) -> bytes:
-    """The file the watch or Zwift sent to Garmin, zipped."""
+    """The file the watch or Zwift sent to Garmin, zipped (read by activity_file.py)."""
     return api.download_activity(activity_id, dl_fmt=api.ActivityDownloadFormat.ORIGINAL)

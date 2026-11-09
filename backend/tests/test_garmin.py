@@ -1,3 +1,9 @@
+"""The Garmin client and connection (garmin/client.py, routers/garmin.py): an
+expired session asks to reconnect instead of logging out, a sync stores each
+activity once, resuming a stored session, MFA refused without waiting on input,
+short login errors. Garmin is never called: conftest fakes the login and each
+test fakes the calls it needs."""
+
 import datetime
 
 from app.garmin import client as garmin_client

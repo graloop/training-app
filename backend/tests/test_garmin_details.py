@@ -1,3 +1,9 @@
+"""What a sync fetches beyond the activity list, and how it is stored
+(garmin/sync.py): effort and feel, laps, weather and sweat, the athlete profile,
+sleep and daily recovery day by day, batches and retries, importing older
+activities (POST /api/garmin/import-history) and keeping a refreshed Garmin
+session. Pure conversions first, then whole syncs against a fake Garmin client."""
+
 import datetime
 
 import pytest

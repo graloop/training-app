@@ -3,7 +3,22 @@ day by day, then per-activity details (perceived effort, feel, laps, weather),
 multisport legs, the second-by-second trace of recent sessions and the athlete
 profile Garmin keeps (zones, thresholds, records), and how each is stored. Each
 activity's details are fetched only once. Only the activity list can fail a
-sync; nothing else here is allowed to."""
+sync; nothing else here is allowed to.
+
+One batch (sync_user), in order, and what bounds each step:
+  1. the activity list of the last GARMIN_SYNC_LOOKBACK_DAYS days (one request)
+  2. sleep, readiness, status and daily stats for days not settled yet,
+     newest first (MAX_DAYS_PER_SYNC days, four requests each)
+  3. effort, feel, laps and weather of activities without them
+     (MAX_ACTIVITIES_PER_SYNC, only within DETAILS_WINDOW_DAYS)
+  4. ride laps missed by an older version (LEGACY, see backfill_ride_laps)
+  5. multisport legs (MAX_MULTISPORT_PER_SYNC races)
+  6. original files of recent runs, rides and swims (MAX_TRACES_PER_SYNC)
+  7. the athlete profile, at most once a day
+Whatever a batch leaves (more_to_sync) is picked up by the next one: the Sync
+button's job runs several in a row, the background sync a few (autosync.py).
+GIVE_UP_AFTER_FAILURES consecutive refusals end a step early, so a Garmin outage
+costs a few requests, not hundreds."""
 
 import datetime
 import logging
@@ -98,6 +113,9 @@ def _extras(api: Any, activity: models.Activity, summary: dict[str, Any]) -> dic
 
 def _needs_details():
     # Never fetched, or fetched before weather / sweat / the richer laps existed.
+    # LEGACY (extras IS NULL): activities whose details an older version fetched
+    # before v9 (2026-10-13). Only activities within DETAILS_WINDOW_DAYS are asked
+    # for, so that half of the condition matches nothing after about 2027-01-11.
     return or_(models.Activity.details_synced_at.is_(None), models.Activity.extras.is_(None))
 
 
@@ -157,7 +175,11 @@ def enrich_activities(db: Session, api: Any, user: models.User, limit: int = MAX
 
 def backfill_ride_laps(db: Session, api: Any, user: models.User, limit: int = MAX_ACTIVITIES_PER_SYNC) -> int:
     """Rides whose details were fetched when ride laps weren't kept yet. Their
-    details aren't asked again, so their laps are asked for on their own."""
+    details aren't asked again, so their laps are asked for on their own.
+
+    LEGACY (added 2026-11-03): only looks at rides within DETAILS_WINDOW_DAYS,
+    so it finds nothing after about 2027-02-01 and can then be deleted, with
+    its step in sync_user."""
     window = datetime.datetime.now() - datetime.timedelta(days=DETAILS_WINDOW_DAYS)
     rides = [
         a for a in db.query(models.Activity)
@@ -460,6 +482,10 @@ def _primary(by_device: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def status_fields(status: dict[str, Any]) -> dict[str, Any]:
+    """DailyMetrics columns from Garmin's Training Status answer: status phrase,
+    acute and chronic load and their ratio, VO2max, and the 4-week load by
+    intensity against Garmin's targets. Garmin answers per device; the primary
+    training device's numbers are used. Missing parts are simply left out."""
     out: dict[str, Any] = {}
     latest = _primary((status.get("mostRecentTrainingStatus") or {}).get("latestTrainingStatusData"))
     if latest:
@@ -485,6 +511,8 @@ def status_fields(status: dict[str, Any]) -> dict[str, Any]:
 
 
 def stats_fields(stats: dict[str, Any]) -> dict[str, Any]:
+    """DailyMetrics columns from the day's summary. Garmin reports a negative
+    stress average when there wasn't enough data: stored as None."""
     return {
         "stress_avg": stats.get("averageStressLevel") if (stats.get("averageStressLevel") or -1) >= 0 else None,
         "body_battery_high": stats.get("bodyBatteryHighestValue"),
@@ -494,7 +522,11 @@ def stats_fields(stats: dict[str, Any]) -> dict[str, Any]:
 
 
 def save_activities(db: Session, user: models.User, raw_activities: list[dict[str, Any]]) -> int:
-    """Insert or update activities from Garmin's list. Details fetched earlier are kept."""
+    """Insert or update activities from Garmin's list, matched on Garmin's
+    activityId. Only the list's columns are overwritten (and raw_json, the whole
+    list entry): effort, feel, laps and extras fetched earlier are kept.
+    Start times are Garmin's local time, stored without a timezone. The caller
+    commits. Returns how many entries were saved."""
     existing = {
         a.garmin_activity_id: a for a in db.query(models.Activity).filter(models.Activity.user_id == user.id)
     }
@@ -537,17 +569,22 @@ def save_activities(db: Session, user: models.User, raw_activities: list[dict[st
 # What is kept of Garmin's sleep answer. The rest (about 100 KB a night of
 # minute-by-minute movement, heart rate, stress and breathing) is never read.
 SLEEP_KEPT = ("dailySleepDTO", "restingHeartRate", "avgOvernightHrv", "hrvStatus", "bodyBatteryChange")
+# LEGACY (v15, 2026-10-17): nights stored whole by older versions. Trimmed on
+# startup (main.py); a no-op once the server has started on v15 or later, after
+# which this, trim_stored_sleep and its call in main.startup can be deleted.
 SLEEP_TRIM_ABOVE = 8000  # characters: a night stored whole by an older version
 
 
 def slim_sleep(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Garmin's sleep answer cut down to SLEEP_KEPT, the parts the log reads."""
     if not isinstance(raw, dict):
         return raw
     return {key: raw[key] for key in SLEEP_KEPT if key in raw}
 
 
 def trim_stored_sleep(db: Session, batch: int = 100) -> int:
-    """Shrink nights an older version stored whole. Returns how many were trimmed."""
+    """LEGACY (see SLEEP_TRIM_ABOVE): shrink nights an older version stored
+    whole, `batch` rows at a time. Returns how many were trimmed."""
     ids = [row_id for (row_id,) in db.query(models.SleepRecord.id).filter(
         func.length(cast(models.SleepRecord.raw_json, Text)) > SLEEP_TRIM_ABOVE)]
     for i in range(0, len(ids), batch):
@@ -560,6 +597,8 @@ def trim_stored_sleep(db: Session, batch: int = 100) -> int:
 
 def save_sleep(db: Session, user: models.User, day: datetime.date, raw_sleep: dict[str, Any] | None,
                existing: models.SleepRecord | None) -> bool:
+    """Store one night (into `existing` or a new row). False when Garmin has no
+    sleep for that day, which is normal for a night the watch wasn't worn."""
     dto = (raw_sleep or {}).get("dailySleepDTO") or {}
     if dto.get("sleepTimeSeconds") is None:
         return False
@@ -625,10 +664,16 @@ def sync_days(db: Session, api: Any, user: models.User, start: datetime.date, to
             metrics[day] = row
         for key, value in fields.items():
             setattr(row, key, value)
+        # A day is final (never asked again) once it can't change any more and
+        # Garmin answered every part, or after MAX_DAY_ATTEMPTS tries: some days
+        # never get a readiness or status, and asking forever would waste requests.
         row.attempts = (row.attempts or 0) + 1
         settled = day <= today - datetime.timedelta(days=SETTLED_AFTER_DAYS)
         row.final = settled and (refused == 0 or row.attempts >= MAX_DAY_ATTEMPTS)
         row.fetched_at = models.utcnow()
         days_done += 1
+    # Days still waiting after this batch, for more_to_sync. Today (and yesterday
+    # with SETTLED_AFTER_DAYS=2) are left out: they are never final yet, and
+    # counting them would make every sync ask to sync again.
     remaining = sum(1 for day in wanted[handled:] if day < today - datetime.timedelta(days=SETTLED_AFTER_DAYS - 1))
     return days_done, sleep_saved, remaining

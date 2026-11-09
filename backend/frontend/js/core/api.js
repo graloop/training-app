@@ -1,6 +1,14 @@
 // Every call to the server goes through api(): it adds the session token and
 // turns an error answer into a thrown Error with a readable message and the
 // HTTP status (err.status).
+//
+// The contract callers rely on:
+// - resolves with the parsed JSON (null for 204 No Content);
+// - a 401 with a token = the session is over: the token is dropped, the Log in
+//   window opens, and the Error is still thrown. That is why callers write
+//   `if (err.status !== 401) showStatus(...)`: the login window already said it;
+// - any other error: err.message is the server's `detail` (FastAPI's
+//   validation errors joined into one line), err.status the HTTP status.
 
 import { t } from "./i18n.js";
 import { clearSession, getToken } from "./session.js";

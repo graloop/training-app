@@ -1,3 +1,7 @@
+"""Objectives on the Athlete tab (routers/objectives.py, /api/objectives):
+create, edit, delete, sorted by event date, notes, and each account sees only
+its own."""
+
 from conftest import make_user
 
 

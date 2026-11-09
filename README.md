@@ -15,8 +15,9 @@ adjust sessions — it edits the page like you would.
   too). The choice is kept in the browser; until one is made, the device's
   own light or dark setting is followed.
 - **Private accounts** — only people the admin created can log in (username
-  + password, no sign-up). Everyone can change their own password in
-  ⚙️ Settings. Five wrong passwords lock that username for 15 minutes, and
+  + password, no sign-up). Everyone can change their own password in the
+  account menu (the badge with their name in the top bar). Five wrong
+  passwords lock that username for 15 minutes, and
   twenty from one address stop that address; a password change or reset logs
   out every other session.
 - **Admin dashboard** — admin accounts are for monitoring and managing, not
@@ -153,7 +154,7 @@ adjust sessions — it edits the page like you would.
   countdown; edit or delete it from the card. Shown on the Athlete tab, and
   listed in the history.
 - **Sleep & recovery** — each day shows its Garmin sleep score (top right,
-  coloured good / fair / poor) and resting heart rate (❤️ bpm); each week's
+  coloured good / fair / poor) and resting heart rate (heart icon, bpm); each week's
   column shows the average sleep score and average resting heart rate.
   The morning Training Readiness, overnight HRV, stress and body battery
   are only in the History tab.
@@ -181,15 +182,20 @@ There's no separate frontend server/container: FastAPI serves the API under
 
 ## Project structure
 
+How the parts work together, and where to change what:
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ```
 .
 ├── package.json          npm wrapper: npm start, npm test, npm run lint / format (see "Working on the code")
-├── .github/workflows/    CI: tests, lint and the Docker build on every push
+├── .github/              CI (workflows/ci.yml: tests, lint, the Docker image) and Dependabot for its actions
 ├── scripts/dev.sh         local dev launcher (venv, .env, uvicorn --reload)
 ├── docker-compose.yml     production stack: postgres + backend (+ optional Cloudflare Tunnel)
 ├── docker-compose.build.yml  optional override: build the backend locally instead of pulling it
 ├── .env.example           template for secrets/config (copy to .env)
-├── docs/TROUBLESHOOTING.md  logs, error messages, account rescue, backups
+├── docs/
+│   ├── ARCHITECTURE.md    how the code fits together, and where to change what
+│   └── TROUBLESHOOTING.md logs, error messages, account rescue, backups
 └── backend/
     ├── Dockerfile
     ├── requirements.txt    the app's Python dependencies (requirements-dev.txt adds pytest and ruff)
@@ -199,7 +205,7 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── main.py         FastAPI app: security headers, startup, mounts routers + static frontend
     │   ├── config.py       env-driven settings
     │   ├── database.py     SQLAlchemy engine/session, tiny forward-only migration
-    │   ├── models.py       database tables: User, Activity, SleepRecord, DailyMetrics, PlannedTraining, PlanDraft, Objective, LoginEvent
+    │   ├── models.py       database tables: User, Activity, ActivityTrace, SleepRecord, DailyMetrics, PlannedTraining, PlanDraft, Objective, LoginEvent
     │   ├── schemas.py      Pydantic request/response models (what the API sends and accepts)
     │   ├── security.py     scrypt password hashing, JWT, Fernet encryption
     │   ├── deps.py         auth dependencies: any user / regular member / admin
@@ -208,6 +214,7 @@ There's no separate frontend server/container: FastAPI serves the API under
     │   ├── sharing.py      share codes, someone's planned sessions as draft lines (Import tab)
     │   ├── logs.py         log format and level (LOG_LEVEL)
     │   ├── cli.py          account rescue: python -m app.cli list-users / reset-password
+    │   ├── version.py      the version in the footer and on the first log line (bump it with each release)
     │   ├── routers/        HTTP only, one file per URL prefix: auth, admin, garmin, calendar,
     │   │                   athlete, objectives, planned, plan, share. They never import each other.
     │   ├── planning/       the training log and the draft plan
@@ -223,14 +230,19 @@ There's no separate frontend server/container: FastAPI serves the API under
     │       ├── activity_file.py  an activity's original file -> a trace (no GPS; the file isn't kept)
     │       └── autosync.py   background syncs every few hours + the jobs the Sync button starts
     └── frontend/             static, no build step (native ES modules)
-        ├── index.html        every screen's markup; loads css/*.css and js/main.js
-        ├── css/              base.css (shared) + one file per screen: calendar, athlete, plan, history, import, admin
+        ├── index.html        every screen's markup; loads css/*.css, js/theme-early.js and js/main.js
+        ├── img/landing/      the landing page's photos
+        ├── css/              base.css (shared: colours, night mode) + one file per screen:
+        │                     landing, calendar, athlete, plan, history, import, admin
         └── js/
-            ├── main.js        entry point: log in/out, show the tabs or the admin dashboard
+            ├── theme-early.js day or night colours, set before the page is drawn (a plain script, not a module)
+            ├── main.js        entry point: log in, then show the landing page, the tabs or the admin dashboard
             ├── core/          shared by every view: api.js (fetch + errors), session.js (token, logged-in user),
-            │                  tabs.js, ui.js, format.js (dates, durations), sports.js (names, icons)
-            └── views/         one file per part of the page: calendar, session-dialog, garmin (connect + sync),
-                               objectives, athlete, plan, plan-preview, history, import, admin, settings
+            │                  tabs.js, menus.js (the top bar's pop-ups), ui.js, format.js (dates, durations),
+            │                  sports.js (names, icons), i18n.js + fr.js (English / French)
+            └── views/         one file per part of the page: landing (+ landing-mocks), account and settings
+                               menus, night-mode, calendar, session-dialog, garmin (connect + sync), objectives,
+                               athlete, plan, plan-preview, history, import, admin
 ```
 
 Something broken on one tab? Its code is in `frontend/js/views/<tab>.js`
@@ -251,7 +263,7 @@ The first run will:
 1. Create a Python virtualenv at `backend/.venv` and install
    `backend/requirements.txt` into it.
 2. Copy `.env.example` → `.env` and auto-generate `JWT_SECRET`,
-   `FERNET_KEY`, and `POSTGRES_PASSWORD` for you.
+   `FERNET_KEY`, `POSTGRES_PASSWORD` and `ADMIN_PASSWORD` for you.
 3. Start the app with `uvicorn --reload` against a local SQLite database
    (`backend/dev.db`), regardless of the Postgres settings in `.env` (those
    are only used by the Docker deployment).
@@ -291,7 +303,13 @@ npm start
 
 GitHub runs the tests, the lint and a Docker build on every push
 (`.github/workflows/ci.yml`): a red cross on a commit means one failed, and
-the run's log says which.
+the run's log says which. `npm test` prints one deprecation warning from
+Starlette's test client (about `httpx`): it comes from the libraries and is
+harmless.
+
+New to the code? [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how
+the parts fit together, the code kept for older versions, and where to
+change what.
 
 Two rules keep each part of the app in one place, and tests enforce them:
 routers only handle HTTP and never import each other (shared logic lives in
@@ -348,7 +366,8 @@ says where to look.
    account**, make one for yourself (your training account) and one for each
    friend (**Generate** makes a random password). Send each friend their
    username, password and the URL; they connect their own Garmin on first
-   login and can change their password in ⚙️ Settings.
+   login and can change their password in the account menu (the badge with
+   their name).
 
 **The admin account is not a training account.** It only shows the
 dashboard, so don't set `ADMIN_USERNAME` to an account that holds training
@@ -358,8 +377,7 @@ calendar view (the data itself is kept, and comes back with **Make user**).
 **Upgrading from the Garmin-login version:** old accounts are named after
 their Garmin email and have no password, so they can't log in until the
 admin gives them one (dashboard → **Reset password**). Everyone has to log in
-again once after the upgrade. The tables of the removed chat (messages and
-stored AI API keys) are deleted on the first start.
+again once after the upgrade.
 
 ### Letting friends reach it from outside your home
 
@@ -468,9 +486,10 @@ session on Mon, Oct 12, 2026 (2026-10-12)") so the extension can find the
 right day. Deleting an objective takes two clicks instead of a browser
 confirm popup, which would block the extension.
 
-The stack is just two services: `db` (Postgres, with a named volume for
-persistence) and `backend` (the FastAPI app, built from `backend/Dockerfile`,
-serving both the API and the static frontend).
+The stack has two services, plus the optional tunnel: `db` (Postgres, with a
+named volume for persistence) and `backend` (the FastAPI app, serving both the
+API and the static frontend; its image is built from `backend/Dockerfile` by
+GitHub Actions and pulled from ghcr.io).
 
 > **Don't reuse a local SQLite-backed `.env` as-is in production without
 > checking it.** The generated secrets are fine to reuse, but local dev
@@ -545,6 +564,7 @@ New nullable columns are added to existing databases on startup
 
 | Endpoint                | Method | Notes                                                       |
 |--------------------------|--------|---------------------------------------------------------------|
+| `/api/health`            | GET    | `{"status": "ok"}`: Docker's health check                       |
 | `/api/auth/login`        | POST   | Username/password → JWT (429 after 5 failures for a username, or 20 from one address, in 15 min) |
 | `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status                    |
 | `/api/auth/password`     | POST   | Change your own password; returns a new token                 |
@@ -556,7 +576,7 @@ New nullable columns are added to existing databases on startup
 | `/api/garmin/sync/status`| GET    | How that sync is going: `idle`, `waiting`, `running`, `done` or `failed`, with the totals so far |
 | `/api/garmin/sync`       | POST   | One batch, answered when done: activities, then missing days (sleep, readiness, status, stress) and activity details; `more_to_sync` says to call again; 409 = connect Garmin first |
 | `/api/garmin/import-history` | POST | `{"months": 12}`: older activities, for the long-term weekly totals |
-| `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days), grouped by day, with multisport legs |
+| `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days; at most 366 days, more is a 422), grouped by day, with multisport legs |
 | `/api/objectives`        | GET/POST | List / add objectives (title, event date, target time)      |
 | `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |
 | `/api/plan/sessions`     | GET    | The last 90 days' sessions, to open one in detail. |
@@ -574,9 +594,9 @@ New nullable columns are added to existing databases on startup
 | `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
 | `/api/planned/{id}`      | PATCH/DELETE | Edit (a new `date` moves it), or remove a planned session |
 
-The Garmin, calendar, objectives and planned endpoints are for regular
-accounts; an admin account gets a 403 there. The `/api/admin/*` endpoints are
-admin-only.
+Every endpoint except `/api/health`, `/api/auth/*` and `/api/admin/*` is for
+regular accounts; an admin account gets a 403 there. The `/api/admin/*`
+endpoints are admin-only.
 
 Interactive API docs are at `/docs` (Swagger UI) when `ENABLE_API_DOCS=true`.
 
@@ -626,7 +646,3 @@ and `garminconnect` 0.2.x. What to know:
 - Garmin sessions do eventually expire; `/api/garmin/sync` surfaces expiry
   as a 409 and the page shows the "Connect your Garmin account" form, but
   there's no proactive refresh.
-- FastAPI is held at 0.115, which pins an older Starlette. Its published
-  advisories don't apply to how this app uses it (no forms or uploads, not
-  on Windows, Range headers dropped); upgrading both is the next
-  maintenance step.

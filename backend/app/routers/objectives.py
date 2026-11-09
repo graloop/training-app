@@ -1,3 +1,5 @@
+"""/api/objectives: target events (title, date, target time, notes) on the Athlete tab."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 

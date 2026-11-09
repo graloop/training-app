@@ -1,3 +1,6 @@
+"""/api/auth: logging in (no sign-up: the admin creates accounts), who is
+logged in, and changing your own password. Lockout rules are in accounts.py."""
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -34,6 +37,7 @@ def login(payload: schemas.LoginRequest, request: Request, db: Session = Depends
 
 @router.get("/me", response_model=schemas.MeOut)
 def me(user: models.User = Depends(get_current_user)):
+    """The logged-in account; the page calls it on load to pick the screen."""
     return schemas.MeOut.of(user)
 
 

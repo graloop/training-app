@@ -1,5 +1,8 @@
 // Objectives (races, events) on the Athlete tab: one horizontal card each
 // (title, date, target, notes), added and edited in place.
+// API: /api/objectives (GET, POST, PATCH /{id}, DELETE /{id}). Markup:
+// #objectives-list of #tab-athlete. Styles: css/athlete.css. Loaded with the
+// calendar at login (main.js), since the training log also shows them.
 
 import { api } from "../core/api.js";
 import { fmtLongDate } from "../core/format.js";

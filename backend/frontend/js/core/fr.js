@@ -385,8 +385,8 @@ export const FR = {
   "Couldn't copy automatically. The log is selected: press Cmd+C.":
     "Impossible de copier automatiquement. Le journal est sélectionné : appuyez sur Cmd+C.",
   "Asking Garmin for your older activities…": "Demande de vos activités plus anciennes à Garmin…",
-  'Imported {activities} back to {date}. They are in the log under "Earlier weeks".':
-    "Importé : {activities}, jusqu'au {date}. Vous les trouverez dans le journal sous « Earlier weeks ».",
+  'Imported {activities} back to {date}. They are in the log under "EARLIER HISTORY".':
+    "Importé : {activities}, jusqu'au {date}. Vous les trouverez dans le journal sous « EARLIER HISTORY ».",
 
   // --- Admin dashboard ---
   "Admin dashboard": "Tableau de bord admin",

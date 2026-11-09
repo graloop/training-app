@@ -1,7 +1,8 @@
 // The weekly tables of a plan: one table per week (day, sessions, time) and a
 // "Weekly split" by sport. Used by the Plan tab (the draft) and the Import tab
 // (what would be imported). `draft` is the server's answer: sessions_count,
-// errors and weeks_preview.
+// errors and weeks_preview (schemas.DraftOut / ImportPreview on the server).
+// Styles: css/plan.css.
 
 import { addDays, fmtDate, fmtHM, fmtSpan, isoDate } from "../core/format.js";
 import { t } from "../core/i18n.js";

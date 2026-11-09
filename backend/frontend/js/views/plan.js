@@ -1,7 +1,14 @@
 // Plan tab, top to bottom: the preview of the draft and the button that puts
 // it on the calendar, the draft itself (one session per line), the rule set.
-// The server parses the draft (backend/app/planning.py) and sends back the
-// sessions, the lines with a problem and the weekly totals.
+// The server parses the draft (backend/app/planning/draft_parser.py, shaped for
+// the page by planning/drafts.py) and sends back the sessions, the lines with a
+// problem and the weekly totals: this file never parses a line itself.
+// API: GET/PUT /api/plan/draft, POST /api/plan/draft/confirm, GET/PUT
+// /api/plan/rules. Markup: #tab-plan. Styles: css/plan.css.
+//
+// Flow: typing marks the draft dirty; leaving the box (or Save) PUTs it and
+// redraws from the answer; "Put this plan on the calendar" saves first if
+// needed, then confirms (two clicks when planned sessions would be replaced).
 
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtLongDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";

@@ -184,7 +184,12 @@ def _earlier_weeks(db: Session, user: models.User, start: datetime.date, today: 
 
 def rule_set_text(user: models.User) -> str:
     """The rule set. Until it is first saved, the older "About you" text and
-    block notes stand in for it, so nothing written before is lost."""
+    block notes stand in for it, so nothing written before is lost.
+
+    LEGACY (rule set added in v14, 2026-10-17): the fallback reads
+    User.athlete_notes and PlanDraft.notes, which the page no longer writes.
+    Delete it (and those columns' last readers) only once every account has
+    saved a rule set (users.rule_set IS NOT NULL for all of them)."""
     if user.rule_set is not None:
         return user.rule_set
     draft = user.plan_draft
@@ -293,7 +298,8 @@ def matched_plans(planned: list[models.PlannedTraining], activities: list[models
     """Planned session id -> the activity that did it, for one day. First the
     same sport within 15% of the planned time ("done as planned"), then the
     same sport at any duration. One activity covers one planned session:
-    split sessions are not added up."""
+    split sessions are not added up. The calendar does the same on the page
+    (matchDay in frontend/js/views/calendar.js): change one, change the other."""
     left = [a for a in activities if a.duration_seconds]
     matched: dict[int, models.Activity] = {}
     plans = [p for p in planned if (p.planned_duration_minutes or 0) > 0 and sport_of(p.activity_type) != "other"]

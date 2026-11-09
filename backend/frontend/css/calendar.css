@@ -1,6 +1,7 @@
 /* Calendar tab: the grid of days, entries, the week summary, the Garmin panel
    and the "Plan a session" dialog. */
 
+/* --- The grid: 7 day columns + the week total (built by renderCalendar in views/calendar.js) --- */
 .calendar-scroll { overflow-x: auto; }
 
 .calendar-grid {
@@ -88,6 +89,7 @@
 .week-row.sleep strong.fair { color: var(--warn-text); }
 .week-row.sleep strong.poor { color: var(--bad-text); }
 
+/* --- The week total column (renderWeekSummary) --- */
 .week-summary {
   border-radius: 8px;
   padding: 8px 10px;
@@ -113,6 +115,7 @@
 
 .day-date { font-weight: 600; margin-bottom: 6px; }
 
+/* --- One entry in a day: done (Garmin), planned, or both matched --- */
 .entry {
   display: flex;
   align-items: center;
@@ -137,6 +140,7 @@
 .entry-detail { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .entry-extra { color: var(--muted); }
 
+/* --- The "Connect Garmin" panel (views/garmin.js) --- */
 #garmin-panel { border-color: var(--accent); }
 
 #sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -154,6 +158,7 @@
 }
 .entry.completed .entry-notes { color: var(--completed-extra); font-weight: 400; }
 
+/* --- The "Plan a session" dialog (views/session-dialog.js) --- */
 dialog#plan-dialog {
   border: 1px solid var(--border);
   border-radius: 12px;

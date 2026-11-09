@@ -1,3 +1,8 @@
+"""The generic local logins admin/adminadmin and user/useruser
+(accounts.seed_test_accounts, SEED_TEST_ACCOUNTS): off by default, only on
+SQLite, re-applied on every start, never enabled by the Docker stack
+(docker-compose.yml), turned on by `npm start` (scripts/dev.sh)."""
+
 import logging
 from pathlib import Path
 

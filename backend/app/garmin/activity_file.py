@@ -1,6 +1,10 @@
 """An activity's original file, as Garmin keeps it, turned into what is stored:
 heart rate, speed, power and cadence every few seconds, and when each lap began.
-Positions are never read, and the file itself is not kept: Garmin still has it."""
+Positions are never read, and the file itself is not kept: Garmin still has it.
+
+Called by sync.fetch_traces; the result goes into ActivityTrace and is read by
+planning/session_detail.py. Samples are averaged into SAMPLE_SECONDS buckets:
+a 2-hour ride is about 1,400 rows of a few numbers instead of 7,200."""
 
 import io
 import zipfile

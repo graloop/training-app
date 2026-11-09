@@ -207,6 +207,10 @@ async function playAthlete(root, animate) {
 
 const MOCKS = { calendar: playCalendar, plan: playPlan, athlete: playAthlete };
 
+// Called by landing.js when a mock-up scrolls into view. `root` is an element
+// of index.html with data-mock="calendar" | "plan" | "athlete": its content is
+// replaced. `animate: false` (reduced motion) draws the end state at once.
+// A new mock-up = a play function above + its name in MOCKS + a data-mock element.
 export function startMock(root, { animate }) {
   MOCKS[root.dataset.mock](root, animate);
 }

@@ -1,6 +1,12 @@
 """One session up close, from its trace (garmin/activity_file.py, kept TRACE_DAYS
 days): how each rep went inside for the log, and every lap and sample for the
-"One session in detail" part of the History tab."""
+"One session in detail" part of the History tab.
+
+trace_lines() adds one line to a session in the full log: inside each rep (HR at
+the start and peak, pace or power first vs second half), or, for a steady run
+or ride, the drift between the two halves. session_text() is everything about
+one session, for GET /api/plan/sessions/{id}. A trace's laps come from the file,
+Garmin's laps from the API; they are only paired up when their counts agree."""
 
 from .. import models
 from .activity_text import all_lap_lines, detail_lines, fmt_activity, rep_laps
@@ -44,6 +50,9 @@ def _rep_line(a: models.Activity, trace: models.ActivityTrace, work: list[dict],
     times = samples["t"]
     parts = []
     for number, lap in enumerate(work, start=1):
+        # The rep's position among all of Garmin's laps, so the file's lap at
+        # the same position gives its start. Found by identity (`is`): two laps
+        # can be equal dicts, and rep_laps returns the very objects in a.laps.
         place = next(i for i, candidate in enumerate(a.laps) if candidate is lap)
         begin = trace.laps[place]["start"]
         inside = [i for i, second in enumerate(times) if begin <= second < begin + trace.laps[place]["duration"]]

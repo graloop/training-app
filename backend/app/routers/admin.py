@@ -1,3 +1,6 @@
+"""/api/admin: the admin dashboard. The connection log of the last days, and
+creating, resetting, promoting and deleting accounts. Admins only."""
+
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -102,6 +105,7 @@ def activity(
 
 @router.get("/users", response_model=schemas.AdminUsersResponse)
 def list_users(db: Session = Depends(get_db), _: models.User = Depends(get_current_admin)):
+    """Every account, with how much data each holds."""
     users = db.query(models.User).order_by(models.User.id).all()
     data = _account_data(db)
     return schemas.AdminUsersResponse(users=[_out(u, data.get(u.id)) for u in users])
@@ -113,6 +117,7 @@ def create_user(
     db: Session = Depends(get_db),
     _: models.User = Depends(get_current_admin),
 ):
+    """A new account. Its owner changes the password from the account menu."""
     username = accounts.normalize_username(payload.username)
     if db.query(models.User).filter(models.User.username == username).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f'"{username}" already exists')

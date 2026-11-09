@@ -1,6 +1,8 @@
 // The member's tabs (Calendar, Athlete, Plan, Import, History). main.js tells
 // this file how each tab loads (registerTab), so it needs none of the views and
 // any view can switch tabs without a circular import.
+// A new tab: its name in TABS, a <div id="tab-NAME"> and a <button
+// id="tab-btn-NAME"> in index.html, and a registerTab() call in main.js.
 
 export const TABS = ["calendar", "athlete", "plan", "import", "history"];
 

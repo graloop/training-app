@@ -1,3 +1,6 @@
+"""/api/planned: one planned session, added, edited, moved or deleted from the
+calendar's dialog (views/session-dialog.js). Whole plans go through plan.py."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -25,6 +28,7 @@ def create_planned(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
+    """A session typed on the calendar (source "manual")."""
     row = models.PlannedTraining(user_id=user.id, source="manual", **payload.model_dump())
     db.add(row)
     db.commit()
@@ -39,6 +43,7 @@ def update_planned(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
+    """Only the fields sent change; editing by hand makes it "manual" again."""
     row = _get_own(db, user, plan_id)
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(row, key, value)

@@ -1,6 +1,8 @@
 // The landing page, for visitors without an account: the Log in window and the
 // language button in the top bar, the contact links, and the sections that
 // slide in as they scroll into view. The mock-ups are drawn in landing-mocks.js.
+// The login form itself is submitted in main.js. Markup: #auth-view and the
+// top bar's #guest-actions. Styles: css/landing.css.
 
 import { getLang, setLang } from "../core/i18n.js";
 import { registerMenu } from "../core/menus.js";

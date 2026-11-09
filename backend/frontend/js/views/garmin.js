@@ -1,6 +1,12 @@
 // Garmin: the "Connect Garmin" panel, the Reconnect/Disconnect buttons of the
 // Settings menu, and the Sync button. The sync runs on the server; the page
-// starts it and asks how it is going (see backend/app/autosync.py).
+// starts it and asks how it is going (backend/app/garmin/autosync.py).
+// API: POST/DELETE /api/garmin/connect, POST /api/garmin/sync/start,
+// GET /api/garmin/sync/status. Markup: #garmin-panel and #sync-btn on the
+// Calendar tab, #garmin-settings in the ⚙️ menu. Styles: css/calendar.css.
+//
+// A 409 from the server means "Garmin isn't usable" (never connected, or the
+// session expired): the Connect panel is shown instead of logging out.
 
 import { api } from "../core/api.js";
 import { plural } from "../core/format.js";

@@ -1,3 +1,8 @@
+"""Admin accounts and the dashboard (routers/admin.py, accounts.py): admins get
+the dashboard and no training data, the connections log and its per-day counts
+(GET /api/admin/activity), what each account holds, deleting an account, and the
+caps that keep login attempts from filling the database or the lockout memory."""
+
 import datetime
 
 from conftest import USER_PASSWORD, admin_auth, login, make_user

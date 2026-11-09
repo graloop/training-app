@@ -1,5 +1,6 @@
 /* Admin dashboard: stat tiles, logins chart, accounts table and its forms. */
 
+/* --- Accounts table: row buttons and the create form --- */
 .row-actions { text-align: right; }
 .row-actions .btn-link + .btn-link { margin-left: 12px; }
 
@@ -11,6 +12,7 @@
 .row-actions .btn-link.danger.confirming { font-weight: 600; }
 .row-actions { white-space: nowrap; }
 
+/* --- Dashboard heading --- */
 .dash-header { align-items: flex-start; margin-bottom: 16px; }
 .dash-header h2 { margin: 0 0 4px; font-size: 1.2rem; }
 .dash-header .hint { font-size: 0.85rem; color: var(--muted); margin: 0; }
@@ -112,6 +114,7 @@
 .result-badge.ok { color: var(--ok-text); }
 .result-badge.failed { color: var(--bad-text); }
 
+/* --- Reset password / delete forms, opened under an account's row --- */
 .reset-row td { background: var(--bg); }
 .delete-row td { background: var(--error-bg); }
 .delete-warning { flex-basis: 100%; margin: 0; font-size: 0.85rem; font-weight: 600; color: var(--poor-fg); }

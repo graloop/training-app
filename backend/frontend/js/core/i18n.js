@@ -56,6 +56,9 @@ const normalize = (s) => s.replace(/\s+/g, " ").trim();
 // Translates index.html once, before anything is shown. Plain text and the
 // attributes above are matched by their English words; an element with inline
 // markup (<strong>, <code>) carries data-i18n="<key>" and is replaced whole.
+// So: new plain text in index.html needs only its French in fr.js, keyed by
+// the exact English (spaces collapsed); new text with markup also needs a
+// data-i18n key. Text set by a script must go through t() to be translated.
 export function translatePage() {
   document.documentElement.lang = lang;
   if (lang === "en") return;

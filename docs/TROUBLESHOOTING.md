@@ -38,7 +38,7 @@ The first line after each start says which version runs, which database it
 uses, whether the background sync is on and the public address:
 
 ```
-INFO    trainer.main: Training App version 15 starting · database postgresql+psycopg2://trainer:***@db:5432/trainer · background sync every 4 h · public address https://training.example.com
+INFO    trainer.main: Training App version 16 starting · database postgresql+psycopg2://trainer:***@db:5432/trainer · background sync every 4 h · public address https://training.example.com
 ```
 
 A `Traceback (most recent call last):` block is a crash report. Read it
@@ -53,15 +53,16 @@ then, so it is hidden by default.
 
 | Part of the app | Backend (Python) | Page (JavaScript / CSS) |
 |---|---|---|
-| Login, logout, password | `routers/auth.py`, `accounts.py`, `security.py` | `js/main.js`, `js/views/settings.js` |
+| Login, logout, password | `routers/auth.py`, `accounts.py`, `security.py`, `deps.py` | `js/main.js` (log in), `js/views/landing.js` (Log in window), `js/views/account.js` (password, log out) |
+| Landing page, top bar, language, night mode | | `js/views/landing.js`, `js/views/landing-mocks.js`, `js/views/settings.js`, `js/views/night-mode.js`, `js/theme-early.js`, `js/core/menus.js`, `js/core/i18n.js`, `js/core/fr.js`, `css/landing.css`, `css/base.css` |
 | Admin dashboard | `routers/admin.py` | `js/views/admin.js`, `css/admin.css` |
 | Calendar | `routers/calendar.py`, `routers/planned.py` | `js/views/calendar.js`, `js/views/session-dialog.js`, `css/calendar.css` |
 | Garmin connect and sync | `garmin/client.py` (calls to Garmin), `garmin/sync.py` (what is fetched and stored), `garmin/autosync.py` (background), `routers/garmin.py` | `js/views/garmin.js` |
 | Athlete tab | `routers/athlete.py`, `routers/objectives.py` | `js/views/athlete.js`, `js/views/objectives.js`, `css/athlete.css` |
 | Plan tab | `routers/plan.py`, `planning/draft_parser.py`, `planning/drafts.py` | `js/views/plan.js`, `js/views/plan-preview.js`, `css/plan.css` |
-| History tab (the log) | `planning/training_log.py`, `planning/activity_text.py` | `js/views/history.js`, `css/history.css` |
+| History tab (the log) | `routers/plan.py`, `planning/training_log.py`, `planning/activity_text.py`, `planning/session_detail.py` | `js/views/history.js`, `css/history.css` |
 | Import tab | `routers/share.py`, `sharing.py` | `js/views/import.js`, `css/import.css` |
-| Every request to the server | `main.py` (security headers, redirects) | `js/core/api.js` |
+| Every request to the server | `main.py` (security headers, redirects), `visitor.py`, `deps.py` (who may call what) | `js/core/api.js` |
 | Database tables | `models.py`, `database.py` | |
 
 Backend paths are under `backend/app/`, page paths under `backend/frontend/`.
@@ -70,8 +71,13 @@ Backend paths are under `backend/app/`, page paths under `backend/frontend/`.
 
 ### Portainer: "Failed to deploy a stack: compose build operation failed"
 
-The image is built on the server, so the build needs the internet. Portainer
-only shows the command that failed:
+The default stack pulls a ready-made image (`ghcr.io/graloop/training-app`),
+so this only happens when the image is built on the server
+(`docker-compose.build.yml`), which needs the internet. If instead the image
+can't be *pulled*: check that the latest CI run on `main` is green (GitHub →
+Actions), that `BACKEND_TAG` is `latest` or an existing `sha-…` tag, and, if
+the package is private, that the server is logged in to ghcr.io. For a build,
+Portainer only shows the command that failed:
 
 - **`python -c "... files.pythonhosted.org is blocked by the DNS (Pi-hole?) ..."`**:
   the network's DNS answers `0.0.0.0` for `files.pythonhosted.org`, where pip
@@ -210,11 +216,12 @@ docker compose start backend
 ## 5. Going back to an earlier version
 
 Each release is one commit named `vN: ...` (`git log --oneline`), and the
-running version is in the page footer and on the first log line. To go back,
-put a branch on the earlier commit (`git branch rollback <commit>` then
-`git push origin rollback`), point the Portainer stack's Git reference at
-`refs/heads/rollback` and redeploy; on the command line,
-`git checkout <commit>` then `docker compose up -d --build`. Back up the
+running version is in the page footer and on the first log line. Every push
+to `main` has its own image, tagged `sha-<short commit>`. To go back, set
+`BACKEND_TAG=sha-<short commit>` in the stack's variables and redeploy (on the
+command line: `BACKEND_TAG=sha-xxxxxxx docker compose up -d`). If you build the
+image yourself: `git checkout <commit>` then
+`docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`. Back up the
 database first (section 4). Versions only ever add optional columns, so an
 earlier version usually runs on a newer database: it ignores the new columns.
 

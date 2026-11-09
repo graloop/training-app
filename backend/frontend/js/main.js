@@ -1,6 +1,11 @@
 // The page's entry point (loaded by index.html). It logs in, then opens the
 // right screen: the landing page for visitors, the dashboard for an admin, the
 // tabs for everyone else. Each screen's code is in views/; what they share is in core/.
+//
+// Native ES modules, no build step: the server serves these files as they are
+// (backend/app/main.py adds ?v=<mtime> to this file's URL so browsers reload it).
+// Importing a view runs its top-level code, which wires its buttons; views
+// imported only for that effect are the bare `import "./views/..."` lines.
 
 import { api } from "./core/api.js";
 import { t, translatePage } from "./core/i18n.js";
@@ -29,7 +34,9 @@ registerTab("plan", loadPlanPage);
 registerTab("import", loadImportPage);
 registerTab("history", loadHistoryPage);
 
-// Regular accounts get the calendar; admin accounts get the dashboard instead.
+// After login (or on load with a saved token): ask the server who this is,
+// clear what a previous session left on the page, then open the dashboard
+// (admin) or the tabs (member). `sync` starts a Garmin sync right after login.
 async function showAppView({ sync = false } = {}) {
   try {
     setUser(await api("/api/auth/me"));
@@ -54,7 +61,9 @@ async function showAppView({ sync = false } = {}) {
   resetCalendar();
   showView("app-view");
   renderGarminState();
-  const hash = location.hash === "#logs" ? "#history" : location.hash; // the History tab used to be "Logs"
+  // LEGACY: the History tab was called "Logs" before v15 (2026-10-17). Keeps
+  // old #logs bookmarks working; safe to delete any time.
+  const hash = location.hash === "#logs" ? "#history" : location.hash;
   showTab(TABS.find((tab) => `#${tab}` === hash) || "calendar", { load: false });
   await Promise.all([loadCalendar(), loadObjectives()]);
   if (getCurrentTab() !== "calendar") await loadTab(getCurrentTab());

@@ -1,6 +1,10 @@
+"""GET /api/calendar: the Calendar tab's data, one entry per day with what was
+done (Garmin activities), last night's sleep and what is planned. Matching
+planned against done happens in the page (views/calendar.js, matchDay)."""
+
 import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -8,6 +12,10 @@ from ..database import get_db
 from ..deps import get_current_member
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
+
+# The page asks for about 6 weeks. A cap keeps one request from building
+# millions of days (start=0001-01-01&end=9999-12-31).
+MAX_SPAN_DAYS = 366
 
 
 @router.get("", response_model=schemas.CalendarResponse)
@@ -17,9 +25,15 @@ def get_calendar(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
+    """Every day from `start` to `end` (default: today ±14 days), at most MAX_SPAN_DAYS."""
     today = datetime.date.today()
     start = start or (today - datetime.timedelta(days=14))
     end = end or (today + datetime.timedelta(days=14))
+    if (end - start).days >= MAX_SPAN_DAYS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Ask for at most {MAX_SPAN_DAYS} days at a time.",
+        )
 
     activities = (
         db.query(models.Activity)

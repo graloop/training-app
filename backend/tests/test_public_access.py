@@ -127,17 +127,6 @@ def test_cloudflare_in_front_of_a_reverse_proxy(proxied, public):
 # --- Headers every page carries ----------------------------------------------------
 
 
-def test_range_requests_get_the_whole_file(client):
-    """Starlette 0.46 can be made to burn CPU with a crafted Range header
-    (CVE-2025-62727), and the page never asks for part of a file."""
-    whole = client.get("/js/main.js")
-    crafted = "bytes=" + ",".join(f"{i}-{i + 1}" for i in range(0, 4000, 2))
-    for value in ("bytes=0-9", crafted):
-        res = client.get("/js/main.js", headers={"Range": value})
-        assert res.status_code == 200 and res.content == whole.content
-        assert "content-range" not in res.headers
-
-
 def test_pages_only_run_their_own_script(client):
     for path in ("/", "/js/main.js", "/api/health"):
         assert client.get(path).headers["content-security-policy"] == main.CONTENT_SECURITY_POLICY

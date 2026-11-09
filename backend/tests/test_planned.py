@@ -1,3 +1,6 @@
+"""Planned sessions (routers/planned.py: add, edit, move, delete), the calendar
+that shows them (routers/calendar.py) and the startup column migration."""
+
 import datetime
 
 from conftest import make_user
@@ -9,6 +12,14 @@ TOMORROW = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
 def _day(client, auth, date):
     days = client.get("/api/calendar", params={"start": date, "end": date}, headers=auth).json()["days"]
     return days[0]["planned"]
+
+
+def test_calendar_span_is_limited(client, auth):
+    """One request can't make the server build millions of days."""
+    res = client.get("/api/calendar", params={"start": "0001-01-01", "end": "9999-12-31"}, headers=auth)
+    assert res.status_code == 422
+    year = client.get("/api/calendar", params={"start": "2026-01-01", "end": "2026-12-31"}, headers=auth)
+    assert year.status_code == 200 and len(year.json()["days"]) == 365
 
 
 def test_create_update_delete(client, auth):

@@ -1,3 +1,21 @@
+"""Shared test setup. The app reads its settings when it is imported, so the
+environment is set first: a throwaway SQLite database, fixed secrets and the
+first admin (admin / admin-password).
+
+Fixtures:
+- fresh_db (every test): empty tables, login lockouts and sync jobs cleared.
+- fake_garmin_login (every test): Garmin's login is replaced; GARMIN_PASSWORD
+  is accepted for any email, anything else fails like a wrong password.
+- client: a TestClient talking to the app directly (no proxy in front); it
+  also runs the app's startup (tables, first admin).
+- proxied: requests from a private address, as the reverse proxy or tunnel
+  sends them, so CF-Connecting-IP / X-Forwarded-Proto headers are believed.
+- auth: headers of a regular account "athlete" with Garmin connected.
+
+Helpers: login() returns auth headers, admin_auth() logs the admin in, and
+make_user() has the admin create an account, logs it in and connects Garmin.
+"""
+
 import os
 import tempfile
 

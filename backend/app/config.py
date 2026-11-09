@@ -1,3 +1,11 @@
+"""Every setting the app reads, from environment variables (or a .env file).
+
+Each field below is one variable: `database_url` is DATABASE_URL, and so on.
+The defaults suit `npm start`; docker-compose.yml passes the production values.
+Call get_settings() rather than Settings(): it is read once and cached.
+README, "Environment variables", has the full table.
+"""
+
 from functools import lru_cache
 
 from pydantic import field_validator

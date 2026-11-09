@@ -1,5 +1,8 @@
 // Calendar tab: Monday–Sunday weeks with what was done (Garmin) next to what
 // was planned, sleep badges per day and a summary column per week.
+// API: GET /api/calendar?start=&end= (backend/app/routers/calendar.py); planned
+// sessions are added and edited in session-dialog.js. Markup: #tab-calendar.
+// Styles: css/calendar.css. loadCalendar() is also called after every sync.
 
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtHM, fmtHours, fmtLongDate, isoDate, plural, thisMonday } from "../core/format.js";
@@ -88,6 +91,8 @@ function makeRestingHrBadge(sleep) {
   return badge;
 }
 
+// The last column of a week row: planned vs done time, Garmin load, sleep and
+// resting HR averages, and a bar of how much of the planned time was done.
 function renderWeekSummary(week) {
   let plannedMin = 0;
   let doneMin = 0;
@@ -197,6 +202,9 @@ function renderWeekSummary(week) {
 
 // Planned vs. done, same day and same sport: within 15% of the planned time is
 // "done as planned"; any other duration is still done, just not as planned.
+// sportCategory and matchDay mirror the server's planning/basics.py (sport_of,
+// MATCH_TOLERANCE) and planning/training_log.py (matched_plans), which write the
+// same verdicts in the training log: change one, change the other.
 const MATCH_TOLERANCE = 0.15;
 
 function sportCategory(type) {
@@ -335,6 +343,9 @@ function makeEditable(entry, date, planned) {
 
 // --- The grid ---
 
+// Redraws the whole grid from GET /api/calendar: a header row, then per week
+// 7 day cells (badges, matched pairs, other activities, planned sessions, the
+// + button) and the week summary. Days come in whole weeks (calendarRange).
 function renderCalendar(data) {
   const grid = document.getElementById("calendar-grid");
   grid.innerHTML = "";

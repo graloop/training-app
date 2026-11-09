@@ -1,6 +1,13 @@
 """Reads a draft plan: one session per line as date | sport | duration | details.
 Each line becomes a session, or an error saying what to fix on that line. The
-Plan tab and the share import both use it; nothing here touches the database."""
+Plan tab and the share import both use it; nothing here touches the database.
+
+The lines are usually written by Claude, so the parser is forgiving about form
+(markdown tables and bullets, "Tue Oct 13" or 2026-10-13, "1:15" or "75 min",
+French sport words) and strict about meaning: a date outside the weeks being
+planned, already past, or naming the wrong weekday is an error, never a guess.
+Error messages are shown on the page next to the line, so they say how to fix it.
+sharing.py writes lines in this same format when importing a friend's plan."""
 
 import datetime
 import re
@@ -57,7 +64,17 @@ def parse_duration(text: str) -> float | None:
 
 
 def _parse_date(text: str, first: datetime.date, last: datetime.date) -> datetime.date | str:
-    """A date inside [first, last], or a message saying what's wrong."""
+    """A date inside [first, last], or a message saying what's wrong.
+
+    1. An ISO date (2026-10-13) is taken as is.
+    2. Otherwise the words are read: a weekday, a month, a day number, a year,
+       any of them optional except the day number ("Tue Oct 13", "13", "oct 13th").
+    3. The days of [first, last] with that day number are the candidates; the
+       month, year and then the weekday narrow them down to exactly one.
+    4. None left: say which real date was probably meant and that it's outside
+       the planned weeks. Several left: ask for the month.
+    5. Finally a weekday that contradicts the date ("Mon Oct 13" when it's a
+       Tuesday) is an error, so a typo never moves a session to the wrong day."""
     value = text.strip()
     span = f"{fmt_day(first)} to {fmt_day(last)}"
     try:

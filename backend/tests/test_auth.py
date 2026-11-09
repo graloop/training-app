@@ -1,3 +1,8 @@
+"""Logging in and accounts (routers/auth.py, routers/admin.py, accounts.py,
+security.py, deps.py): the first admin from ADMIN_USERNAME / ADMIN_PASSWORD,
+login and lockout, tokens and their version, admin-created users, changing a
+password, users kept apart, plus the headers and caching of the page (main.py)."""
+
 from conftest import ADMIN, GARMIN_PASSWORD, USER_PASSWORD, admin_auth, login, make_user
 
 from app import accounts, models

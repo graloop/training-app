@@ -2,6 +2,7 @@
    Loaded first; the per-section files below only add to it. Every colour is a
    variable here, so night mode (further down) only has to change this list. */
 
+/* --- Colours (day): every colour on the page is one of these variables --- */
 :root {
   color-scheme: light;
   --bg: #f6f7f9;
@@ -235,8 +236,10 @@ body[data-view="auth-view"] .topbar { position: sticky; top: 0; }
   font-size: 0.9rem;
 }
 
+/* --- Page layout --- */
 main { max-width: min(1600px, 96vw); margin: 0 auto; padding: 24px; }
 
+/* --- Forms and buttons --- */
 form { display: flex; flex-direction: column; gap: 8px; }
 label { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
 input, textarea, select {
@@ -268,6 +271,7 @@ button:hover { background: var(--accent-hover); }
 }
 .btn-ghost:hover, .btn-ghost[aria-expanded="true"] { background: var(--bg); }
 
+/* --- Pop-up menus of the top bar (js/core/menus.js) --- */
 .menu { position: relative; }
 .menu-panel {
   position: absolute;
@@ -295,11 +299,13 @@ button:hover { background: var(--accent-hover); }
 .status.ok { color: var(--ok-text); }
 .menu-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
 
+/* --- Status lines and hints (showStatus in js/core/ui.js toggles .status / .error / .ok) --- */
 .subtle { font-weight: 400; font-size: 0.85rem; color: var(--muted); }
 
 .error { color: var(--danger-text); font-size: 0.85rem; overflow-wrap: anywhere; }
 .status { color: var(--muted); font-size: 0.85rem; }
 
+/* --- Panels: the white cards each tab is made of --- */
 .panel {
   background: var(--card);
   border: 1px solid var(--border);
@@ -337,6 +343,7 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 .btn-danger:hover { background: #b91c1c; }
 .btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* --- Tables (admin accounts, plan weeks) --- */
 .users-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .users-table th { text-align: left; font-size: 0.75rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
 .users-table th, .users-table td { padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }

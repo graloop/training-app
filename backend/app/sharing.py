@@ -12,6 +12,7 @@ import secrets
 from sqlalchemy.orm import Session
 
 from . import models
+from .accounts import normalize_username
 from .planning.basics import fmt_day, fmt_minutes
 
 # No 0/O, 1/I/L: the code is read out loud or typed from a message.
@@ -22,6 +23,7 @@ _DRAFT_SPORT = {"swimming": "swim", "cycling": "bike", "running": "run", "streng
 
 
 def normalize_code(text: str) -> str:
+    """'abcd-efgh ' -> 'ABCDEFGH': codes compare without case, dashes or spaces."""
     return re.sub(r"[^A-Z0-9]", "", text.upper())
 
 
@@ -42,12 +44,13 @@ def new_code(db: Session, user: models.User) -> str:
 
 
 def ensure_code(db: Session, user: models.User) -> str:
+    """The account's code, created the first time someone opens the Import tab."""
     return user.share_code or new_code(db, user)
 
 
 def find_sharer(db: Session, username: str, code: str) -> models.User | None:
     """The regular account with that username and share code, or None."""
-    user = db.query(models.User).filter(models.User.username == username.strip().lower()).first()
+    user = db.query(models.User).filter(models.User.username == normalize_username(username)).first()
     if user is None or user.is_admin or not user.share_code:
         return None
     if not hmac.compare_digest(normalize_code(user.share_code), normalize_code(code)):

@@ -1,7 +1,12 @@
 """One Garmin activity as text for the training log: the summary line (sport,
 time, distance, pace, HR, load, effort) and, in the full log, the detail lines
 (zones, power, cadence, weather, intervals, laps). Everything comes from what
-Garmin already sent (backend/app/garmin/sync.py stores it)."""
+Garmin already sent (backend/app/garmin/sync.py stores it).
+
+Laps are stored compact (sync.compact_laps: distance, duration, avg_hr,
+avg_power, cadence, kind...). rep_laps() decides which laps are the reps of an
+interval session; the log, the one-line summary of older weeks and the session
+detail all go through it, so a session never shows different reps in two places."""
 
 from itertools import pairwise
 
@@ -133,7 +138,12 @@ def _intensity(lap: dict, sport: str) -> float:
 def _hard_group_floor(values: list[float], seconds: list[float]) -> float:
     """Where the hard laps start: the cut that best separates two groups, each
     lap counting for its time (Otsu's method). One short sprint or GPS glitch
-    weighs little, so it can't lift the cut above the real reps."""
+    weighs little, so it can't lift the cut above the real reps.
+
+    Laps are sorted by intensity; each gap between two neighbours is a possible
+    cut, scored by time below x time above x (gap between the two groups'
+    time-weighted means)^2. The best score's cut, midway between the two laps,
+    is returned (-1 when every lap is alike)."""
     laps = sorted(zip(values, seconds, strict=True))
     total_time = sum(seconds)
     total = sum(value * time for value, time in laps)
@@ -180,6 +190,9 @@ def rep_laps(a: models.Activity) -> tuple[list[dict], list[dict] | None]:
     laps = [lap for lap in a.laps or [] if is_real_lap(lap, sport)]
     work = _work_laps(laps, sport) if len(laps) >= 2 else None
     splits = {s.get("splitType"): s for s in (a.raw_json or {}).get("splitSummaries") or []}
+    # A structured workout's summary says how many work intervals Garmin counted.
+    # Finding fewer means some reps were missed (a rep merged with its recovery,
+    # say): then no lap is called a rep rather than a total that silently drops one.
     counted = (splits.get("INTERVAL_ACTIVE") or {}).get("noOfSplits") or 0
     return laps, (None if work and len(work) < counted else work)
 

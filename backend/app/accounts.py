@@ -1,4 +1,9 @@
-"""Creating the first admin, and the login lockout."""
+"""Accounts outside the API: the first admin created on startup, the generic
+test accounts of `npm start`, the connection log the admin dashboard shows,
+and the login lockout (in memory, so one server process only).
+
+Used by main.py (startup), routers/auth.py (login), routers/admin.py and
+routers/share.py (wrong share codes are limited the same way)."""
 
 import datetime
 import logging
@@ -16,6 +21,7 @@ log = logging.getLogger("trainer.accounts")
 
 
 def normalize_username(username: str) -> str:
+    """Usernames are stored lowercase: "Julien " and "julien" are the same account."""
     return username.strip().lower()
 
 
