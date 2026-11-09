@@ -64,9 +64,10 @@
 /* Touch screens have no hover: keep a faint button so planning stays possible. */
 @media (hover: none) { .add-btn { opacity: 0.5; } }
 
-.day-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-/* Sleep score + resting HR, top right; they stack when the day is narrow. */
-.day-stats { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; margin-left: auto; }
+.day-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; gap: 4px; margin-bottom: 6px; min-width: 0; }
+/* Sleep score + resting HR, always on the date's line, top right. When the day is
+   narrow the date is cut with an ellipsis (full date in its tooltip) instead of wrapping. */
+.day-stats { display: flex; flex-wrap: nowrap; flex-shrink: 0; justify-content: flex-end; gap: 3px; margin-left: auto; }
 /* Sleep score and resting HR: a plain line icon and the number, no coloured pill.
    The sleep number keeps its good / fair / poor colour. */
 .sleep-badge, .rhr-badge {
@@ -81,7 +82,7 @@
   color: var(--text);
 }
 .stat-icon { width: 1.05em; height: 1.05em; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; color: var(--muted); }
-.day-head .day-date { margin-bottom: 0; }
+.day-head .day-date { margin-bottom: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sleep-badge.good { color: var(--ok-text); }
 .sleep-badge.fair { color: var(--warn-text); }
 .sleep-badge.poor { color: var(--bad-text); }
