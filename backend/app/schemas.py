@@ -177,18 +177,37 @@ class ObjectiveOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+def _required_text(value: str | None, message: str) -> str:
+    """Trimmed text that must not be empty: refuses null, "" and "   "."""
+    if value is None or not value.strip():
+        raise ValueError(message)
+    return value.strip()
+
+
 class ObjectiveCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     event_date: datetime.date | None = None
     target_time: str | None = Field(default=None, max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
 
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, value: str) -> str:
+        return _required_text(value, "give the objective a title")
+
 
 class ObjectiveUpdate(BaseModel):
+    """Only the fields sent are changed. The title can't be cleared."""
+
     title: str | None = Field(default=None, min_length=1, max_length=255)
     event_date: datetime.date | None = None
     target_time: str | None = Field(default=None, max_length=32)
     notes: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("title")
+    @classmethod
+    def _title_not_blank(cls, value: str | None) -> str:
+        return _required_text(value, "give the objective a title")
 
 
 class ObjectivesResponse(BaseModel):
@@ -262,6 +281,11 @@ class PlannedTrainingCreate(BaseModel):
     planned_duration_minutes: float = Field(gt=0, le=24 * 60)
     notes: str | None = Field(default=None, max_length=PLANNED_NOTES_MAX)
 
+    @field_validator("activity_type")
+    @classmethod
+    def _sport_not_blank(cls, value: str) -> str:
+        return _required_text(value, "a planned session always has a sport")
+
 
 class PlannedTrainingUpdate(BaseModel):
     """Only the fields sent are changed. A new `date` moves the session to that day."""
@@ -271,11 +295,25 @@ class PlannedTrainingUpdate(BaseModel):
     planned_duration_minutes: float | None = Field(default=None, gt=0, le=24 * 60)
     notes: str | None = Field(default=None, max_length=PLANNED_NOTES_MAX)
 
+    # Validators only run on fields that were sent, so these refuse an
+    # explicit null (or blank sport) without making the fields required.
     @field_validator("date")
     @classmethod
     def _date_not_cleared(cls, value: datetime.date | None) -> datetime.date:
         if value is None:
             raise ValueError("a planned session always has a day")
+        return value
+
+    @field_validator("activity_type")
+    @classmethod
+    def _sport_not_blank(cls, value: str | None) -> str:
+        return _required_text(value, "a planned session always has a sport")
+
+    @field_validator("planned_duration_minutes")
+    @classmethod
+    def _duration_not_cleared(cls, value: float | None) -> float:
+        if value is None:
+            raise ValueError("a planned session always has a duration")
         return value
 
 

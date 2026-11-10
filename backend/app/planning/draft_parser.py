@@ -142,8 +142,11 @@ def _parse_sport(text: str) -> str | None:
     value = " ".join(text.strip().lower().split())
     if any(value == word or value.startswith(word + " ") for word in _REST_WORDS):
         return None
+    # Words are matched at the start of a word ("cycling" has "cycl"), never
+    # inside one: "run strides" is a run, not a ride.
+    tokens = re.split(r"[^\w]+|_", value)
     for activity_type, words in _SPORT_WORDS:
-        if any(word in value for word in words):
+        if any(token.startswith(word) for token in tokens for word in words):
             return activity_type
     return value.replace(" ", "_")[:64]
 

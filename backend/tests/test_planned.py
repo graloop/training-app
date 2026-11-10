@@ -20,6 +20,21 @@ def test_calendar_span_is_limited(client, auth):
     assert res.status_code == 422
     year = client.get("/api/calendar", params={"start": "2026-01-01", "end": "2026-12-31"}, headers=auth)
     assert year.status_code == 200 and len(year.json()["days"]) == 365
+    # The very last day there is: stepping one day past it used to overflow (500).
+    last = client.get("/api/calendar", params={"start": "9999-12-25", "end": "9999-12-31"}, headers=auth)
+    assert last.status_code == 200 and len(last.json()["days"]) == 7
+
+
+def test_an_edit_cannot_blank_a_planned_session(client, auth):
+    """null sport (was a 500), null duration or a blank sport are refused; the row is unchanged."""
+    row = client.post("/api/planned", json={"date": TOMORROW, "activity_type": "running",
+                                            "planned_duration_minutes": 30}, headers=auth).json()
+    for body in ({"activity_type": None}, {"activity_type": "   "}, {"planned_duration_minutes": None}, {"date": None}):
+        assert client.patch(f"/api/planned/{row['id']}", json=body, headers=auth).status_code == 422, body
+    assert client.post("/api/planned", json={"date": TOMORROW, "activity_type": "  ",
+                                             "planned_duration_minutes": 30}, headers=auth).status_code == 422
+    kept = _day(client, auth, TOMORROW)[0]
+    assert kept["activity_type"] == "running" and kept["planned_duration_minutes"] == 30
 
 
 def test_create_update_delete(client, auth):

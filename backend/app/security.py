@@ -23,6 +23,25 @@ from .config import get_settings
 settings = get_settings()
 
 
+# --- The signing secret, checked on startup ---
+
+# Whoever knows JWT_SECRET can sign a session for any account, admin included,
+# so the example value (or anything short) must never reach a running app.
+JWT_SECRET_MIN = 32
+
+
+def check_jwt_secret() -> None:
+    """Refuse to start with a placeholder or short JWT_SECRET (main.py startup)."""
+    secret = settings.jwt_secret.strip()
+    if "change-me" in secret.lower() or len(secret) < JWT_SECRET_MIN:
+        raise RuntimeError(
+            f"JWT_SECRET must be a random value of at least {JWT_SECRET_MIN} characters, not the example one. "
+            'Generate one with: python -c "import secrets; print(secrets.token_hex(32))", '
+            "put it in .env (or the stack's environment variables), then start the app again. "
+            "Everyone will have to log in again."
+        )
+
+
 # --- Passwords (stdlib scrypt, no extra dependency) ---
 
 _SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1

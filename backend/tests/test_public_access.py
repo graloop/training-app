@@ -217,6 +217,28 @@ def test_the_username_lockout_does_not_depend_on_the_address(client, proxied):
     assert _try(proxied, "friend", USER_PASSWORD, "203.0.113.200").status_code == 429
 
 
+# --- The signing secret -------------------------------------------------------------
+
+
+@pytest.mark.parametrize("secret", ["change-me", "change-me-in-prod", "CHANGE-ME" + "x" * 40, "x" * 31, ""])
+def test_a_placeholder_or_short_jwt_secret_stops_the_app(monkeypatch, secret):
+    """Anyone who knows JWT_SECRET can sign an admin session, so the example value never runs."""
+    from app import security
+
+    monkeypatch.setattr(security.settings, "jwt_secret", secret)
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        security.check_jwt_secret()
+
+
+def test_a_random_jwt_secret_is_accepted(monkeypatch):
+    import secrets
+
+    from app import security
+
+    monkeypatch.setattr(security.settings, "jwt_secret", secrets.token_hex(32))
+    security.check_jwt_secret()
+
+
 # --- The admin password -------------------------------------------------------------
 
 

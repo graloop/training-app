@@ -506,7 +506,7 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `POSTGRES_USER`              | docker-compose  | Postgres username (prod only; local dev uses SQLite)                 |
 | `POSTGRES_PASSWORD`          | docker-compose  | Postgres password — **required** for the Docker stack                |
 | `POSTGRES_DB`                | docker-compose  | Postgres database name                                               |
-| `JWT_SECRET`                 | backend         | Signs session tokens — **required**                                  |
+| `JWT_SECRET`                 | backend         | Signs session tokens — **required**, random, at least 32 characters (the app won't start with the example value) |
 | `ADMIN_USERNAME`             | backend         | First admin account, created on startup — **required** for the Docker stack |
 | `ADMIN_PASSWORD`             | backend         | Its password, at least 12 characters — **required** for the Docker stack; only used to *create* the account, change it later in the app |
 | `SEED_TEST_ACCOUNTS`         | `npm start` only | `true` (the `npm start` default) creates `admin`/`adminadmin` and `user`/`useruser` for local testing; never passed to Docker, refused on Postgres |

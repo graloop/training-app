@@ -31,6 +31,7 @@ from .garmin import autosync
 from .garmin import sync as garmin_sync
 from .logs import setup_logging
 from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share
+from .security import check_jwt_secret
 from .version import VERSION
 from .visitor import is_https
 
@@ -45,6 +46,7 @@ log = logging.getLogger("trainer.main")
 def startup() -> None:
     """Runs once before the app answers: tables, first admin, background sync.
     Every step here must be safe to run on every restart."""
+    check_jwt_secret()  # before anything else: a known secret lets anyone sign in as admin
     log.info(
         "Training App version %s starting · database %s · background sync %s · public address %s",
         VERSION,

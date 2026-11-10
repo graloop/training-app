@@ -36,6 +36,8 @@ def test_edit_and_delete(client, auth):
     res = client.patch(f"/api/objectives/{obj['id']}", json={"title": " Montreal half ", "event_date": "2027-04-27",
                                                             "target_time": "1:45:00"}, headers=auth)
     assert res.status_code == 200
+    for blank in ("   ", None):  # the title can't be emptied by an edit
+        assert client.patch(f"/api/objectives/{obj['id']}", json={"title": blank}, headers=auth).status_code == 422
     assert (res.json()["title"], res.json()["event_date"], res.json()["target_time"]) == (
         "Montreal half", "2027-04-27", "1:45:00")
 

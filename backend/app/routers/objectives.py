@@ -39,12 +39,9 @@ def create_objective(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
-    title = payload.title.strip()
-    if not title:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Give the objective a title")
     row = models.Objective(
         user_id=user.id,
-        title=title,
+        title=payload.title,  # trimmed, never blank (schemas.ObjectiveCreate)
         event_date=payload.event_date,
         target_time=(payload.target_time or "").strip() or None,
         notes=(payload.notes or "").strip() or None,
@@ -64,8 +61,8 @@ def update_objective(
 ):
     row = _get_own(db, user, objective_id)
     data = payload.model_dump(exclude_unset=True)
-    if "title" in data and data["title"] is not None:
-        row.title = data["title"].strip()
+    if "title" in data:  # trimmed, never blank or null (schemas.ObjectiveUpdate)
+        row.title = data["title"]
     if "event_date" in data:
         row.event_date = data["event_date"]
     if "target_time" in data:

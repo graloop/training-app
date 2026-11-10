@@ -66,8 +66,10 @@ def get_calendar(
         planned_by_date.setdefault(p.date, []).append(p)
 
     days = []
-    day = start
-    while day <= end:
+    # Counted, not stepped with `day += 1 day` until past `end`: that step
+    # overflows when end is 9999-12-31.
+    for offset in range((end - start).days + 1):
+        day = start + datetime.timedelta(days=offset)
         days.append(
             schemas.CalendarDay(
                 date=day,
@@ -76,6 +78,5 @@ def get_calendar(
                 planned=planned_by_date.get(day, []),
             )
         )
-        day += datetime.timedelta(days=1)
 
     return schemas.CalendarResponse(start=start, end=end, days=days)

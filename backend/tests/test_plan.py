@@ -53,6 +53,8 @@ def _parse(text, weeks=4, today=None):
     ("swim", "swimming"), ("Swim (club)", "swimming"), ("bike", "cycling"), ("Zwift", "cycling"),
     ("long ride", "cycling"), ("vélo", "cycling"), ("strength", "strength_training"), ("gym", "strength_training"),
     ("yoga", "yoga"), ("Trail Hike", "trail_hike"),
+    # Matched at the start of a word: "strides" holds "ride" but is a run.
+    ("run strides", "running"), ("strides run", "running"), ("Road Biking", "cycling"), ("Cycling", "cycling"),
 ])
 def test_sports(sport, activity_type):
     parsed = _parse(f"{day(1).isoformat()} | {sport} | 1:00")
