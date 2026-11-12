@@ -7,16 +7,13 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_member
+from ..planning import planned_sessions
 
 router = APIRouter(prefix="/api/planned", tags=["planned"])
 
 
 def _get_own(db: Session, user: models.User, plan_id: int) -> models.PlannedTraining:
-    row = (
-        db.query(models.PlannedTraining)
-        .filter(models.PlannedTraining.id == plan_id, models.PlannedTraining.user_id == user.id)
-        .first()
-    )
+    row = planned_sessions.own(db, user, plan_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planned session not found")
     return row
@@ -29,8 +26,7 @@ def create_planned(
     user: models.User = Depends(get_current_member),
 ):
     """A session typed on the calendar (source "manual")."""
-    row = models.PlannedTraining(user_id=user.id, source="manual", **payload.model_dump())
-    db.add(row)
+    row = planned_sessions.add(db, user, payload, source="manual")
     db.commit()
     db.refresh(row)
     return row
@@ -45,9 +41,7 @@ def update_planned(
 ):
     """Only the fields sent change; editing by hand makes it "manual" again."""
     row = _get_own(db, user, plan_id)
-    for key, value in payload.model_dump(exclude_unset=True).items():
-        setattr(row, key, value)
-    row.source = "manual"
+    planned_sessions.edit(row, payload, source="manual")
     db.commit()
     db.refresh(row)
     return row

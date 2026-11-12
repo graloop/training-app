@@ -6,7 +6,12 @@ trace_lines() adds one line to a session in the full log: inside each rep (HR at
 the start and peak, pace or power first vs second half), or, for a steady run
 or ride, the drift between the two halves. session_text() is everything about
 one session, for GET /api/plan/sessions/{id}. A trace's laps come from the file,
-Garmin's laps from the API; they are only paired up when their counts agree."""
+Garmin's laps from the API; they are only paired up when their counts agree.
+session_choices() lists the sessions that can be opened that way."""
+
+import datetime
+
+from sqlalchemy.orm import Session, defer
 
 from .. import models
 from .activity_text import all_lap_lines, detail_lines, fmt_activity, rep_laps
@@ -129,3 +134,23 @@ def session_text(a: models.Activity, trace: "models.ActivityTrace | None") -> st
     else:
         lines += [f"- not stored: swims, rides and runs have it for {TRACE_DAYS} days, once a sync has fetched the file from Garmin"]
     return "\n".join(lines)
+
+
+SESSIONS_LISTED_DAYS = 90  # as far back as laps are fetched
+
+
+def session_choices(
+    db: Session, user: models.User, today: datetime.date, days: int = SESSIONS_LISTED_DAYS
+) -> list[tuple[int, str]]:
+    """(id, "Tue Oct 13 · run 1:15 · ...") for each session of the last `days`
+    days, newest first: what can be opened with session_text()."""
+    since = today - datetime.timedelta(days=days)
+    activities = (
+        db.query(models.Activity)
+        .options(defer(models.Activity.raw_json), defer(models.Activity.laps))
+        .filter(models.Activity.user_id == user.id,
+                models.Activity.start_time >= datetime.datetime.combine(since, datetime.time.min))
+        .order_by(models.Activity.start_time.desc())
+        .all()
+    )
+    return [(a.id, f"{fmt_day(a.start_time.date())} · {fmt_activity(a, effort=False)}") for a in activities]

@@ -57,6 +57,22 @@ def connected_accounts() -> list[int]:
         ]
 
 
+class GarminNotReady(Exception):
+    """This account can't sync: Garmin isn't connected, or its session needs reconnecting.
+    The message is a sentence for the person."""
+
+
+def api_for(user: models.User):
+    """The Garmin client of this account, to hand to start_job or sync_user. Raises GarminNotReady."""
+    if not user.garmin_session_encrypted:
+        raise GarminNotReady("Connect your Garmin account first.")
+    try:
+        return garmin_client.get_authenticated_client(decrypt_text(user.garmin_session_encrypted))
+    except (ValueError, garmin_client.GarminAuthError) as exc:
+        log.warning("Garmin session of %r can't be resumed, asking to reconnect: %s", user.username, exc)
+        raise GarminNotReady(f"Your Garmin session expired, please reconnect Garmin. ({exc})") from exc
+
+
 def sync_account(user_id: int, today: datetime.date | None = None) -> bool:
     """A few sync rounds for one account. False when it was skipped or failed;
     a failure (expired Garmin session, Garmin down) is logged, never raised."""

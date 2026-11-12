@@ -518,8 +518,27 @@ never reachable through the connector.
 3. In claude.ai: Settings → Connectors → **Add custom connector**, URL
    `https://APP_DOMAIN/mcp`, advanced fields empty. Click **Connect** and log
    in on the app's "Connect Claude" page with that account's password.
-4. Ask Claude to run the connector's `connection_check` tool: it answers with
-   the connected account and today's date.
+4. Ask Claude "What did I do this week and what's planned?". (Its
+   `connection_check` tool answers with the connected account and today's
+   date, if you only want to test the link.)
+
+What Claude can do through the connector:
+
+| Tool | What it does |
+|---|---|
+| `get_overview` | Where every chat starts: today, Claude's coach notes, objectives, the rule set, Garmin's status, the last 3 nights, the last two weeks, the next 14 days planned |
+| `get_training_log` | The History tab's log (1 to 26 weeks, `summary` or `full`) |
+| `list_sessions`, `get_session` | The sessions of the last 90 days, and one of them with every lap and its 5-second trace |
+| `get_planned`, `get_objectives`, `get_rules`, `get_draft` | What is on the calendar, the target events, the rule set, the Plan tab's draft |
+| `add_planned`, `update_planned`, `delete_planned` | One planned session on the calendar |
+| `save_draft`, `confirm_draft` | A whole plan: saved as the Plan tab's draft, then put on the calendar |
+| `set_rules`, `upsert_objective` | Replace the rule set; add or change a target event |
+| `set_coach_notes` | Claude's own notes between chats (how you felt, what changed and why), at most 4,000 characters |
+| `sync_garmin` | Start a Garmin sync in the background |
+
+The tools in the first four rows only read. Claude asks before running any of the others,
+unless you allow them in the connector's settings in claude.ai. Sessions
+Claude adds are stored with the source `mcp`.
 
 The connection lasts as long as it is used at least every `MCP_TOKEN_DAYS`
 days. Changing that account's password disconnects Claude, like it logs out
@@ -588,6 +607,9 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   stored whole by older versions are trimmed on startup.
 - **PlannedTraining** — future sessions: date, activity type, planned
   duration and workout details.
+- **McpClient / McpAuthCode / McpToken** — Claude's connector: the Claude
+  apps that registered, and the hashed login codes and tokens of the one
+  account that may connect. `User.coach_notes` holds Claude's notes between chats.
 
 New nullable columns are added to existing databases on startup
 (`add_missing_columns` in `database.py`).

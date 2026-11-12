@@ -15,7 +15,7 @@ from ..deps import get_current_member
 from ..garmin import autosync
 from ..garmin import client as garmin_client
 from ..garmin import sync as garmin_sync
-from ..security import decrypt_text, encrypt_text
+from ..security import encrypt_text
 
 router = APIRouter(prefix="/api/garmin", tags=["garmin"])
 log = logging.getLogger("trainer.garmin")
@@ -55,16 +55,10 @@ def disconnect(db: Session = Depends(get_db), user: models.User = Depends(get_cu
 def _garmin_api(user: models.User):
     # 409 (not 401) when Garmin isn't usable: the frontend shows the
     # "Connect Garmin" form instead of logging the user out of the app.
-    if not user.garmin_session_encrypted:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Connect your Garmin account first.")
     try:
-        return garmin_client.get_authenticated_client(decrypt_text(user.garmin_session_encrypted))
-    except (ValueError, garmin_client.GarminAuthError) as exc:
-        log.warning("Garmin session of %r can't be resumed, asking to reconnect: %s", user.username, exc)
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Your Garmin session expired, please reconnect Garmin. ({exc})",
-        ) from exc
+        return autosync.api_for(user)
+    except autosync.GarminNotReady as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/sync/start", response_model=schemas.SyncJob)

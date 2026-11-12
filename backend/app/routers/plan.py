@@ -5,22 +5,16 @@ session in detail (/sessions), the rule set, and the draft: saved and parsed
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session, defer
+from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_member
 from ..planning import drafts
-from ..planning.activity_text import fmt_activity
-from ..planning.basics import fmt_day, monday_of
-from ..planning.draft_parser import parse_draft
-from ..planning.session_detail import session_text
+from ..planning.session_detail import session_choices, session_text
 from ..planning.training_log import build_log, rule_set_text
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
-
-SESSIONS_LISTED_DAYS = 90  # as far back as laps are fetched
-
 
 @router.get("/log", response_model=schemas.TrainingLog)
 def training_log(
@@ -46,16 +40,8 @@ def list_sessions(
     user: models.User = Depends(get_current_member),
 ):
     """The sessions that can be opened in detail, newest first."""
-    since = drafts.client_today(today) - datetime.timedelta(days=SESSIONS_LISTED_DAYS)
-    activities = (
-        db.query(models.Activity)
-        .options(defer(models.Activity.raw_json), defer(models.Activity.laps))
-        .filter(models.Activity.user_id == user.id,
-                models.Activity.start_time >= datetime.datetime.combine(since, datetime.time.min))
-        .order_by(models.Activity.start_time.desc())
-        .all()
-    )
-    return [schemas.SessionChoice(id=a.id, label=f"{fmt_day(a.start_time.date())} · {fmt_activity(a, effort=False)}") for a in activities]
+    choices = session_choices(db, user, drafts.client_today(today))
+    return [schemas.SessionChoice(id=activity_id, label=label) for activity_id, label in choices]
 
 
 @router.get("/sessions/{activity_id}", response_model=schemas.SessionDetail)
@@ -103,16 +89,7 @@ def save_draft(
     user: models.User = Depends(get_current_member),
 ):
     """Save the draft and return it parsed. Never touches the calendar."""
-    draft = user.plan_draft
-    if draft is None:
-        draft = models.PlanDraft(user_id=user.id)
-        db.add(draft)
-    draft.start_date = monday_of(payload.start_date)
-    draft.weeks = payload.weeks
-    draft.text = payload.text
-    if payload.notes is not None:
-        draft.notes = payload.notes.strip() or None
-    draft.confirmed_at = None
+    drafts.save(db, user, payload)
     db.commit()
     db.refresh(user)
     return drafts.draft_out(db, user, user.plan_draft, drafts.client_today(today))
@@ -127,23 +104,9 @@ def confirm_draft(
     """Put the saved draft on the calendar. Planned sessions from today (or the
     draft's first day, if later) to its last day are replaced, so re-planning
     never duplicates. Done activities and earlier days are not touched."""
-    draft = user.plan_draft
-    if draft is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save a draft first")
-    day = drafts.client_today(today)
-    end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
-    parsed = parse_draft(draft.text, draft.start_date, end, day)
-    if parsed.errors:
-        count = len(parsed.errors)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Fix the {count} line{'s' if count != 1 else ''} with a problem first",
-        )
-    if not parsed.sessions:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The draft has no sessions")
-
-    replace_from = max(draft.start_date, day)
-    replaced = drafts.put_on_calendar(db, user, parsed.sessions, replace_from, end, source="plan")
-    draft.confirmed_at = models.utcnow()
+    try:
+        result = drafts.confirm(db, user, drafts.client_today(today))
+    except drafts.DraftProblem as problem:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(problem)) from problem
     db.commit()
-    return schemas.ConfirmResult(added=len(parsed.sessions), replaced=replaced, start_date=replace_from, end_date=end)
+    return result

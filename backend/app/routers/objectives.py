@@ -6,16 +6,13 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_member
+from ..planning import objectives
 
 router = APIRouter(prefix="/api/objectives", tags=["objectives"])
 
 
 def _get_own(db: Session, user: models.User, objective_id: int) -> models.Objective:
-    row = (
-        db.query(models.Objective)
-        .filter(models.Objective.id == objective_id, models.Objective.user_id == user.id)
-        .first()
-    )
+    row = objectives.own(db, user, objective_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Objective not found")
     return row
@@ -24,13 +21,7 @@ def _get_own(db: Session, user: models.User, objective_id: int) -> models.Object
 @router.get("", response_model=schemas.ObjectivesResponse)
 def list_objectives(db: Session = Depends(get_db), user: models.User = Depends(get_current_member)):
     """Target events, added and edited on the page."""
-    rows = (
-        db.query(models.Objective)
-        .filter(models.Objective.user_id == user.id)
-        .order_by(models.Objective.event_date.is_(None), models.Objective.event_date, models.Objective.id)
-        .all()
-    )
-    return schemas.ObjectivesResponse(objectives=rows)
+    return schemas.ObjectivesResponse(objectives=objectives.listed(db, user))
 
 
 @router.post("", response_model=schemas.ObjectiveOut, status_code=status.HTTP_201_CREATED)
@@ -39,14 +30,7 @@ def create_objective(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
-    row = models.Objective(
-        user_id=user.id,
-        title=payload.title,  # trimmed, never blank (schemas.ObjectiveCreate)
-        event_date=payload.event_date,
-        target_time=(payload.target_time or "").strip() or None,
-        notes=(payload.notes or "").strip() or None,
-    )
-    db.add(row)
+    row = objectives.add(db, user, payload)
     db.commit()
     db.refresh(row)
     return row
@@ -60,15 +44,7 @@ def update_objective(
     user: models.User = Depends(get_current_member),
 ):
     row = _get_own(db, user, objective_id)
-    data = payload.model_dump(exclude_unset=True)
-    if "title" in data:  # trimmed, never blank or null (schemas.ObjectiveUpdate)
-        row.title = data["title"]
-    if "event_date" in data:
-        row.event_date = data["event_date"]
-    if "target_time" in data:
-        row.target_time = (data["target_time"] or "").strip() or None
-    if "notes" in data:
-        row.notes = (data["notes"] or "").strip() or None
+    objectives.edit(row, payload)
     db.commit()
     db.refresh(row)
     return row

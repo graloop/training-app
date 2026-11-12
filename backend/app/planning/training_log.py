@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session, defer
 
 from .. import models
+from . import objectives
 from .activity_text import detail_lines, fmt_activity, rep_summary
 from .basics import (
     DAY_NAMES,
@@ -280,10 +281,11 @@ def _athlete_lines(user: models.User) -> list[str]:
 # --- Planned vs. done ---------------------------------------------------------------
 
 
-def _fmt_planned(p: models.PlannedTraining, done: models.Activity | None = None) -> str:
+def fmt_planned(p: models.PlannedTraining, done: models.Activity | None = None, notes: bool = True) -> str:
+    """'run 1:15 — Track: 2×6×400 m', and how it went when `done` is the activity that matched it."""
     sport = sport_of(p.activity_type)
     text = f"{sport if sport != 'other' else p.activity_type} {fmt_minutes(p.planned_duration_minutes)}"
-    if p.notes:
+    if p.notes and notes:
         text += f" — {' '.join(p.notes.split())}"
     if done is None:
         return text
@@ -413,19 +415,15 @@ def _intro_lines(user: models.User, today: datetime.date, start: datetime.date, 
     return lines
 
 
-def _objective_lines(db: Session, user: models.User, today: datetime.date) -> list[str]:
-    objectives = (
-        db.query(models.Objective)
-        .filter(models.Objective.user_id == user.id)
-        .order_by(models.Objective.event_date.is_(None), models.Objective.event_date)
-        .all()
-    )
+def _objective_lines(db: Session, user: models.User, today: datetime.date, ids: bool = False) -> list[str]:
+    """`ids` puts each objective's id first, for Claude's connector to edit it."""
+    rows = objectives.listed(db, user)
     lines = ["", "OBJECTIVES"]
-    if not objectives:
+    if not rows:
         return lines + ["- none yet (add them on the Athlete tab)"]
-    for o in objectives:
+    for o in rows:
         when = f"{o.event_date.isoformat()} ({(o.event_date - today).days} days away)" if o.event_date else "no date"
-        lines.append(f"- {o.title} · {when} · target {o.target_time or 'not set'}")
+        lines.append(f"- {f'id {o.id} · ' if ids else ''}{o.title} · {when} · target {o.target_time or 'not set'}")
         if o.notes:
             lines.append(f"  {' '.join(o.notes.split())}")
     return lines
@@ -443,9 +441,12 @@ def _athlete_section(db: Session, user: models.User, today: datetime.date) -> li
     return lines
 
 
-def _week_lines(week_start: datetime.date, today: datetime.date, stored: _Stored, full: bool, reps: bool = False) -> list[str]:
+def _week_lines(
+    week_start: datetime.date, today: datetime.date, stored: _Stored, full: bool, reps: bool = False, plan_notes: bool = True
+) -> list[str]:
     """One week: a header with the totals, then each day up to today. `full`
-    adds every detail of each session; `reps` only the reps, in one line."""
+    adds every detail of each session; `reps` only the reps, in one line.
+    `plan_notes=False` leaves the workout text out of the "plan" lines."""
     days = [week_start + datetime.timedelta(days=i) for i in range(7)]
     if stored.data_start is None or days[-1] < stored.data_start:
         return ["", f"WEEK OF {fmt_day(week_start).upper()} · not synced"
@@ -516,7 +517,7 @@ def _week_lines(week_start: datetime.date, today: datetime.date, stored: _Stored
                 lines += [f"        {extra}" for extra in detail_lines(a) + trace_lines(a, stored.traces.get(a.id))]
             elif reps and rep_summary(a):
                 lines.append(f"        {rep_summary(a)}")
-        lines += [f"  plan  {_fmt_planned(p, matched.get(p.id))}" for p in day_plans]
+        lines += [f"  plan  {fmt_planned(p, matched.get(p.id), notes=plan_notes)}" for p in day_plans]
     return lines
 
 
@@ -532,7 +533,7 @@ def _ahead_lines(planned: list[models.PlannedTraining], today: datetime.date) ->
                 current = monday_of(p.date)
                 week_total = sum(q.planned_duration_minutes or 0 for q in ahead if monday_of(q.date) == current)
                 lines.append(f"Week of {fmt_day(current)} · planned {fmt_minutes(week_total)}")
-            lines.append(f"  {fmt_day(p.date)} · {_fmt_planned(p)}")
+            lines.append(f"  {fmt_day(p.date)} · {fmt_planned(p)}")
     else:
         lines.append("- nothing planned yet")
     if week_end > today and not any(p.date <= week_end for p in ahead):
@@ -562,3 +563,56 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
         week_start += datetime.timedelta(days=7)
     lines += _ahead_lines(stored.planned, today)
     return "\n".join(lines), start
+
+
+# --- The overview Claude's connector starts a chat with --------------------------------
+
+OVERVIEW_DAYS = 14  # sessions this far back, planned sessions this far ahead
+OVERVIEW_NIGHTS = 3
+
+
+def planned_lines(planned: list[models.PlannedTraining]) -> list[str]:
+    """One line per planned session with its id first, for Claude to edit or delete it."""
+    return [f"- id {p.id} · {fmt_day(p.date)} ({p.date.isoformat()}) · {fmt_planned(p)}" for p in planned]
+
+
+def build_overview(db: Session, user: models.User, today: datetime.date) -> str:
+    """What Claude needs at the start of a chat, kept short: the coach notes it
+    left itself, objectives, the rule set, Garmin's status, the last nights in
+    full, the last two weeks one line per session, and what is planned next."""
+    start = monday_of(today - datetime.timedelta(days=OVERVIEW_DAYS - 1))
+    stored = _load(db, user, start, today, full=False)
+    lines = [
+        f"TRAINING OVERVIEW · {user.username}",
+        f"Today is {DAY_NAMES[today.weekday()]} {MONTH_NAMES[today.month - 1]} {today.day}, {today.year} "
+        f"({today.isoformat()}). Times are h:mm.",
+        "",
+        "COACH NOTES (what you, Claude, wrote in earlier chats; replace them with set_coach_notes)",
+    ]
+    notes = (user.coach_notes or "").strip()
+    lines += [line.rstrip() for line in notes.splitlines()] if notes else ["- none yet"]
+    lines += _objective_lines(db, user, today, ids=True)
+    rules = rule_set_text(user).strip()
+    lines += ["", "RULE SET (the athlete's availability, constraints and rules: the plan must follow them)"]
+    lines += [line.rstrip() for line in rules.splitlines()] if rules else ["- nothing written yet"]
+    lines += ["", "TRAINING STATUS (Garmin)"] + _status_lines(latest_status(db, user, today))
+
+    lines += ["", f"LAST {OVERVIEW_NIGHTS} NIGHTS"]
+    nights = [today - datetime.timedelta(days=i) for i in range(OVERVIEW_NIGHTS)]
+    recovery = [
+        f"- {_fmt_day_label(day, stored.sleep.get(day), stored.daily.get(day), full=True)}"
+        for day in nights
+        if day in stored.sleep or day in stored.daily
+    ]
+    lines += recovery or ["- nothing from Garmin for these nights: sync_garmin, then ask again in a minute"]
+
+    week_start = start
+    while week_start <= today:
+        lines += _week_lines(week_start, today, stored, full=False, plan_notes=False)  # what was done matters here
+        week_start += datetime.timedelta(days=7)
+
+    until = today + datetime.timedelta(days=OVERVIEW_DAYS)
+    ahead = [p for p in stored.planned if today < p.date <= until]
+    lines += ["", f"PLANNED, NEXT {OVERVIEW_DAYS} DAYS (through {fmt_day(until)})"]
+    lines += planned_lines(ahead) or ["- nothing planned"]
+    return "\n".join(lines)

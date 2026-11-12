@@ -18,6 +18,10 @@ from .draft_parser import DraftSession, parse_draft
 DEFAULT_WEEKS = 4
 
 
+class DraftProblem(ValueError):
+    """Why a draft can't go on the calendar, as a sentence for the person (or Claude)."""
+
+
 def client_today(browser_today: datetime.date | None) -> datetime.date:
     """The browser's date when it's plausible (the server may be in another
     timezone), so "today" matches what the user sees."""
@@ -100,3 +104,38 @@ def put_on_calendar(
             notes=s.details, source=source,
         ))
     return replaced
+
+
+def save(db: Session, user: models.User, payload: schemas.DraftIn) -> None:
+    """Keep the draft (one per account). Never touches the calendar. The caller commits."""
+    draft = user.plan_draft
+    if draft is None:
+        draft = models.PlanDraft(user_id=user.id)
+        db.add(draft)
+    draft.start_date = monday_of(payload.start_date)
+    draft.weeks = payload.weeks
+    draft.text = payload.text
+    if payload.notes is not None:
+        draft.notes = payload.notes.strip() or None
+    draft.confirmed_at = None
+
+
+def confirm(db: Session, user: models.User, today: datetime.date) -> schemas.ConfirmResult:
+    """Put the saved draft on the calendar. Planned sessions from today (or the
+    draft's first day, if later) to its last day are replaced, so re-planning
+    never duplicates. Raises DraftProblem when it can't. The caller commits."""
+    draft = user.plan_draft
+    if draft is None:
+        raise DraftProblem("Save a draft first")
+    end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
+    parsed = parse_draft(draft.text, draft.start_date, end, today)
+    if parsed.errors:
+        count = len(parsed.errors)
+        raise DraftProblem(f"Fix the {count} line{'s' if count != 1 else ''} with a problem first")
+    if not parsed.sessions:
+        raise DraftProblem("The draft has no sessions")
+
+    replace_from = max(draft.start_date, today)
+    replaced = put_on_calendar(db, user, parsed.sessions, replace_from, end, source="plan")
+    draft.confirmed_at = models.utcnow()
+    return schemas.ConfirmResult(added=len(parsed.sessions), replaced=replaced, start_date=replace_from, end_date=end)

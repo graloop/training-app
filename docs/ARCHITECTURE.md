@@ -113,7 +113,9 @@ Backend, under `backend/app/`:
 | `planning/session_detail.py` | What a session's 5-second trace adds, and one session in full |
 | `planning/training_log.py` | The History tab's log, one function per section (`build_log` puts them together) |
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
-| `planning/drafts.py` | A draft as the page sees it, and putting sessions on the calendar |
+| `planning/drafts.py` | A draft as the page sees it: saving it, confirming it, putting sessions on the calendar |
+| `planning/planned_sessions.py` | One planned session: found, added, edited |
+| `planning/objectives.py` | Target events: listed, added, edited |
 | `mcp/` | Claude as a custom connector, only with `MCP_ENABLED`: see [Claude's connector](#claudes-connector-mcp) |
 | `garmin/client.py` | Every call to Garmin, through the `garth` / `garminconnect` libraries |
 | `garmin/sync.py` | One sync of one account: what is fetched, in what order, and how it is stored |
@@ -163,6 +165,19 @@ the same `planning/` functions the page uses. One regular account only,
   one JSON answer per request). Tools are `async` and do their database work
   in a thread with their own session. A new server is built at each start,
   because the SDK's session manager only starts once.
+- **A tool never holds logic of its own.** It calls what the page's routers
+  call (`planning/drafts.save` and `confirm`, `planning/planned_sessions`,
+  `planning/objectives`, `training_log.build_log`, `session_detail`,
+  `autosync.api_for` and `start_job`), checks what Claude sent with the same
+  `schemas.py` models, and answers a mistake with one sentence. So a rule
+  changed for the page changes for Claude too. `mcp/text.py` only words what
+  the page shows as a table (a draft).
+- `get_overview` is `training_log.build_overview`: the log's own sections,
+  cut down to what a chat starts from. `User.coach_notes` is Claude's memory
+  between chats, written only by `set_coach_notes`.
+- Read tools carry `readOnlyHint`; every other tool carries
+  `destructiveHint`, so Claude asks first. `tests/test_mcp_tools.py` fails if
+  a new tool has neither.
 
 The login page is the one place whose content policy differs: its
 `form-action` also allows `claude.ai`, because Chrome applies it to the
@@ -274,6 +289,7 @@ them together.
 |---|---|
 | Keep a new field from Garmin's activity list | `garmin/sync.py` `save_activities`, a nullable column in `models.py`, then show it in `planning/activity_text.py`. Tests: `tests/test_garmin_details.py` |
 | Ask Garmin for something new | A `fetch_*` function in `garmin/client.py`, called from `garmin/sync.py` inside its own `try` |
+| Add or change one of Claude's tools | `mcp/server.py` (`build_server`): the docstring is what Claude reads to choose it. The work goes in `planning/` or `garmin/`, shared with the page. Tests: `tests/test_mcp_tools.py` (add its name to the list there) |
 | Change what the History log says | `planning/training_log.py` (`_intro_lines`, `_objective_lines`, `_athlete_section`, `_earlier_weeks`, `_week_lines`, `_ahead_lines`); one session's text in `planning/activity_text.py`; what the trace adds in `planning/session_detail.py`. Tests: `tests/test_plan.py`, `tests/test_activity_traces.py` |
 | Accept another way of writing a draft line | `planning/draft_parser.py` (`parse_duration`, `_parse_date`, `_SPORT_WORDS`), with a test in `tests/test_plan.py`. The format is also explained in `index.html` (`data-i18n="plan.format"`, and its French in `fr.js`) and in `views/history.js` (`planContextText`) |
 | Change how a tab looks or behaves | `frontend/js/views/<tab>.js`, `frontend/css/<tab>.css`, its markup under `#tab-<tab>` in `index.html` |

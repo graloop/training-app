@@ -157,8 +157,8 @@ def test_same_sport_at_another_duration_still_counts_as_done():
     run = _done(1, "running", 70)
     matched = training_log.matched_plans([_plan(10, "running", 90)], [run])
     assert matched == {10: run}
-    assert training_log._fmt_planned(_plan(10, "running", 90), run) == "run 1:30 (done, 1:10 instead of 1:30)"
-    assert training_log._fmt_planned(_plan(10, "running", 90), _done(2, "running", 85)) == "run 1:30 (done as planned)"
+    assert training_log.fmt_planned(_plan(10, "running", 90), run) == "run 1:30 (done, 1:10 instead of 1:30)"
+    assert training_log.fmt_planned(_plan(10, "running", 90), _done(2, "running", 85)) == "run 1:30 (done as planned)"
 
 
 def test_split_sessions_are_not_added_up():

@@ -72,6 +72,9 @@ class User(Base):
     # The Plan tab's rule set: availability, constraints and rules of thumb the plan must follow.
     # It replaces the older "About you" and block notes (see planning/training_log.py, rule_set_text).
     rule_set: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Claude's memory between chats (mcp/server.py, set_coach_notes): how the athlete felt,
+    # what was adjusted and why, what to watch. Only written through the connector.
+    coach_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # With their username, lets someone else copy this account's planned sessions
     # (Import tab). Created on first use; a new one stops the old one working.
     share_code: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
