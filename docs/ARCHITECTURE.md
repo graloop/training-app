@@ -114,6 +114,7 @@ Backend, under `backend/app/`:
 | `planning/training_log.py` | The History tab's log, one function per section (`build_log` puts them together) |
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
 | `planning/drafts.py` | A draft as the page sees it, and putting sessions on the calendar |
+| `mcp/` | Claude as a custom connector, only with `MCP_ENABLED`: see [Claude's connector](#claudes-connector-mcp) |
 | `garmin/client.py` | Every call to Garmin, through the `garth` / `garminconnect` libraries |
 | `garmin/sync.py` | One sync of one account: what is fetched, in what order, and how it is stored |
 | `garmin/activity_file.py` | An activity's original FIT file → heart rate, speed, power and cadence every 5 seconds (no positions) |
@@ -139,6 +140,33 @@ Each rule has a test, so breaking it fails `npm test`:
 
 And one rule by convention: only `garmin/client.py` talks to Garmin. The
 tests replace its functions with fakes, so nothing else has to be faked.
+
+## Claude's connector (MCP)
+
+With `MCP_ENABLED=true`, `main.py` adds `/mcp` and a few login routes
+(`app/mcp/`). Claude calls tools there and gets compact text back, built by
+the same `planning/` functions the page uses. One regular account only,
+`MCP_USERNAME`; the page's own session tokens don't open `/mcp`.
+
+- `mcp/oauth.py` is a minimal OAuth 2.1 server, which is what claude.ai
+  expects of a custom connector: two `/.well-known/` documents, `POST
+  /oauth/register` (only Claude's callback addresses), the "Connect Claude"
+  login page at `/oauth/authorize` (same password check, lockout and
+  connection log as `/api/auth/login`), and `POST /oauth/token`. Codes and
+  tokens are stored as SHA-256 hashes (`McpAuthCode`, `McpToken`) and carry
+  the account's `token_version`, so a password change disconnects Claude.
+- `mcp/auth.py`, `BearerAuth`: every `/mcp` request needs an access token.
+  Without one the answer is a 401 whose `WWW-Authenticate` header names the
+  metadata URL: that is how Claude finds the login. With one, the account's
+  id goes in a context variable the tools read.
+- `mcp/server.py`: the tools, on the official `mcp` SDK (FastMCP, stateless,
+  one JSON answer per request). Tools are `async` and do their database work
+  in a thread with their own session. A new server is built at each start,
+  because the SDK's session manager only starts once.
+
+The login page is the one place whose content policy differs: its
+`form-action` also allows `claude.ai`, because Chrome applies it to the
+redirect back to Claude.
 
 ## Work done outside requests
 

@@ -5,7 +5,8 @@ Read top to bottom, this file:
    background Garmin sync);
 2. adds the security middleware every response goes through (public-address
    redirect, security headers, no caching of /api/*);
-3. mounts the API routers (routers/*.py, one per URL prefix under /api);
+3. mounts the API routers (routers/*.py, one per URL prefix under /api), and
+   with MCP_ENABLED Claude's connector (mcp/: /mcp and its OAuth login);
 4. serves the page itself: index.html with versioned asset URLs, then every
    other file under frontend/ as static files.
 
@@ -23,6 +24,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Route
 
 from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
@@ -30,6 +32,9 @@ from .database import Base, SessionLocal, add_missing_columns, engine
 from .garmin import autosync
 from .garmin import sync as garmin_sync
 from .logs import setup_logging
+from .mcp import auth as mcp_auth
+from .mcp import oauth as mcp_oauth
+from .mcp.server import McpApp
 from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share
 from .security import check_jwt_secret
 from .version import VERSION
@@ -61,13 +66,21 @@ def startup() -> None:
         garmin_sync.purge_old_traces(db, datetime.date.today())  # a sync may never run: AUTO_SYNC_HOURS=0
     bootstrap_admin()
     seed_test_accounts()
+    mcp_auth.log_setup_problems()
     autosync.start(settings.auto_sync_hours)
+
+
+mcp_app = McpApp()  # Claude's connector; only reachable when mounted further down
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     startup()
-    yield
+    if mcp_auth.is_configured():
+        async with mcp_app.running():
+            yield
+    else:
+        yield
 
 
 # --- The app and its middleware -------------------------------------------------
@@ -100,6 +113,8 @@ CONTENT_SECURITY_POLICY = (
 # it. A month, not the usual year: long enough for friends who open the app
 # every week, short enough to undo if the domain is ever set up differently.
 HSTS_SECONDS = 30 * 24 * 3600
+# Answers that hold personal data or tokens: the API, and Claude's connector with its login.
+_NEVER_CACHED = ("/api/", "/oauth/", "/mcp")
 # Names that only work on the server itself (health checks, `npm start`).
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -145,7 +160,7 @@ async def security_headers(request: Request, call_next):
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
     if on_public_address:
         response.headers.setdefault("Strict-Transport-Security", f"max-age={HSTS_SECONDS}")
-    if request.url.path.startswith("/api/"):
+    if request.url.path.startswith(_NEVER_CACHED):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
 
@@ -162,6 +177,14 @@ app.include_router(objectives.router)
 app.include_router(planned.router)
 app.include_router(plan.router)
 app.include_router(share.router)
+
+# Claude's connector, only with MCP_ENABLED and MCP_USERNAME (mcp/__init__.py).
+# Two plain routes rather than a mount, so /mcp answers without a redirect to /mcp/.
+if mcp_auth.is_configured():
+    app.include_router(mcp_oauth.router)
+    _mcp_endpoint = mcp_auth.BearerAuth(mcp_app)
+    app.router.routes.append(Route("/mcp", endpoint=_mcp_endpoint))
+    app.router.routes.append(Route("/mcp/", endpoint=_mcp_endpoint))
 
 
 @app.get("/api/health")

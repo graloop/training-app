@@ -7,7 +7,10 @@ with it (cascade), which is how the admin's "delete account" removes all data.
           ├─ PlannedTraining            sessions on the calendar, typed or from a confirmed plan
           ├─ PlanDraft                  the Plan tab's draft (at most one)
           ├─ Objective                  target events
-          └─ LoginEvent                 the connection log (admin dashboard)
+          ├─ LoginEvent                 the connection log (admin dashboard)
+          └─ McpAuthCode, McpToken      Claude's connector: login codes and tokens (app/mcp/)
+
+    McpClient                           a Claude app registered as a connector (no owner)
 
 Every new column must be nullable: that is all database.add_missing_columns()
 can add to an existing database. What the API sends is in schemas.py.
@@ -85,6 +88,8 @@ class User(Base):
     objective_items: Mapped[list["Objective"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     plan_draft: Mapped["PlanDraft | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
     daily_metrics: Mapped[list["DailyMetrics"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    mcp_auth_codes: Mapped[list["McpAuthCode"]] = relationship(cascade="all, delete-orphan")
+    mcp_tokens: Mapped[list["McpToken"]] = relationship(cascade="all, delete-orphan")
 
 
 class Activity(Base):
@@ -279,3 +284,51 @@ class DailyMetrics(Base):
     fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped["User"] = relationship(back_populates="daily_metrics")
+
+
+# --- Claude's connector (app/mcp/oauth.py) ---------------------------------------
+# Codes and tokens are random strings handed out once; only their SHA-256 is
+# stored, so a copy of the database can't be used to connect.
+
+
+class McpClient(Base):
+    """A Claude app (web, desktop, phone) that registered itself as a connector."""
+
+    __tablename__ = "mcp_clients"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    redirect_uris: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class McpAuthCode(Base):
+    """The code a successful login hands to Claude, traded once for tokens within minutes."""
+
+    __tablename__ = "mcp_auth_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    redirect_uri: Mapped[str] = mapped_column(String(255), nullable=False)
+    code_challenge: Mapped[str] = mapped_column(String(128), nullable=False)  # PKCE, S256
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class McpToken(Base):
+    """An access token (sent with every /mcp request, 1 hour) or the refresh
+    token that gets the next one (MCP_TOKEN_DAYS, replaced at each use)."""
+
+    __tablename__ = "mcp_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # access | refresh
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # User.token_version when it was issued: a password change stops the token working.
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

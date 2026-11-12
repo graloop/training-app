@@ -52,6 +52,12 @@ services:
       # app only answers on https://<that name>; port 8010 then just sends
       # people there. Leave empty to use the app on your own network only.
       APP_DOMAIN: ${APP_DOMAIN:-}
+      # Claude as a custom connector at https://APP_DOMAIN/mcp (README,
+      # "Connect Claude (MCP)"). Off unless MCP_ENABLED=true; MCP_USERNAME is
+      # the one regular account that may connect, never an admin.
+      MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_USERNAME: ${MCP_USERNAME:-}
+      MCP_TOKEN_DAYS: ${MCP_TOKEN_DAYS:-30}
     ports:
       - "8010:8000"
 

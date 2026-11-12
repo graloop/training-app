@@ -65,6 +65,19 @@ class Settings(BaseSettings):
     # over plain http, is sent there. Empty = no such check (your own network).
     app_domain: str = ""
 
+    # Claude as a custom connector (app/mcp/, README "Connect Claude (MCP)").
+    # /mcp and the OAuth pages only exist with MCP_ENABLED=true, and only the
+    # one regular account named by MCP_USERNAME can authorize the connector.
+    mcp_enabled: bool = False
+    mcp_username: str = ""
+    # Days a connector stays authorized without being used (its refresh token).
+    mcp_token_days: int = 30
+
+    @field_validator("mcp_username")
+    @classmethod
+    def _stored_form(cls, value: str) -> str:
+        return value.strip().lower()  # as accounts.normalize_username stores names
+
     @field_validator("app_domain")
     @classmethod
     def _bare_hostname(cls, value: str) -> str:

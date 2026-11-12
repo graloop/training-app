@@ -163,6 +163,30 @@ times. `LOG_LEVEL=DEBUG` shows "Garmin didn't answer ... for <day>".
 The first run is 5 minutes after a start, then each run logs
 `Background sync done: N account(s)`.
 
+### Claude's connector doesn't connect
+
+Only with `MCP_ENABLED=true` (README, "Connect Claude (MCP)"). Look at
+`docker logs` while clicking **Connect** in claude.ai:
+
+- **The start of the log says why it can't work**: `MCP_USERNAME is empty`,
+  `is not an account yet` or `is an admin account`. Fix the variable (a
+  regular account's username) and redeploy.
+- **No request to `/.well-known/...` or `/mcp` arrives** (uvicorn prints
+  every request, whatever `LOG_LEVEL` is): Cloudflare is stopping Claude
+  before the app. Turn off Bot Fight Mode, or add a WAF
+  rule that lets `/mcp`, `/oauth/*` and `/.well-known/*` through.
+- **`/mcp` answers 404**: the connector isn't on. `MCP_ENABLED` and
+  `MCP_USERNAME` must both be set on the running container (`docker exec
+  <container> env | grep MCP`).
+- **The login page says "isn't registered here"**: remove the connector in
+  Claude's settings and add it again.
+- **"Wrong username or password, or this account can't use the connector"**:
+  only `MCP_USERNAME` can log in there. Five wrong tries lock that username
+  for 15 minutes, as on the normal login; a restart clears it.
+- **It worked, then Claude asks to connect again**: the password was changed
+  (that disconnects Claude on purpose), or the connector wasn't used for
+  `MCP_TOKEN_DAYS` days.
+
 ### The Plan or History tab shows something wrong
 
 - A draft line flagged in red: the message says what to fix. The parser is

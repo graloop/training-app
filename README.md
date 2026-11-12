@@ -224,6 +224,7 @@ How the parts work together, and where to change what:
     │   │   ├── training_log.py   the History tab's log (build_log, one function per section)
     │   │   ├── draft_parser.py   "date | sport | duration | details" lines -> sessions or errors
     │   │   └── drafts.py         a draft as the page sees it, putting sessions on the calendar
+    │   ├── mcp/            Claude as a custom connector (MCP_ENABLED): OAuth login, bearer check, tools
     │   └── garmin/         everything that talks to Garmin Connect
     │       ├── client.py     the only file that calls Garmin (wraps garth/garminconnect)
     │       ├── sync.py       one sync of one account: what is fetched and how it is stored
@@ -497,6 +498,34 @@ GitHub Actions and pulled from ghcr.io).
 > `POSTGRES_PASSWORD` in your deployed `.env` is actually a value you're
 > comfortable putting on your server, not a throwaway.
 
+### Connect Claude (MCP)
+
+Instead of reading the page through the Chrome extension, Claude (claude.ai,
+the desktop app and the phone app) can connect to the app as a **custom
+connector** and call it directly. It runs on your Claude subscription: no API
+key, no extra container. The connector lives at `https://APP_DOMAIN/mcp`,
+inside the same app.
+
+Only **one account** can be connected: the regular (non-admin) account named
+by `MCP_USERNAME`. Friends keep using the page as before and their data is
+never reachable through the connector.
+
+1. The app must be reachable from the internet (`APP_DOMAIN`, above): Claude
+   calls in from Anthropic's servers, not from your computer.
+2. Add `MCP_ENABLED=true` and `MCP_USERNAME=<your username>` to the stack's
+   environment variables, then **Pull and redeploy**. The log says
+   `Claude connector on at /mcp for account '<your username>'`.
+3. In claude.ai: Settings → Connectors → **Add custom connector**, URL
+   `https://APP_DOMAIN/mcp`, advanced fields empty. Click **Connect** and log
+   in on the app's "Connect Claude" page with that account's password.
+4. Ask Claude to run the connector's `connection_check` tool: it answers with
+   the connected account and today's date.
+
+The connection lasts as long as it is used at least every `MCP_TOKEN_DAYS`
+days. Changing that account's password disconnects Claude, like it logs out
+every browser. If Cloudflare's Bot Fight Mode or a WAF rule is on, it must let
+requests to `/mcp`, `/oauth/*` and `/.well-known/*` through.
+
 ## Environment variables
 
 Set in `.env` (loaded by both `npm start` and Docker Compose):
@@ -517,6 +546,9 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `LOG_LEVEL`                  | backend         | How much the app prints in `docker logs` / the `npm start` terminal: `INFO` (default), `DEBUG` to also see what Garmin didn't answer, `WARNING` for problems only |
 | `CORS_ALLOW_ORIGINS`         | backend         | Empty = same-origin only (default); comma-separated origins, or `*`  |
 | `APP_DOMAIN`                 | backend         | The public name friends open (e.g. `training.example.com`); when set the app only answers on `https://` that name. Empty (default) = no check |
+| `MCP_ENABLED`                | backend         | `true` adds Claude's connector at `/mcp` with its login pages (default `false`). See [Connect Claude (MCP)](#connect-claude-mcp) |
+| `MCP_USERNAME`               | backend         | The one regular account that may connect Claude. Never an admin account. Required with `MCP_ENABLED` |
+| `MCP_TOKEN_DAYS`             | backend         | Days the connector stays connected without being used (default 30)  |
 | `COMPOSE_PROFILES`           | docker-compose  | `tunnel` starts the optional Cloudflare Tunnel container             |
 | `CLOUDFLARE_TUNNEL_TOKEN`    | docker-compose  | Token of the Cloudflare Tunnel, only with `COMPOSE_PROFILES=tunnel`  |
 | `BACKEND_TAG`                | docker-compose  | Backend image tag to run (default `latest`; `sha-xxxxxxx` to roll back) |

@@ -1,0 +1,15 @@
+/* The "Connect Claude" login page (app/mcp/oauth.py, GET /oauth/authorize): one
+   centred card on top of base.css. Not linked by index.html. */
+
+.oauth-page { display: flex; justify-content: center; padding: 48px 16px; }
+.oauth-card {
+  width: 100%;
+  max-width: 360px;
+  padding: 24px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.oauth-card h1 { font-size: 1.2rem; margin: 0 0 8px; }
+.oauth-card form { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.oauth-card button { margin-top: 10px; }
