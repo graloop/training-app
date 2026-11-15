@@ -1,7 +1,8 @@
 // Plan tab: the draft as a calendar, with the same look as the Calendar tab
 // (grid pieces in core/week-grid.js). The + of a day adds a session, clicking
 // a session edits, moves or deletes it (the session dialog, saving to the
-// draft); Clear empties the draft; Push puts it on the main calendar.
+// draft); Clear empties the draft; Push puts it on the main calendar. The
+// draft empties on its own 24 h after its last change: the page says when.
 // The draft stays text on the server (one line per session, which Claude's
 // connector writes too): each change rewrites one line, found by its number,
 // and the answer is the whole draft parsed again, which this file redraws.
@@ -191,8 +192,24 @@ function renderSummary(draft) {
   }
 }
 
+// A draft empties 24 h after its last change (backend/app/planning/drafts.py, expire_if_old).
+function renderExpiry(draft) {
+  const el = document.getElementById("plan-expiry");
+  el.classList.toggle("hidden", !draft.expires_at);
+  if (!draft.expires_at) return;
+  const when = new Date(draft.expires_at).toLocaleString(locale(), {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  el.textContent = t("This draft will be cleared on {date}, unless it changes before.", { date: when });
+}
+
 function applyDraft(draft) {
   planDraft = draft;
+  renderExpiry(draft);
   document.getElementById("plan-range").textContent = fmtSpan(draft.start_date, draft.end_date);
   renderDraftErrors(draft.errors);
   renderGrid(draft);

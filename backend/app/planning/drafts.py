@@ -7,6 +7,10 @@ The Plan tab shows the draft as a calendar: adding, editing or deleting a
 session there rewrites one line of the text (add_session, edit_session,
 remove_line), found by its line number (DraftSession.line).
 
+A draft empties DRAFT_TTL_HOURS after its last change (expire_if_old): every
+read and write here checks first, so nothing has to run on a timer and it
+works even after the server was off.
+
 A draft is plain text (PlanDraft.text) parsed again on every read: nothing
 parsed is stored until put_on_calendar() turns the sessions into
 PlannedTraining rows. "today" is the browser's day (client_today), so a session
@@ -21,6 +25,7 @@ from .basics import SPORTS, fmt_minutes, monday_of, sport_of
 from .draft_parser import DraftSession, parse_draft
 
 DEFAULT_WEEKS = 4
+DRAFT_TTL_HOURS = 24  # counted from the last change, so a plan being written is never cut short
 
 
 class DraftProblem(ValueError):
@@ -69,8 +74,34 @@ def planned_between(db: Session, user: models.User, first: datetime.date, last: 
     )
 
 
+def _changed_at(draft: models.PlanDraft) -> datetime.datetime:
+    at = draft.updated_at or models.utcnow()
+    return at if at.tzinfo else at.replace(tzinfo=datetime.UTC)  # SQLite drops the offset
+
+
+def expires_at(draft: models.PlanDraft | None) -> datetime.datetime | None:
+    """When this draft will be emptied, or None when there is nothing to lose."""
+    if draft is None or not draft.text.strip():
+        return None
+    return _changed_at(draft) + datetime.timedelta(hours=DRAFT_TTL_HOURS)
+
+
+def expire_if_old(draft: models.PlanDraft | None, today: datetime.date, now: datetime.datetime | None = None) -> bool:
+    """Empty a draft left untouched for DRAFT_TTL_HOURS: no text, the default weeks.
+    True when it was emptied. The caller commits (a read that doesn't still shows it empty)."""
+    ends = expires_at(draft)
+    if ends is None or (now or models.utcnow()) < ends:
+        return False
+    draft.text = ""
+    draft.start_date, draft.weeks = monday_of(today), DEFAULT_WEEKS
+    draft.confirmed_at = None
+    draft.updated_at = models.utcnow()
+    return True
+
+
 def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, today: datetime.date) -> schemas.DraftOut:
     """The saved draft (or an empty one, DEFAULT_WEEKS from this Monday), parsed."""
+    expire_if_old(draft, today)
     start = draft.start_date if draft else monday_of(today)
     weeks = draft.weeks if draft else DEFAULT_WEEKS
     end = start + datetime.timedelta(days=weeks * 7 - 1)
@@ -92,6 +123,7 @@ def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, to
         replace_from=replace_from,
         existing_planned=existing,
         confirmed_at=draft.confirmed_at if draft else None,
+        expires_at=expires_at(draft),
     )
 
 
@@ -123,6 +155,7 @@ def save(db: Session, user: models.User, payload: schemas.DraftIn) -> None:
     if payload.notes is not None:
         draft.notes = payload.notes.strip() or None
     draft.confirmed_at = None
+    draft.updated_at = models.utcnow()  # even when nothing differs: saving again restarts the 24 h
 
 
 def confirm(db: Session, user: models.User, today: datetime.date) -> schemas.ConfirmResult:
@@ -130,6 +163,7 @@ def confirm(db: Session, user: models.User, today: datetime.date) -> schemas.Con
     draft's first day, if later) to its last day are replaced, so re-planning
     never duplicates. Raises DraftProblem when it can't. The caller commits."""
     draft = user.plan_draft
+    expire_if_old(draft, today)
     if draft is None:
         raise DraftProblem("Save a draft first")
     end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
@@ -168,6 +202,7 @@ def _draft_for(db: Session, user: models.User, today: datetime.date) -> models.P
         draft = models.PlanDraft(user_id=user.id, start_date=monday_of(today), weeks=DEFAULT_WEEKS, text="")
         db.add(draft)
         user.plan_draft = draft
+    expire_if_old(draft, today)
     return draft
 
 
@@ -184,6 +219,7 @@ def _cover(draft: models.PlanDraft, day: datetime.date) -> None:
 def _changed(draft: models.PlanDraft, lines: list[str]) -> None:
     draft.text = "\n".join(lines)
     draft.confirmed_at = None
+    draft.updated_at = models.utcnow()
 
 
 def _session_lines(draft: models.PlanDraft, today: datetime.date) -> set[int]:
@@ -205,6 +241,7 @@ def edit_session(user: models.User, line: int, session: schemas.DraftSessionIn, 
     """Rewrite the session on that line (moving it to another day widens the weeks if
     needed). Raises StaleLine when that line isn't a session any more. The caller commits."""
     draft = user.plan_draft
+    expire_if_old(draft, today)
     if draft is None or line not in _session_lines(draft, today):
         raise StaleLine()
     _cover(draft, session.date)
@@ -217,6 +254,7 @@ def remove_line(user: models.User, line: int, today: datetime.date) -> None:
     """Delete a session, or a line the parser couldn't read. Raises StaleLine when
     that line holds neither any more. The caller commits."""
     draft = user.plan_draft
+    expire_if_old(draft, today)
     if draft is None:
         raise StaleLine()
     end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)

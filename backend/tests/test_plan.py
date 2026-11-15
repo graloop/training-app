@@ -819,3 +819,70 @@ def test_draft_sessions_are_your_own(client, auth):
     assert client.delete("/api/plan/draft/sessions/1", headers=friend).status_code == 409  # their own (empty) draft
     assert client.get("/api/plan/draft", headers=auth).json()["sessions_count"] == 1
     assert client.post("/api/plan/draft/sessions", json=_session(day(1)), headers=admin_auth(client)).status_code == 403
+
+
+# --- The draft empties 24 h after its last change (drafts.expire_if_old) ----------------
+
+
+def _age_draft(hours):
+    """Make the athlete's draft look last changed `hours` ago."""
+    with SessionLocal() as db:
+        draft = db.query(models.PlanDraft).one()
+        draft.updated_at = models.utcnow() - datetime.timedelta(hours=hours)
+        db.commit()
+
+
+def test_a_draft_is_kept_for_a_day_then_emptied(client, auth):
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=3)
+    _age_draft(23)
+    kept = client.get("/api/plan/draft", headers=auth).json()
+    assert kept["sessions_count"] == 1 and kept["weeks"] == 3
+    _age_draft(25)
+    gone = client.get("/api/plan/draft", headers=auth).json()
+    assert gone["text"] == "" and gone["sessions_count"] == 0 and gone["expires_at"] is None
+    assert gone["weeks"] == 4 and gone["start_date"] == THIS_MONDAY.isoformat()  # the default weeks again
+    with SessionLocal() as db:  # stored empty, not only shown empty
+        assert db.query(models.PlanDraft).one().text == ""
+
+
+def test_the_day_counts_from_the_last_change(client, auth):
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
+    expires = datetime.datetime.fromisoformat(client.get("/api/plan/draft", headers=auth).json()["expires_at"])
+    assert datetime.timedelta(hours=23, minutes=59) < expires - datetime.datetime.now(datetime.UTC) <= datetime.timedelta(hours=24)
+    _age_draft(23)
+    _add(client, auth, date=day(1))  # a change restarts the count
+    _age_draft(0)  # (as the change just did)
+    assert client.get("/api/plan/draft", headers=auth).json()["sessions_count"] == 2
+
+
+def test_an_expired_draft_cannot_be_edited_or_pushed(client, auth):
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
+    _age_draft(25)
+    assert client.patch("/api/plan/draft/sessions/1", json=_session(day(1)), headers=auth).status_code == 409
+    res = client.post("/api/plan/draft/confirm", headers=auth)
+    assert res.status_code == 400 and res.json()["detail"] == "The draft has no sessions"
+    assert client.get("/api/calendar", params={"start": day(0).isoformat(), "end": day(0).isoformat()},
+                      headers=auth).json()["days"][0]["planned"] == []
+
+
+def test_an_empty_draft_never_expires_and_push_works_within_the_day(client, auth):
+    _save(client, auth, text="", weeks=2)
+    assert client.get("/api/plan/draft", headers=auth).json()["expires_at"] is None
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
+    _age_draft(20)
+    assert client.post("/api/plan/draft/confirm", headers=auth).status_code == 200
+
+
+def test_the_connector_sees_the_expiry_too(client, auth):
+    from app.mcp import text as mcp_text
+    from app.planning import drafts
+
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        shown = mcp_text.draft_text(drafts.draft_out(db, user, user.plan_draft, TODAY))
+    assert "Unless it changes, this draft is emptied on" in shown and "24 h after its last change" in shown
+    _age_draft(25)
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        assert "0 sessions read" in mcp_text.draft_text(drafts.draft_out(db, user, user.plan_draft, TODAY))

@@ -79,8 +79,11 @@ def get_draft(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
-    """The saved draft parsed, or an empty one starting next Monday."""
-    return drafts.draft_out(db, user, user.plan_draft, drafts.client_today(today))
+    """The saved draft parsed, or an empty one starting this Monday. A draft left
+    untouched for drafts.DRAFT_TTL_HOURS comes back empty."""
+    out = drafts.draft_out(db, user, user.plan_draft, drafts.client_today(today))
+    db.commit()  # keeps the expiry, if draft_out just emptied it
+    return out
 
 
 @router.put("/draft", response_model=schemas.DraftOut)

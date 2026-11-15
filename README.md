@@ -124,6 +124,12 @@ Chrome** extension also works: it edits the page like you would.
   (`Tue Oct 13 | run | 1:15 | Track: 2×6×400 m`), which is what Claude writes;
   a line it couldn't read is listed above the calendar with why, and a
   **Delete** button. Push waits until none is left.
+
+  A draft is **emptied 24 hours after its last change** (counted from the
+  last change, so a plan being written is never cut short; an imported plan
+  too). The page says when, under the buttons, and so does the connector's
+  `get_draft`. Nothing runs on a timer: the draft is checked each time it is
+  read or changed.
 - **Training log (for Claude)** — not a tab: the whole training history as
   text, which Claude reads through the connector (`get_training_log`, up to
   26 weeks, the last 4 in full detail and older ones as one line per session

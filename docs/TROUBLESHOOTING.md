@@ -189,6 +189,9 @@ Only with `MCP_ENABLED=true` (README, "Connect Claude (MCP)"). Look at
 
 ### The Plan tab or the training log shows something wrong
 
+- The draft is empty although Claude wrote one: a draft empties 24 hours
+  after its last change (`planning/drafts.py`, `DRAFT_TTL_HOURS`). The page
+  shows when, under the buttons.
 - A draft line flagged in red: the message says what to fix. The parser is
   `planning/draft_parser.py`, and `tests/test_plan.py` shows every format
   it accepts.

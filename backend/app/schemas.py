@@ -458,6 +458,7 @@ class DraftOut(BaseModel):
     replace_from: datetime.date  # confirming replaces planned sessions from this day to end_date
     existing_planned: int  # sessions currently on the calendar in that span
     confirmed_at: UtcDatetime | None
+    expires_at: UtcDatetime | None = None  # drafts.DRAFT_TTL_HOURS after the last change; None when empty
 
 
 class ConfirmResult(BaseModel):

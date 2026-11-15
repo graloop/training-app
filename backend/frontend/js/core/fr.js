@@ -269,6 +269,8 @@ export const FR = {
     "Le plan des prochaines semaines, avant qu'il n'arrive à votre calendrier. Claude l'écrit par le connecteur, ou ajoutez et modifiez des séances vous-même avec le <strong>+</strong> de chaque jour. Rien ne change à votre calendrier tant que vous n'appuyez pas sur <strong>Pousser au calendrier</strong>.",
   "Draft plan": "Brouillon du plan",
   "Push on main calendar": "Pousser au calendrier",
+  "This draft will be cleared on {date}, unless it changes before.":
+    "Ce brouillon se videra le {date}, à moins qu'il ne change d'ici là.",
   "Click again to clear the draft": "Cliquez encore pour vider le brouillon",
   "Draft {sport}, {time}": "Brouillon : {sport}, {time}",
   "Delete line {n}": "Supprimer la ligne {n}",

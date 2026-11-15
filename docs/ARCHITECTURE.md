@@ -115,7 +115,7 @@ Backend, under `backend/app/`:
 | `planning/session_detail.py` | What a session's 5-second trace adds, and one session in full |
 | `planning/training_log.py` | The training log Claude reads, one function per section (`build_log` puts them together) |
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
-| `planning/drafts.py` | A draft as the page sees it: saving it, editing one session (one line) at a time, clearing it, confirming it, putting sessions on the calendar |
+| `planning/drafts.py` | A draft as the page sees it: saving it, editing one session (one line) at a time, clearing it, confirming it, putting sessions on the calendar, and emptying it 24 h after its last change (`expire_if_old`, called by every read and write) |
 | `planning/planned_sessions.py` | One planned session: found, added, edited |
 | `planning/objectives.py` | Target events: listed, added, edited |
 | `mcp/` | Claude as a custom connector, only with `MCP_ENABLED`: see [Claude's connector](#claudes-connector-mcp) |
