@@ -1,6 +1,7 @@
-"""Accounts outside the API: the first admin created on startup, the generic
-test accounts of `npm start`, the connection log the admin dashboard shows,
-and the login lockout (in memory, so one server process only).
+"""Accounts outside the API: the first admin created on startup, renaming an
+account (rename), the generic test accounts of `npm start`, the connection log
+the admin dashboard shows, and the login lockout (in memory, so one server
+process only).
 
 Used by main.py (startup), routers/auth.py (login), routers/admin.py and
 routers/share.py (wrong share codes are limited the same way)."""
@@ -37,6 +38,49 @@ def bootstrap_admin() -> None:
                 log.warning("No admin account: set ADMIN_USERNAME and ADMIN_PASSWORD to create one.")
             return
         _ensure_admin(db, username, settings.admin_password)
+
+
+# --- Renaming an account ---------------------------------------------------
+
+
+class RenameProblem(ValueError):
+    """Why an account can't take that name, as a sentence. `taken` = another account has it (409)."""
+
+    def __init__(self, message: str, taken: bool = False):
+        super().__init__(message)
+        self.taken = taken
+
+
+def _names_in_config() -> dict[str, str]:
+    """Account names the app's settings point at, with the variable that names them."""
+    settings = get_settings()
+    names = {"ADMIN_USERNAME": normalize_username(settings.admin_username), "MCP_USERNAME": settings.mcp_username}
+    return {variable: name for variable, name in names.items() if name}
+
+
+def rename(db: Session, user: models.User, new_username: str) -> str:
+    """Give `user` a new login name (admin dashboard, and the account's own settings).
+    Returns the old name. The session token holds the account id, so nobody is
+    logged out; the connection log keeps the old name on past attempts. The caller commits.
+
+    Accounts named by ADMIN_USERNAME or MCP_USERNAME are refused, both ways:
+    renaming one away would recreate an admin under the old name at the next
+    start, or cut Claude's connector; renaming another account onto one would
+    make it the admin, or the connector's account."""
+    old, new = user.username, normalize_username(new_username)
+    if new == old:
+        return old
+    for variable, name in _names_in_config().items():
+        if old == name:
+            raise RenameProblem(f"{old} is the account {variable} names: change {variable} in the app's settings first.")
+        if new == name:
+            raise RenameProblem(f"{new} is the name {variable} gives another account: pick another name.")
+    if db.query(models.User).filter(models.User.username == new, models.User.id != user.id).first():
+        raise RenameProblem(f'"{new}" already exists', taken=True)
+    user.username = new
+    clear_failures(old)
+    log.info("Account %r renamed to %r", old, new)
+    return old
 
 
 # The admin can reset anyone's password, so whoever guesses this one reaches

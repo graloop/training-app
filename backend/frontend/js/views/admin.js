@@ -10,7 +10,7 @@
 import { api } from "../core/api.js";
 import { plural } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
-import { clearSession, getUser } from "../core/session.js";
+import { clearSession, getUser, setUser } from "../core/session.js";
 import { showStatus, showView } from "../core/ui.js";
 
 const DASH_DAYS = 7;
@@ -232,7 +232,7 @@ function renderResetForm(row, u) {
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.className = "btn-ghost";
-  cancel.textContent = "Cancel";
+  cancel.textContent = t("Cancel");
   cancel.addEventListener("click", () => formRow.remove());
   form.append(label, input, save, cancel);
   form.addEventListener("submit", async (e) => {
@@ -283,6 +283,65 @@ function describeAccountData(data) {
     : t("{list} and {last}", { list: parts.slice(0, -1).join(", "), last: parts[parts.length - 1] });
 }
 
+// Renaming: the new login name, checked like at creation. The account stays logged in.
+function renderRenameForm(row, u) {
+  const existing = usersBody.querySelector("tr.reset-row");
+  if (existing) existing.remove();
+
+  const formRow = document.createElement("tr");
+  formRow.className = "reset-row";
+  const cell = document.createElement("td");
+  cell.colSpan = 6;
+  const form = document.createElement("form");
+  form.className = "reset-form";
+  form.noValidate = true;
+  const label = document.createElement("label");
+  label.htmlFor = `rename-${u.id}`;
+  label.textContent = t("New username for {name}", { name: u.username });
+  const input = document.createElement("input");
+  input.id = `rename-${u.id}`;
+  input.type = "text";
+  input.autocomplete = "off";
+  input.autocapitalize = "none";
+  input.spellcheck = false;
+  input.value = u.username;
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.textContent = t("Rename");
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn-ghost";
+  cancel.textContent = t("Cancel");
+  cancel.addEventListener("click", () => formRow.remove());
+  form.append(label, input, save, cancel);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = input.value.trim().toLowerCase();
+    if (!/^[a-z0-9._@-]{3,64}$/.test(username))
+      return showStatus(userStatus, t("Usernames are 3–64 characters: letters, digits, . _ - @"), true);
+    if (username === u.username) return formRow.remove();
+    try {
+      await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ username }) });
+      if (u.id === getUser().id) {
+        setUser({ ...getUser(), username });
+        document.getElementById("user-name").textContent = `${username} · ${t("admin")}`;
+      }
+      await loadDashboard();
+      showStatus(
+        userStatus,
+        t("{old} is now called {new}. Tell them their new login name.", { old: u.username, new: username }),
+      );
+      userStatus.classList.add("ok");
+    } catch (err) {
+      showStatus(userStatus, err.message, true);
+    }
+  });
+  cell.appendChild(form);
+  formRow.appendChild(cell);
+  row.after(formRow);
+  input.select();
+}
+
 // Deleting can't be undone, so it says what will be lost and needs the username typed.
 function renderDeleteForm(row, u) {
   const existing = usersBody.querySelector("tr.reset-row");
@@ -320,7 +379,7 @@ function renderDeleteForm(row, u) {
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.className = "btn-ghost";
-  cancel.textContent = "Cancel";
+  cancel.textContent = t("Cancel");
   cancel.addEventListener("click", () => formRow.remove());
   input.addEventListener("input", () => {
     submit.disabled = input.value.trim().toLowerCase() !== u.username;
@@ -380,6 +439,14 @@ function renderUsers(users) {
     reset.setAttribute("aria-label", t("Reset password for {name}", { name: u.username }));
     reset.addEventListener("click", () => renderResetForm(row, u));
     actions.appendChild(reset);
+
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.className = "btn-link";
+    rename.textContent = t("Rename");
+    rename.setAttribute("aria-label", t("Rename {name}", { name: u.username }));
+    rename.addEventListener("click", () => renderRenameForm(row, u));
+    actions.appendChild(rename);
 
     if (!isMe) {
       const makeAdmin = !u.is_admin;

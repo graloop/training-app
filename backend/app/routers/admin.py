@@ -137,8 +137,15 @@ def update_user(
     db: Session = Depends(get_db),
     admin: models.User = Depends(get_current_admin),
 ):
-    """Reset a password (logs that user out everywhere) and/or change admin rights."""
+    """Reset a password (logs that user out everywhere), change admin rights,
+    and/or rename the account (the owner stays logged in)."""
     user = _get(db, user_id)
+    if payload.username is not None:
+        try:
+            accounts.rename(db, user, payload.username)
+        except accounts.RenameProblem as problem:
+            code = status.HTTP_409_CONFLICT if problem.taken else status.HTTP_400_BAD_REQUEST
+            raise HTTPException(status_code=code, detail=str(problem)) from problem
     if payload.password is not None:
         user.hashed_password = hash_password(payload.password)
         user.token_version = (user.token_version or 0) + 1

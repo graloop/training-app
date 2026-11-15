@@ -364,6 +364,11 @@ export const FR = {
     "Les activités d'avant votre première synchronisation, pour les totaux hebdomadaires à long terme.",
 
   // --- Admin dashboard ---
+  Rename: "Renommer",
+  "Rename {name}": "Renommer {name}",
+  "New username for {name}": "Nouveau nom d'utilisateur pour {name}",
+  "{old} is now called {new}. Tell them their new login name.":
+    "{old} s'appelle maintenant {new}. Prévenez-le de son nouveau nom de connexion.",
   "Admin dashboard": "Tableau de bord admin",
   "Monitor who connects and manage accounts. Admin accounts don't have a training calendar.":
     "Suivez qui se connecte et gérez les comptes. Les comptes admin n'ont pas de calendrier d'entraînement.",

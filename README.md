@@ -29,7 +29,10 @@ Chrome** extension also works: it edits the page like you would.
   for training: instead of the calendar they get a dashboard with the
   connections of the last 7 days (logins per day, failed attempts, the list
   of recent connections), every account with its last login, and the tools
-  to create an account, reset a password, grant or remove admin rights and
+  to create an account, reset a password, rename an account (its owner stays
+  logged in and logs in with the new name from then on; the accounts named
+  by `ADMIN_USERNAME` and `MCP_USERNAME` can't be renamed, nor can another
+  account take those names), grant or remove admin rights and
   delete an account (the dashboard lists what the account holds and asks
   for its username to be typed first; deleting can't be undone). Admins have no calendar, plan, objectives or Garmin
   connection, so keep a separate regular account for your own training.
@@ -625,7 +628,7 @@ New nullable columns are added to existing databases on startup
 | `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status                    |
 | `/api/auth/password`     | POST   | Change your own password; returns a new token                 |
 | `/api/admin/users`       | GET/POST | Admin: list users / create a user                            |
-| `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin / delete user and their data (`?confirm=<username>` required) |
+| `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin, rename (`username`; 409 if taken) / delete user and their data (`?confirm=<username>` required) |
 | `/api/admin/activity`    | GET    | Admin: logins and failed attempts per day (`?days=7&tz_offset=`), totals, recent connections |
 | `/api/garmin/connect`    | POST/DELETE | Link your Garmin (email/password sent once to Garmin) / unlink |
 | `/api/garmin/sync/start` | POST   | Start syncing on the server (batches until nothing waits) and answer straight away; 409 = connect Garmin first |

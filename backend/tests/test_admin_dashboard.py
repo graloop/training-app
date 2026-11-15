@@ -254,3 +254,59 @@ def test_lockout_memory_forgets_old_names(monkeypatch):
     accounts.record_failure("fresh")
     assert set(accounts._failures) == {"fresh"}
     accounts.reset_all_failures()
+
+
+# --- Renaming an account (accounts.rename) -----------------------------------------
+
+
+def _user_id(username):
+    with SessionLocal() as db:
+        return db.query(models.User).filter_by(username=username).one().id
+
+
+def _rename(client, user_id, username):
+    return client.patch(f"/api/admin/users/{user_id}", json={"username": username}, headers=admin_auth(client))
+
+
+def test_admin_renames_an_account_which_stays_logged_in(client):
+    headers = make_user(client, "friend", garmin=False)
+    res = _rename(client, _user_id("friend"), "buddy")
+    assert res.status_code == 200 and res.json()["username"] == "buddy"
+    assert client.get("/api/auth/me", headers=headers).json()["username"] == "buddy"  # same token still works
+    assert login(client, "buddy")
+    bad = client.post("/api/auth/login", json={"username": "friend", "password": USER_PASSWORD})
+    assert bad.status_code == 401
+    with SessionLocal() as db:  # past connections keep the name they had
+        names = {e.username for e in db.query(models.LoginEvent).filter_by(user_id=_user_id("buddy"))}
+    assert "friend" in names
+
+
+def test_rename_refuses_a_taken_or_invalid_name(client):
+    make_user(client, "friend", garmin=False)
+    make_user(client, "other", garmin=False)
+    assert _rename(client, _user_id("friend"), "other").status_code == 409
+    for bad in ("ab", "Has Space", "x" * 65, "é"):
+        assert _rename(client, _user_id("friend"), bad).status_code == 422, bad
+    assert _rename(client, _user_id("friend"), "friend").status_code == 200  # same name: nothing to do
+    with SessionLocal() as db:
+        assert {u for (u,) in db.query(models.User.username)} >= {"friend", "other"}
+
+
+def test_rename_refuses_the_accounts_the_settings_name(client, auth):
+    """conftest: ADMIN_USERNAME=admin and MCP_USERNAME=athlete."""
+    make_user(client, "friend", garmin=False)
+    for user, new in (("admin", "boss"), ("athlete", "runner"), ("friend", "admin"), ("friend", "athlete")):
+        res = _rename(client, _user_id(user), new)
+        assert res.status_code == 400, (user, new)
+        assert "USERNAME" in res.json()["detail"]
+    assert _user_id("admin") and _user_id("athlete") and _user_id("friend")
+
+
+def test_rename_clears_the_old_names_lockout(client):
+    make_user(client, "friend", garmin=False)
+    for _ in range(accounts.MAX_FAILURES):
+        client.post("/api/auth/login", json={"username": "friend", "password": "wrong"})
+    assert accounts.seconds_locked("friend")
+    assert _rename(client, _user_id("friend"), "buddy").status_code == 200
+    assert not accounts.seconds_locked("friend")
+

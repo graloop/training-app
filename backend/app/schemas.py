@@ -93,6 +93,7 @@ class AdminUserCreate(BaseModel):
 class AdminUserUpdate(BaseModel):
     password: str | None = Field(default=None, min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
     is_admin: bool | None = None
+    username: str | None = Field(default=None, pattern=USERNAME_PATTERN)  # rename (accounts.rename)
 
 
 class AdminUsersResponse(BaseModel):
