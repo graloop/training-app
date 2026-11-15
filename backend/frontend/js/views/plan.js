@@ -1,64 +1,119 @@
-// Plan tab, top to bottom: the preview of the draft and the button that puts
-// it on the calendar, the draft itself (one session per line), the rule set.
-// The server parses the draft (backend/app/planning/draft_parser.py, shaped for
-// the page by planning/drafts.py) and sends back the sessions, the lines with a
-// problem and the weekly totals: this file never parses a line itself.
-// API: GET/PUT /api/plan/draft, POST /api/plan/draft/confirm, GET/PUT
-// /api/plan/rules. Markup: #tab-plan. Styles: css/plan.css.
-//
-// Flow: typing marks the draft dirty; leaving the box (or Save) PUTs it and
-// redraws from the answer; "Put this plan on the calendar" saves first if
-// needed, then confirms (two clicks when planned sessions would be replaced).
+// Plan tab: the draft as a calendar, with the same look as the Calendar tab
+// (grid pieces in core/week-grid.js). The + of a day adds a session, clicking
+// a session edits, moves or deletes it (the session dialog, saving to the
+// draft); Clear empties the draft; Push puts it on the main calendar.
+// The draft stays text on the server (one line per session, which Claude's
+// connector writes too): each change rewrites one line, found by its number,
+// and the answer is the whole draft parsed again, which this file redraws.
+// It never parses a line itself (backend/app/planning/draft_parser.py, drafts.py).
+// API: GET/DELETE /api/plan/draft, POST /api/plan/draft/sessions, PATCH/DELETE
+// /api/plan/draft/sessions/{line}, POST /api/plan/draft/confirm.
+// Markup: #tab-plan. Styles: css/plan.css (and css/calendar.css for the grid).
 
 import { api } from "../core/api.js";
-import { addDays, fmtDate, fmtLongDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";
+import { addDays, fmtDate, fmtHours, fmtSpan, isoDate, plural } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
+import { sportLabel } from "../core/sports.js";
 import { showStatus } from "../core/ui.js";
+import { addButton, addNotes, dayCell, gridHead, makeEditable, makeEntry } from "../core/week-grid.js";
 import { showCalendarAround } from "./calendar.js";
-import { renderDraftPreview } from "./plan-preview.js";
+import { openSessionDialog } from "./session-dialog.js";
 
-const rulesText = document.getElementById("rules-text");
-const rulesStatus = document.getElementById("rules-status");
-const planStart = document.getElementById("plan-start");
-const planWeeks = document.getElementById("plan-weeks");
-const draftText = document.getElementById("draft-text");
-const draftStatus = document.getElementById("draft-status");
+const grid = document.getElementById("plan-grid");
 const draftErrors = document.getElementById("draft-errors");
-const draftPreview = document.getElementById("draft-preview");
+const clearBtn = document.getElementById("plan-clear");
 const confirmBtn = document.getElementById("draft-confirm");
 const confirmView = document.getElementById("confirm-view");
 const confirmStatus = document.getElementById("confirm-status");
 
 let planDraft = null; // the server's last answer: parsed sessions, errors, weekly totals
-let draftDirty = false; // typed since the last save
 
-// Every Monday from this week to about six months out, so any future week can be planned.
-function fillPlanStart(selectedIso) {
-  const monday = thisMonday();
-  const options = [];
-  for (let i = 0; i < 27; i++) {
-    const day = addDays(monday, i * 7);
-    let label = day.toLocaleDateString(locale(), {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      ...(day.getFullYear() !== monday.getFullYear() ? { year: "numeric" } : {}),
-    });
-    if (i === 0) label = t("This week ({date})", { date: label });
-    if (i === 1) label = t("Next week ({date})", { date: label });
-    options.push([isoDate(day), label]);
-  }
-  if (selectedIso && !options.some(([iso]) => iso === selectedIso))
-    options.unshift([selectedIso, fmtLongDate(selectedIso)]);
-  planStart.innerHTML = "";
-  for (const [iso, label] of options) {
-    const opt = document.createElement("option");
-    opt.value = iso;
-    opt.textContent = label;
-    planStart.appendChild(opt);
-  }
-  if (selectedIso) planStart.value = selectedIso;
+const today = () => isoDate(new Date());
+const draftUrl = (path = "") => `/api/plan/draft${path}?today=${today()}`;
+
+// The session dialog saves here instead of on the calendar. A session of the
+// draft is { line, activity_type, planned_duration_minutes, notes }.
+function draftBody(body) {
+  return JSON.stringify({
+    date: body.date,
+    activity_type: body.activity_type,
+    minutes: body.planned_duration_minutes,
+    details: body.notes,
+  });
 }
+const DRAFT_STORE = {
+  add: (body) => api(draftUrl("/sessions"), { method: "POST", body: draftBody(body) }),
+  update: (session, body) => api(draftUrl(`/sessions/${session.line}`), { method: "PATCH", body: draftBody(body) }),
+  remove: (session) => api(draftUrl(`/sessions/${session.line}`), { method: "DELETE" }),
+};
+
+// A 409 means the draft changed elsewhere (another tab, Claude): show the new one.
+async function afterSave(draft) {
+  if (draft) applyDraft(draft);
+}
+
+// --- The grid ---
+
+// The week column: planned time, then each sport's share.
+function weekSummary(week) {
+  const cell = document.createElement("div");
+  cell.className = "week-summary";
+  const title = document.createElement("div");
+  title.className = "week-title";
+  title.textContent = t("Week of {date}", {
+    date: new Date(week.start + "T00:00:00").toLocaleDateString(locale(), { month: "short", day: "numeric" }),
+  });
+  cell.appendChild(title);
+  const rows = [["Planned", week.total_minutes, "planned"]];
+  for (const [sport, minutes] of Object.entries(week.minutes_by_sport)) {
+    if (minutes > 0)
+      rows.push([{ swim: "Swim", bike: "Bike", run: "Run", strength: "Strength" }[sport] || "Other", minutes, ""]);
+  }
+  for (const [label, minutes, cls] of rows) {
+    const row = document.createElement("div");
+    row.className = `week-row ${cls}`;
+    const name = document.createElement("span");
+    name.textContent = t(label);
+    const value = document.createElement("strong");
+    value.textContent = fmtHours(minutes);
+    row.append(name, value);
+    cell.appendChild(row);
+  }
+  return cell;
+}
+
+function renderGrid(draft) {
+  grid.innerHTML = "";
+  gridHead(grid);
+  const now = today();
+  for (const week of draft.weeks_preview) {
+    for (let i = 0; i < 7; i++) {
+      const date = isoDate(addDays(new Date(week.start + "T00:00:00"), i));
+      const { cell } = dayCell(date, now);
+      for (const s of week.sessions.filter((x) => x.date === date)) {
+        const time = fmtHours(s.minutes);
+        const entry = makeEntry("planned", s.activity_type, time);
+        entry.title =
+          t("Draft {sport}, {time}", { sport: sportLabel(s.activity_type), time }) +
+          `${s.details ? `: ${s.details}` : ""}${t(". Click to edit.")}`;
+        addNotes(entry, s.details);
+        const session = {
+          line: s.line,
+          activity_type: s.activity_type,
+          planned_duration_minutes: s.minutes,
+          notes: s.details,
+        };
+        makeEditable(entry, () => openSessionDialog(date, session, afterSave, DRAFT_STORE));
+        cell.appendChild(entry);
+      }
+      if (date >= now) cell.appendChild(addButton(date, () => openSessionDialog(date, null, afterSave, DRAFT_STORE)));
+      grid.appendChild(cell);
+    }
+    grid.appendChild(weekSummary(week));
+  }
+}
+
+// --- Lines the server couldn't read: no box to fix them in, so each can be deleted ---
 
 function renderDraftErrors(errors) {
   draftErrors.innerHTML = "";
@@ -74,24 +129,50 @@ function renderDraftErrors(errors) {
     where.textContent = t("Line {n}: {text}", { n: e.line, text: e.text });
     const why = document.createElement("span");
     why.textContent = e.message;
-    item.append(where, why);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn-link danger";
+    del.textContent = t("Delete");
+    del.setAttribute("aria-label", t("Delete line {n}", { n: e.line }));
+    del.addEventListener("click", async () => {
+      try {
+        applyDraft(await api(draftUrl(`/sessions/${e.line}`), { method: "DELETE" }));
+      } catch (err) {
+        if (err.status === 409) loadPlanPage();
+        else if (err.status !== 401) showStatus(confirmStatus, err.message, true);
+      }
+    });
+    item.append(where, why, del);
     list.appendChild(item);
   }
   draftErrors.append(title, list);
 }
 
-function resetConfirmButton() {
+// --- Clear and Push: two clicks when something would be lost, instead of a confirm() popup ---
+
+function resetButtons() {
+  clearBtn.classList.remove("confirming");
+  clearBtn.textContent = t("Clear");
   confirmBtn.classList.remove("confirming");
-  confirmBtn.textContent = t("Put this plan on the calendar");
+  confirmBtn.textContent = t("Push on main calendar");
 }
 
-function renderConfirm(draft) {
+function armed(button, text) {
+  if (button.classList.contains("confirming")) return true;
+  resetButtons();
+  button.classList.add("confirming");
+  button.textContent = text;
+  setTimeout(resetButtons, 5000);
+  return false;
+}
+
+function renderSummary(draft) {
   const summary = document.getElementById("confirm-summary");
-  resetConfirmButton();
-  const ready = draft.sessions_count > 0 && draft.errors.length === 0;
-  confirmBtn.disabled = !ready;
+  resetButtons();
+  confirmBtn.disabled = !(draft.sessions_count > 0 && draft.errors.length === 0);
+  clearBtn.disabled = !draft.text.trim();
   if (draft.errors.length) {
-    summary.textContent = t("Fix the {lines} flagged in the draft below first.", {
+    summary.textContent = t("Fix or delete the {lines} listed below first.", {
       lines: plural(draft.errors.length, "line"),
     });
   } else if (!draft.sessions_count) {
@@ -110,108 +191,52 @@ function renderConfirm(draft) {
   }
 }
 
-function applyDraft(draft, { fill = false } = {}) {
+function applyDraft(draft) {
   planDraft = draft;
-  if (fill) {
-    fillPlanStart(draft.start_date);
-    if (![...planWeeks.options].some((o) => o.value === String(draft.weeks))) {
-      const opt = document.createElement("option");
-      opt.value = String(draft.weeks);
-      opt.textContent = plural(draft.weeks, "week");
-      planWeeks.appendChild(opt);
-    }
-    planWeeks.value = String(draft.weeks);
-    draftText.value = draft.text;
-    draftDirty = false;
-  }
   document.getElementById("plan-range").textContent = fmtSpan(draft.start_date, draft.end_date);
   renderDraftErrors(draft.errors);
-  renderDraftPreview(draft, draftPreview);
-  renderConfirm(draft);
-}
-
-async function saveDraft({ quiet = false } = {}) {
-  try {
-    const draft = await api(`/api/plan/draft?today=${isoDate(new Date())}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        start_date: planStart.value,
-        weeks: Number(planWeeks.value),
-        text: draftText.value,
-      }),
-    });
-    draftDirty = false;
-    applyDraft(draft);
-    confirmView.classList.add("hidden");
-    if (!quiet) {
-      const problems = draft.errors.length ? t(", {lines} to fix", { lines: plural(draft.errors.length, "line") }) : "";
-      showStatus(
-        draftStatus,
-        t("Saved: {sessions}{problems}. Not on the calendar yet.", {
-          sessions: plural(draft.sessions_count, "session"),
-          problems,
-        }),
-      );
-      if (!draft.errors.length) draftStatus.classList.add("ok");
-    }
-    return draft;
-  } catch (err) {
-    if (err.status !== 401) showStatus(draftStatus, err.message, true);
-    return null;
-  }
+  renderGrid(draft);
+  renderSummary(draft);
 }
 
 export async function loadPlanPage() {
-  for (const el of [draftStatus, confirmStatus, rulesStatus]) el.classList.add("hidden");
+  confirmStatus.classList.add("hidden");
   confirmView.classList.add("hidden");
   try {
-    const [draft, rules] = await Promise.all([
-      api(`/api/plan/draft?today=${isoDate(new Date())}`),
-      api("/api/plan/rules"),
-    ]);
-    rulesText.value = rules.rules;
-    applyDraft(draft, { fill: true });
+    applyDraft(await api(draftUrl()));
   } catch (err) {
     if (err.status !== 401) showStatus(confirmStatus, err.message, true);
   }
 }
 
-// --- The draft ---
-
-draftText.addEventListener("input", () => {
-  draftDirty = true;
-});
-// Saving when the box loses focus keeps the preview current without an extra click.
-draftText.addEventListener("change", () => saveDraft());
-for (const el of [planStart, planWeeks]) el.addEventListener("change", () => saveDraft());
-document.getElementById("draft-save").addEventListener("click", async () => {
-  const draft = await saveDraft();
-  // The preview is above the draft: bring it into view, unless there are lines to fix right here.
-  if (draft && !draft.errors.length)
-    document.getElementById("plan-panel").scrollIntoView({ behavior: "smooth", block: "start" });
-});
-
-// --- Putting it on the calendar ---
-
-// Two clicks when sessions will be replaced, instead of a confirm() dialog.
-confirmBtn.addEventListener("click", async () => {
-  if (draftDirty && !(await saveDraft({ quiet: true }))) return;
-  if (!planDraft || planDraft.errors.length || !planDraft.sessions_count) return;
-  if (planDraft.existing_planned > 0 && !confirmBtn.classList.contains("confirming")) {
-    confirmBtn.classList.add("confirming");
-    confirmBtn.textContent = t("Click again: replaces {sessions}", {
-      sessions: plural(planDraft.existing_planned, "planned session"),
-    });
-    setTimeout(resetConfirmButton, 5000);
-    return;
+clearBtn.addEventListener("click", async () => {
+  if (!armed(clearBtn, t("Click again to clear the draft"))) return;
+  try {
+    applyDraft(await api(draftUrl(), { method: "DELETE" }));
+    confirmView.classList.add("hidden");
+    confirmStatus.classList.add("hidden");
+  } catch (err) {
+    if (err.status !== 401) showStatus(confirmStatus, err.message, true);
   }
+});
+
+confirmBtn.addEventListener("click", async () => {
+  if (!planDraft || planDraft.errors.length || !planDraft.sessions_count) return;
+  if (
+    planDraft.existing_planned > 0 &&
+    !armed(
+      confirmBtn,
+      t("Click again: replaces {sessions}", { sessions: plural(planDraft.existing_planned, "planned session") }),
+    )
+  )
+    return;
   confirmBtn.disabled = true;
   try {
-    const result = await api(`/api/plan/draft/confirm?today=${isoDate(new Date())}`, { method: "POST" });
+    const result = await api(draftUrl("/confirm"), { method: "POST" });
     const replaced = result.replaced
       ? t(", replacing {sessions}", { sessions: plural(result.replaced, "planned session") })
       : "";
-    applyDraft(await api(`/api/plan/draft?today=${isoDate(new Date())}`));
+    applyDraft(await api(draftUrl()));
     showStatus(
       confirmStatus,
       t("Done: {sessions} on the calendar{replaced}.", { sessions: plural(result.added, "session"), replaced }),
@@ -225,19 +250,3 @@ confirmBtn.addEventListener("click", async () => {
 });
 
 confirmView.addEventListener("click", () => showCalendarAround(planDraft.start_date));
-
-// --- The rule set (saved on its own; Claude reads it through the connector) ---
-
-async function saveRules() {
-  try {
-    rulesText.value = (
-      await api("/api/plan/rules", { method: "PUT", body: JSON.stringify({ rules: rulesText.value }) })
-    ).rules;
-    showStatus(rulesStatus, t("Saved."));
-    rulesStatus.classList.add("ok");
-  } catch (err) {
-    if (err.status !== 401) showStatus(rulesStatus, err.message, true);
-  }
-}
-document.getElementById("rules-save").addEventListener("click", saveRules);
-rulesText.addEventListener("change", saveRules);

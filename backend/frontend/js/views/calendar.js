@@ -5,11 +5,12 @@
 // Styles: css/calendar.css. loadCalendar() is also called after every sync.
 
 import { api } from "../core/api.js";
-import { addDays, fmtDate, fmtHM, fmtHours, fmtLongDate, isoDate, plural, thisMonday } from "../core/format.js";
+import { addDays, fmtHM, fmtHours, fmtLongDate, isoDate, plural, thisMonday } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
 import { activityIcon, sportLabel } from "../core/sports.js";
 import { showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
+import { addButton, addNotes, dayCell, gridHead, makeEditable, makeEntry } from "../core/week-grid.js";
 import { openSessionDialog } from "./session-dialog.js";
 
 // Whole Monday–Sunday weeks covering roughly 2 weeks back and 2 weeks ahead
@@ -249,30 +250,6 @@ function matchDay(day) {
 
 // --- One entry (a done activity or a planned session) in a day ---
 
-function makeEntry(className, type, detail, extra) {
-  const entry = document.createElement("div");
-  entry.className = `entry ${className}`;
-  entry.title = type;
-
-  const icon = document.createElement("span");
-  icon.className = "entry-icon";
-  icon.textContent = activityIcon(type);
-  entry.appendChild(icon);
-
-  const detailEl = document.createElement("span");
-  detailEl.className = "entry-detail";
-  detailEl.textContent = detail;
-  if (extra) {
-    const extraEl = document.createElement("span");
-    extraEl.className = "entry-extra";
-    extraEl.textContent = extra;
-    detailEl.appendChild(extraEl);
-  }
-  entry.appendChild(detailEl);
-
-  return entry;
-}
-
 // What was answered on the watch after the session: ", effort 7/10, felt strong".
 const FEEL_WORDS = { 0: "very weak", 25: "weak", 50: "normal", 75: "strong", 100: "very strong" };
 
@@ -320,65 +297,29 @@ function legsText(a, long = false) {
   return long ? t(". Legs: {legs}", { legs: parts.join(", ") }) : parts.join(" · ");
 }
 
-function addNotes(entry, notes) {
-  if (!notes) return;
-  const el = document.createElement("span");
-  el.className = "entry-notes";
-  el.textContent = notes;
-  entry.appendChild(el);
-}
-
-function makeEditable(entry, date, planned) {
-  entry.tabIndex = 0;
-  entry.setAttribute("role", "button");
-  entry.setAttribute("aria-label", entry.title);
-  entry.addEventListener("click", () => openSessionDialog(date, planned, loadCalendar));
-  entry.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      openSessionDialog(date, planned, loadCalendar);
-    }
-  });
-}
-
 // --- The grid ---
 
 // Redraws the whole grid from GET /api/calendar: a header row, then per week
 // 7 day cells (badges, matched pairs, other activities, planned sessions, the
 // + button) and the week summary. Days come in whole weeks (calendarRange).
+// The grid's pieces are in core/week-grid.js, shared with the Plan tab.
 function renderCalendar(data) {
   const grid = document.getElementById("calendar-grid");
   grid.innerHTML = "";
   const today = isoDate(new Date());
-
-  for (const label of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Week total"]) {
-    const head = document.createElement("div");
-    head.className = "grid-head";
-    head.textContent = t(label);
-    grid.appendChild(head);
-  }
+  gridHead(grid);
+  const edit = (date, planned) => () => openSessionDialog(date, planned, loadCalendar);
 
   for (let i = 0; i < data.days.length; i += 7) {
     const week = data.days.slice(i, i + 7);
     for (const day of week) {
-      const cell = document.createElement("div");
-      cell.className = "day-cell" + (day.date === today ? " today" : "") + (day.date < today ? " past" : "");
-      cell.dataset.date = day.date;
-
-      const head = document.createElement("div");
-      head.className = "day-head";
-      const dateEl = document.createElement("span");
-      dateEl.className = "day-date";
-      dateEl.textContent = fmtDate(day.date);
-      dateEl.title = day.date;
-      head.appendChild(dateEl);
+      const { cell, head } = dayCell(day.date, today);
       const stats = document.createElement("span");
       stats.className = "day-stats";
       for (const badge of [makeSleepBadge(day.sleep), makeRestingHrBadge(day.sleep)]) {
         if (badge) stats.appendChild(badge);
       }
       if (stats.childElementCount) head.appendChild(stats);
-      cell.appendChild(head);
 
       const { pairs, activities, planned } = matchDay(day);
 
@@ -394,7 +335,7 @@ function renderCalendar(data) {
           }) +
           `${load}${effortText(a)}${p.notes ? t(". Plan: {notes}", { notes: p.notes }) : ""}${t(". Click to edit the plan.")}`;
         addNotes(entry, p.notes);
-        makeEditable(entry, day.date, p);
+        makeEditable(entry, edit(day.date, p));
         cell.appendChild(entry);
       }
 
@@ -407,21 +348,11 @@ function renderCalendar(data) {
           t("Planned {sport}, {time}", { sport: sportLabel(p.activity_type), time: detail }) +
           `${p.notes ? `: ${p.notes}` : ""}${t(". Click to edit.")}`;
         addNotes(entry, p.notes);
-        makeEditable(entry, day.date, p);
+        makeEditable(entry, edit(day.date, p));
         cell.appendChild(entry);
       }
 
-      const add = document.createElement("button");
-      add.className = "add-btn";
-      add.type = "button";
-      add.title = t("Plan a session");
-      add.setAttribute(
-        "aria-label",
-        t("Plan a session on {date} ({iso})", { date: fmtLongDate(day.date), iso: day.date }),
-      );
-      add.addEventListener("click", () => openSessionDialog(day.date, null, loadCalendar));
-      cell.appendChild(add);
-
+      cell.appendChild(addButton(day.date, edit(day.date, null)));
       grid.appendChild(cell);
     }
     grid.appendChild(renderWeekSummary(week));

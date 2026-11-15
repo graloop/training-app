@@ -13,8 +13,9 @@ recovery, writes it all up as text, and puts the plan they agree on with
 Claude on their calendar.
 
 There is no AI inside the app. The training log is text written *for* Claude
-(Claude reads it through the connector, `mcp/`), and the Plan tab reads
-Claude's answer back as one session per line. Text out, text in.
+(Claude reads it through the connector, `mcp/`), and Claude's answer comes
+back as a draft of one session per line, which the Plan tab shows as a
+calendar. Text out, text in.
 
 One Python process (FastAPI) serves both the API (`/api/...`) and the page
 (plain HTML, CSS and JavaScript modules, no build step). Postgres in Docker,
@@ -42,11 +43,12 @@ SQLite under `npm start`.
                                     Claude reads it (GET /api/plan/log has the same text)
                                                                               ▼
                                     draft lines:  Tue Oct 13 | run | 1:15 | Track: 2×6×400 m
-                                    in the Plan tab ──▶ PUT /api/plan/draft
+                                    from the connector's save_draft (or PUT /api/plan/draft)
                                               planning/draft_parser.py: each line → a session or an error
-                                              planning/drafts.py: the weekly preview
+                                              planning/drafts.py: the draft as the Plan tab's calendar;
+                                              its + and dialog rewrite one line (/api/plan/draft/sessions)
                                                                               ▼
-                                    "Put this plan on the calendar" ──▶ POST /api/plan/draft/confirm
+                                    "Push on main calendar" ──▶ POST /api/plan/draft/confirm
                                               drafts.put_on_calendar: replaces planned sessions from today
                                                                               ▼
                                     PlannedTraining rows ──▶ Calendar tab (planned vs done)
@@ -113,7 +115,7 @@ Backend, under `backend/app/`:
 | `planning/session_detail.py` | What a session's 5-second trace adds, and one session in full |
 | `planning/training_log.py` | The training log Claude reads, one function per section (`build_log` puts them together) |
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
-| `planning/drafts.py` | A draft as the page sees it: saving it, confirming it, putting sessions on the calendar |
+| `planning/drafts.py` | A draft as the page sees it: saving it, editing one session (one line) at a time, clearing it, confirming it, putting sessions on the calendar |
 | `planning/planned_sessions.py` | One planned session: found, added, edited |
 | `planning/objectives.py` | Target events: listed, added, edited |
 | `mcp/` | Claude as a custom connector, only with `MCP_ENABLED`: see [Claude's connector](#claudes-connector-mcp) |
@@ -263,7 +265,8 @@ The scripts:
   `tabs.js`, `menus.js` (the landing page's Log in pop-up), `avatars.js`
   (profile photos, fetched with the token), `ui.js` (which screen, status
   lines), `format.js` (dates, durations, plurals), `sports.js` (names, icons),
-  `i18n.js` and `fr.js` (English / French).
+  `i18n.js` and `fr.js` (English / French), `week-grid.js` (the pieces of a
+  Monday–Sunday grid, shared by the Calendar and Plan tabs).
 - `js/views/`: one file per part of the page, and `css/` one stylesheet per
   screen on top of `base.css` (colours, night mode, shared parts).
 
@@ -295,7 +298,7 @@ them together.
 | Ask Garmin for something new | A `fetch_*` function in `garmin/client.py`, called from `garmin/sync.py` inside its own `try` |
 | Add or change one of Claude's tools | `mcp/server.py` (`build_server`): the docstring is what Claude reads to choose it. The work goes in `planning/` or `garmin/`, shared with the page. Tests: `tests/test_mcp_tools.py` (add its name to the list there) |
 | Change what the History log says | `planning/training_log.py` (`_intro_lines`, `_objective_lines`, `_athlete_section`, `_earlier_weeks`, `_week_lines`, `_ahead_lines`); one session's text in `planning/activity_text.py`; what the trace adds in `planning/session_detail.py`. Tests: `tests/test_plan.py`, `tests/test_activity_traces.py` |
-| Accept another way of writing a draft line | `planning/draft_parser.py` (`parse_duration`, `_parse_date`, `_SPORT_WORDS`), with a test in `tests/test_plan.py`. The format is also explained in `index.html` (`data-i18n="plan.format"`, and its French in `fr.js`) and in the connector's `save_draft` description (`mcp/server.py`) |
+| Accept another way of writing a draft line | `planning/draft_parser.py` (`parse_duration`, `_parse_date`, `_SPORT_WORDS`), with a test in `tests/test_plan.py`. The format is also explained in the connector's `save_draft` description (`mcp/server.py`), and `drafts.session_line` writes it when the Plan tab's calendar adds or edits a session |
 | Change how a tab looks or behaves | `frontend/js/views/<tab>.js`, `frontend/css/<tab>.css`, its markup under `#tab-<tab>` in `index.html` |
 | Add a sentence to the page | Write it in English, through `t()` in a script; add its French to `js/core/fr.js` (the key is the exact English text) |
 | Change login, lockout or password rules | `routers/auth.py`, `accounts.py` (the lockout numbers head its lockout section), `security.py`, `schemas.py` (`PASSWORD_MIN`, `USERNAME_PATTERN`) |

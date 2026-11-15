@@ -112,11 +112,11 @@
         <div class="feature-text">
           <span class="feature-tag">Plan</span>
           <h3>Claude writes the plan. You decide.</h3>
-          <p>Ask Claude, connected to the app, to read your history and write the coming weeks, one line per session. The preview shows each week and its split by sport. Nothing reaches your calendar until you press the button.</p>
+          <p>Ask Claude, connected to the app, to read your history and write the coming weeks. The draft shows as a calendar, with each week's hours by sport. Nothing reaches your calendar until you press the button.</p>
           <ul class="feature-points">
             <li>One to twelve weeks at a time</li>
             <li>Your rules are followed: schedule, exams, rest days</li>
-            <li>Edit any line yourself before it goes on the calendar</li>
+            <li>Add, move or edit any session yourself before it goes on the calendar</li>
           </ul>
         </div>
         <div class="mock" data-mock="plan" aria-hidden="true"></div>
@@ -306,68 +306,39 @@
         <p class="hint">Zones, thresholds, records and training status as Garmin has them, refreshed on each sync. You can't edit them here: enter your own numbers above instead.</p>
         <pre id="athlete-garmin" class="log-text" tabindex="0" aria-labelledby="garmin-profile-title"></pre>
       </section>
-    </div>
-
-    <!-- Plan tab: views/plan.js, weekly tables by views/plan-preview.js. css/plan.css -->
-    <div id="tab-plan" class="hidden">
-      <p class="hint plan-intro" data-i18n="plan.intro">The plan for the coming weeks, and the rules it follows. Ask Claude in Chrome to write the plan, or type it in the draft further down. Nothing changes on the calendar until you press <strong>Put this plan on the calendar</strong>.</p>
-
-      <section id="plan-panel" class="panel" aria-labelledby="preview-title">
-        <div class="panel-header">
-          <h2 id="preview-title">Plan preview</h2>
-          <div class="plan-weeks">
-            <label for="plan-start">Starting the week of</label>
-            <select id="plan-start"></select>
-            <label for="plan-weeks">for</label>
-            <select id="plan-weeks" aria-label="Number of weeks to plan">
-              <option value="1">1 week</option>
-              <option value="2">2 weeks</option>
-              <option value="3">3 weeks</option>
-              <option value="4" selected>4 weeks</option>
-              <option value="5">5 weeks</option>
-              <option value="6">6 weeks</option>
-              <option value="8">8 weeks</option>
-              <option value="12">12 weeks</option>
-            </select>
-            <span id="plan-range" class="subtle"></span>
-          </div>
-        </div>
-        <div id="draft-preview"></div>
-
-        <p id="confirm-summary" class="hint"></p>
-        <div class="form-row">
-          <button id="draft-confirm" type="button">Put this plan on the calendar</button>
-          <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
-        </div>
-        <p id="confirm-status" class="status hidden" role="status"></p>
-      </section>
-
-      <section class="panel" aria-labelledby="draft-title">
-        <h2 id="draft-title">Draft plan</h2>
-        <p class="hint">The text the preview above is made from. Claude in Chrome writes it here, and you can edit it yourself.</p>
-
-        <label for="draft-text" data-i18n="plan.draftLabel">Draft sessions, one per line: <code>date | sport | duration | details</code></label>
-        <textarea id="draft-text" rows="12" spellcheck="false" placeholder="Tue Oct 13 | run | 1:15 | Track: 2×6×400 m at 5K effort, 200 m jog between
-Wed Oct 14 | swim | 1:00 | 8×100 m steady, 20 s rest
-Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
-        <p id="draft-format" class="hint" data-i18n="plan.format">Format: one session per line, written as <code>date | sport | duration | details</code>. Date like <code>Tue Oct 13</code> or <code>2026-10-13</code>. Sport: swim, bike, run or strength. Duration like <code>1:15</code> or <code>45 min</code>. Details are optional (the workout itself). Two sessions on one day are two lines. Lines starting with <code>#</code> are comments, and rest days need no line.</p>
-
-        <div class="form-row">
-          <button id="draft-save" type="button">Save and preview</button>
-          <span id="draft-status" class="status hidden" role="status"></span>
-        </div>
-
-        <div id="draft-errors" class="draft-errors hidden" role="alert"></div>
-      </section>
 
       <section class="panel" aria-labelledby="rules-title">
         <h2 id="rules-title">Rule set</h2>
-        <p class="hint">The rules every plan follows: when you can train, school and work schedule, exam periods, holidays and travel, the weekly rhythm, rules of thumb (rest when resting HR is up, long run on Sunday…). Claude reads it with your history.</p>
+        <p class="hint">The rules every plan follows: when you can train, school and work schedule, exam periods, holidays and travel, the weekly rhythm, rules of thumb (rest when resting HR is up, long run on Sunday…). Claude reads it before writing a plan.</p>
         <textarea id="rules-text" aria-labelledby="rules-title" rows="10" maxlength="20000" placeholder="e.g. Free on weekday mornings and Sunday. Pool closed on Saturdays. Exams the first two weeks of December: deload. One rest day a week. Easy runs stay conversational. If resting HR is 5+ bpm above normal, swap the session for rest."></textarea>
         <div class="form-row">
           <button id="rules-save" type="button" class="btn-ghost">Save</button>
           <span id="rules-status" class="status hidden" role="status"></span>
         </div>
+      </section>
+    </div>
+
+    <!-- Plan tab: the draft as a calendar, views/plan.js (grid pieces in
+         js/core/week-grid.js, the session dialog in views/session-dialog.js). css/plan.css -->
+    <div id="tab-plan" class="hidden">
+      <p class="hint plan-intro" data-i18n="plan.intro">The plan for the coming weeks, before it goes on your calendar. Claude writes it through the connector, or add and edit sessions yourself with the <strong>+</strong> of each day. Nothing changes on your calendar until you press <strong>Push on main calendar</strong>.</p>
+
+      <section id="plan-panel" class="panel" aria-labelledby="plan-title-h">
+        <div class="panel-header">
+          <div>
+            <h2 id="plan-title-h">Draft plan</h2>
+            <p id="plan-range" class="subtle"></p>
+          </div>
+          <div class="calendar-nav">
+            <button id="plan-clear" type="button" class="btn-ghost">Clear</button>
+            <button id="draft-confirm" type="button">Push on main calendar</button>
+            <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
+          </div>
+        </div>
+        <p id="confirm-summary" class="hint"></p>
+        <p id="confirm-status" class="status hidden" role="status"></p>
+        <div id="draft-errors" class="draft-errors hidden" role="alert"></div>
+        <div id="plan-grid" class="calendar-grid plan-grid"></div>
       </section>
     </div>
 

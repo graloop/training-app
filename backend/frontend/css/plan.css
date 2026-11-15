@@ -1,15 +1,10 @@
-/* Plan tab: weeks picker, draft, errors, weekly tables (also used by the Import tab), rule set. */
+/* Plan tab: the draft as a calendar (the grid itself is styled in calendar.css),
+   Clear / Push, the lines that couldn't be read; and the weekly tables of the
+   Import tab's preview (views/plan-preview.js). */
 
 .plan-weeks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .plan-weeks label { margin: 0; }
 .plan-empty { margin: 4px 0 16px; padding: 20px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted); text-align: center; }
-#draft-preview { margin-bottom: 16px; }
-#draft-preview > .plan-week-title:first-child { margin-top: 4px; }
-#tab-plan .panel > label { display: block; margin: 12px 0 4px; }
-#tab-plan textarea { width: 100%; }
-#draft-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; line-height: 1.5; white-space: pre; overflow-x: auto; }
-#tab-plan code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 0.85em; }
-#tab-plan .form-row { margin-top: 12px; flex-wrap: wrap; }
 .draft-errors {
   margin-top: 12px;
   padding: 10px 14px;
@@ -28,7 +23,10 @@
 .plan-session + .plan-session { margin-top: 4px; }
 .split-table { max-width: 560px; }
 .split-table td:not(:first-child), .split-table th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
-#draft-confirm.confirming { background: var(--danger); }
-#draft-confirm:disabled { opacity: 0.45; cursor: not-allowed; }
+#draft-confirm.confirming, #plan-clear.confirming { background: var(--danger); color: #fff; border-color: var(--danger); }
+#draft-confirm:disabled, #plan-clear:disabled { opacity: 0.45; cursor: not-allowed; }
 
-#rules-text { width: 100%; box-sizing: border-box; }
+.plan-grid { margin-top: 12px; }
+#plan-range { margin: 2px 0 0; }
+.draft-errors li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.draft-errors li .error-line { flex-basis: 100%; }

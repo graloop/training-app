@@ -168,11 +168,11 @@ def _save(client, auth, text="", weeks=2, start=None, notes="", **params):
     return res.json()
 
 
-def test_default_draft_is_next_week_for_four_weeks(client, auth):
+def test_default_draft_is_four_weeks_from_this_monday(client, auth):
     data = client.get("/api/plan/draft", headers=auth).json()
     assert data["saved"] is False and data["text"] == "" and data["weeks"] == 4
-    assert data["start_date"] == NEXT_MONDAY.isoformat()
-    assert data["end_date"] == (NEXT_MONDAY + datetime.timedelta(days=27)).isoformat()
+    assert data["start_date"] == THIS_MONDAY.isoformat()
+    assert data["end_date"] == (THIS_MONDAY + datetime.timedelta(days=27)).isoformat()
     assert len(data["weeks_preview"]) == 4 and data["sessions_count"] == 0
 
 
@@ -728,3 +728,94 @@ def test_garmin_numbers_with_decimals_do_not_break_the_log(client, auth):
     res = client.get("/api/plan/log", headers=auth)
     assert res.status_code == 200
     assert "body battery +55 overnight" in res.json()["text"] and "body battery -12" in res.json()["text"]
+
+
+
+# --- The draft as a calendar: one session at a time (drafts.add_session...) ---------------
+
+
+def _session(date, sport="running", minutes=60, details=None):
+    return {"date": date.isoformat(), "activity_type": sport, "minutes": minutes, "details": details}
+
+
+def _add(client, auth, **session):
+    res = client.post("/api/plan/draft/sessions", json=_session(**session), headers=auth)
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def _sessions(draft):
+    return [(s["line"], s["date"], s["activity_type"], s["minutes"], s["details"])
+            for week in draft["weeks_preview"] for s in week["sessions"]]
+
+
+def test_a_session_added_on_the_calendar_becomes_a_draft_line(client, auth):
+    draft = _add(client, auth, date=day(1), minutes=75, details="Tempo run\n3×10 min HR 160 | strides")
+    assert draft["saved"] is True and draft["errors"] == []
+    assert draft["start_date"] == THIS_MONDAY.isoformat()  # a new draft starts this Monday
+    assert draft["text"] == f"{day(1).isoformat()} | run | 1:15 | Tempo run 3×10 min HR 160 | strides"
+    assert _sessions(draft) == [(1, day(1).isoformat(), "running", 75, "Tempo run 3×10 min HR 160 | strides")]
+
+    for sport, word in (("cycling", "bike"), ("swimming", "swim"), ("strength_training", "strength"), ("yoga", "yoga")):
+        draft = _add(client, auth, date=day(2), sport=sport, minutes=30)
+        assert draft["text"].splitlines()[-1] == f"{day(2).isoformat()} | {word} | 0:30"
+        assert _sessions(draft)[-1][2] == sport  # read back as the same sport
+    assert client.get("/api/calendar", params={"start": day(0).isoformat(), "end": day(6).isoformat()},
+                      headers=auth).json()["days"][1]["planned"] == []  # the calendar is not touched
+
+
+def test_adding_a_session_widens_the_weeks(client, auth):
+    _save(client, auth, text="", weeks=1, start=NEXT_MONDAY)
+    draft = _add(client, auth, date=day(17))  # the third week
+    assert draft["start_date"] == NEXT_MONDAY.isoformat() and draft["weeks"] == 3
+    res = client.post("/api/plan/draft/sessions", json=_session(day(7 * 13)), headers=auth)
+    assert res.status_code == 400 and "12 weeks" in res.json()["detail"]
+
+
+def test_a_draft_session_is_edited_moved_and_deleted(client, auth):
+    _save(client, auth, text=f"# block 2\n{day(0).isoformat()} | swim | 1:00\n{day(1).isoformat()} | run | 0:45 | Easy",
+          weeks=2)
+    draft = client.patch("/api/plan/draft/sessions/3", json=_session(day(3), minutes=50, details="Easy Z2"),
+                         headers=auth).json()
+    assert draft["text"].splitlines() == ["# block 2", f"{day(0).isoformat()} | swim | 1:00",
+                                          f"{day(3).isoformat()} | run | 0:50 | Easy Z2"]
+    draft = client.delete("/api/plan/draft/sessions/2", headers=auth).json()
+    assert _sessions(draft) == [(2, day(3).isoformat(), "running", 50, "Easy Z2")]  # line numbers move up
+
+
+def test_a_stale_line_number_is_a_409(client, auth):
+    _save(client, auth, text=f"# a comment\n{day(0).isoformat()} | swim | 1:00", weeks=2)
+    for line in (1, 3, 99):  # a comment, past the end
+        assert client.patch(f"/api/plan/draft/sessions/{line}", json=_session(day(1)), headers=auth).status_code == 409
+        assert client.delete(f"/api/plan/draft/sessions/{line}", headers=auth).status_code == 409
+    assert client.patch("/api/plan/draft/sessions/2", json=_session(day(1), minutes=0), headers=auth).status_code == 422
+
+
+def test_an_unreadable_line_can_be_deleted_but_not_edited(client, auth):
+    draft = _save(client, auth, text=f"{day(0).isoformat()} | run | soon\n{day(1).isoformat()} | run | 0:30", weeks=2)
+    assert [e["line"] for e in draft["errors"]] == [1]
+    assert client.patch("/api/plan/draft/sessions/1", json=_session(day(0)), headers=auth).status_code == 409
+    draft = client.delete("/api/plan/draft/sessions/1", headers=auth).json()
+    assert draft["errors"] == [] and draft["text"] == f"{day(1).isoformat()} | run | 0:30"
+
+
+def test_clear_empties_the_draft_and_keeps_its_weeks(client, auth):
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=3)
+    draft = client.delete("/api/plan/draft", headers=auth).json()
+    assert draft["text"] == "" and draft["weeks"] == 3 and draft["start_date"] == NEXT_MONDAY.isoformat()
+    assert client.delete("/api/plan/draft", headers=auth).status_code == 200  # nothing left: still fine
+
+
+def test_editing_a_confirmed_draft_marks_it_unconfirmed(client, auth):
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=1)
+    assert client.post("/api/plan/draft/confirm", headers=auth).status_code == 200
+    assert client.get("/api/plan/draft", headers=auth).json()["confirmed_at"]
+    assert _add(client, auth, date=day(2))["confirmed_at"] is None
+
+
+def test_draft_sessions_are_your_own(client, auth):
+    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=1)
+    friend = make_user(client, "friend", garmin=False)
+    assert client.delete("/api/plan/draft/sessions/1", headers=friend).status_code == 409  # their own (empty) draft
+    assert client.get("/api/plan/draft", headers=auth).json()["sessions_count"] == 1
+    assert client.post("/api/plan/draft/sessions", json=_session(day(1)), headers=admin_auth(client)).status_code == 403

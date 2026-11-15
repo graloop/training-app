@@ -1,6 +1,11 @@
 """A draft as the page sees it (parsed, with weekly totals and what it would
-replace), and putting sessions on the calendar. Used by the Plan tab
-(routers/plan.py) and the Import tab (routers/share.py).
+replace), editing it one session at a time, and putting sessions on the
+calendar. Used by the Plan tab (routers/plan.py), the Import tab
+(routers/share.py) and Claude's connector (mcp/server.py).
+
+The Plan tab shows the draft as a calendar: adding, editing or deleting a
+session there rewrites one line of the text (add_session, edit_session,
+remove_line), found by its line number (DraftSession.line).
 
 A draft is plain text (PlanDraft.text) parsed again on every read: nothing
 parsed is stored until put_on_calendar() turns the sessions into
@@ -12,7 +17,7 @@ import datetime
 from sqlalchemy.orm import Query, Session
 
 from .. import models, schemas
-from .basics import SPORTS, monday_of, sport_of
+from .basics import SPORTS, fmt_minutes, monday_of, sport_of
 from .draft_parser import DraftSession, parse_draft
 
 DEFAULT_WEEKS = 4
@@ -65,8 +70,8 @@ def planned_between(db: Session, user: models.User, first: datetime.date, last: 
 
 
 def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, today: datetime.date) -> schemas.DraftOut:
-    """The saved draft (or an empty one starting next Monday), parsed."""
-    start = draft.start_date if draft else monday_of(today) + datetime.timedelta(days=7)
+    """The saved draft (or an empty one, DEFAULT_WEEKS from this Monday), parsed."""
+    start = draft.start_date if draft else monday_of(today)
     weeks = draft.weeks if draft else DEFAULT_WEEKS
     end = start + datetime.timedelta(days=weeks * 7 - 1)
     text = draft.text if draft else ""
@@ -139,3 +144,95 @@ def confirm(db: Session, user: models.User, today: datetime.date) -> schemas.Con
     replaced = put_on_calendar(db, user, parsed.sessions, replace_from, end, source="plan")
     draft.confirmed_at = models.utcnow()
     return schemas.ConfirmResult(added=len(parsed.sessions), replaced=replaced, start_date=replace_from, end_date=end)
+
+
+# --- One session at a time (the Plan tab's calendar) -----------------------------------
+
+# The word the parser reads back as each activity type (draft_parser._SPORT_WORDS).
+_SPORT_WORD = {"running": "run", "cycling": "bike", "swimming": "swim", "strength_training": "strength"}
+
+
+def session_line(session: schemas.DraftSessionIn) -> str:
+    """ "2026-11-17 | run | 1:15 | Tempo run 3×10 min": one draft line, which the
+    parser reads back as the same session. Details stay on the one line."""
+    sport = _SPORT_WORD.get(session.activity_type, session.activity_type)
+    line = f"{session.date.isoformat()} | {sport} | {fmt_minutes(session.minutes)}"
+    details = " ".join((session.details or "").split())
+    return f"{line} | {details}" if details else line
+
+
+def _draft_for(db: Session, user: models.User, today: datetime.date) -> models.PlanDraft:
+    """The saved draft, or a new empty one (DEFAULT_WEEKS from this Monday). The caller commits."""
+    draft = user.plan_draft
+    if draft is None:
+        draft = models.PlanDraft(user_id=user.id, start_date=monday_of(today), weeks=DEFAULT_WEEKS, text="")
+        db.add(draft)
+        user.plan_draft = draft
+    return draft
+
+
+def _cover(draft: models.PlanDraft, day: datetime.date) -> None:
+    """Widen the draft's weeks to take in `day`, up to schemas.MAX_PLAN_WEEKS."""
+    start = min(draft.start_date, monday_of(day))
+    end = max(draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1), day)
+    weeks = (monday_of(end) - start).days // 7 + 1
+    if weeks > schemas.MAX_PLAN_WEEKS:
+        raise DraftProblem(f"A draft covers at most {schemas.MAX_PLAN_WEEKS} weeks: {day.isoformat()} is too far from the others.")
+    draft.start_date, draft.weeks = start, weeks
+
+
+def _changed(draft: models.PlanDraft, lines: list[str]) -> None:
+    draft.text = "\n".join(lines)
+    draft.confirmed_at = None
+
+
+def _session_lines(draft: models.PlanDraft, today: datetime.date) -> set[int]:
+    end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
+    return {s.line for s in parse_draft(draft.text, draft.start_date, end, today).sessions}
+
+
+def add_session(db: Session, user: models.User, session: schemas.DraftSessionIn, today: datetime.date) -> None:
+    """A new line at the end of the draft; its weeks grow to take in the day. The caller commits."""
+    draft = _draft_for(db, user, today)
+    _cover(draft, session.date)
+    lines = draft.text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    _changed(draft, [*lines, session_line(session)])
+
+
+def edit_session(user: models.User, line: int, session: schemas.DraftSessionIn, today: datetime.date) -> None:
+    """Rewrite the session on that line (moving it to another day widens the weeks if
+    needed). Raises StaleLine when that line isn't a session any more. The caller commits."""
+    draft = user.plan_draft
+    if draft is None or line not in _session_lines(draft, today):
+        raise StaleLine()
+    _cover(draft, session.date)
+    lines = draft.text.splitlines()
+    lines[line - 1] = session_line(session)
+    _changed(draft, lines)
+
+
+def remove_line(user: models.User, line: int, today: datetime.date) -> None:
+    """Delete a session, or a line the parser couldn't read. Raises StaleLine when
+    that line holds neither any more. The caller commits."""
+    draft = user.plan_draft
+    if draft is None:
+        raise StaleLine()
+    end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
+    parsed = parse_draft(draft.text, draft.start_date, end, today)
+    if line not in {s.line for s in parsed.sessions} | {e.line for e in parsed.errors}:
+        raise StaleLine()
+    lines = draft.text.splitlines()
+    del lines[line - 1]
+    _changed(draft, lines)
+
+
+def clear(user: models.User) -> None:
+    """Empty the draft and keep its weeks (the Plan tab's Clear). The caller commits."""
+    if user.plan_draft is not None:
+        _changed(user.plan_draft, [])
+
+
+class StaleLine(LookupError):
+    """The line number the page sent no longer holds what it showed: the draft changed meanwhile."""

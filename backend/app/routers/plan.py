@@ -1,7 +1,8 @@
 """/api/plan: the Plan tab, and the training log as text (/log, the same text
-Claude reads through the connector), one
-session in detail (/sessions), the rule set, and the draft: saved and parsed
-(/draft), then put on the calendar (/draft/confirm). The logic is in planning/."""
+Claude reads through the connector), one session in detail (/sessions), the
+rule set, and the draft: saved and parsed (/draft), edited one session at a
+time from the Plan tab's calendar (/draft/sessions), cleared, then put on the
+calendar (/draft/confirm). The logic is in planning/."""
 
 import datetime
 
@@ -111,3 +112,76 @@ def confirm_draft(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(problem)) from problem
     db.commit()
     return result
+
+
+# --- The draft, one session at a time (the Plan tab's calendar) ---------------------------
+# Each answer is the whole draft again, so the page redraws from it and its line
+# numbers are always current. A line number that no longer holds a session
+# (the draft changed in another tab, or through Claude) is a 409.
+
+_STALE = "The draft changed in the meantime. Reload the page."
+
+
+def _draft_answer(db: Session, user: models.User, today: datetime.date | None) -> schemas.DraftOut:
+    db.commit()
+    db.refresh(user)
+    return drafts.draft_out(db, user, user.plan_draft, drafts.client_today(today))
+
+
+@router.post("/draft/sessions", response_model=schemas.DraftOut)
+def add_draft_session(
+    payload: schemas.DraftSessionIn,
+    today: datetime.date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_member),
+):
+    """Add a session to the draft (its weeks grow to take in the day). Never touches the calendar."""
+    try:
+        drafts.add_session(db, user, payload, drafts.client_today(today))
+    except drafts.DraftProblem as problem:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(problem)) from problem
+    return _draft_answer(db, user, today)
+
+
+@router.patch("/draft/sessions/{line}", response_model=schemas.DraftOut)
+def edit_draft_session(
+    line: int,
+    payload: schemas.DraftSessionIn,
+    today: datetime.date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_member),
+):
+    """Rewrite the session on that line of the draft: sport, duration, details, day."""
+    try:
+        drafts.edit_session(user, line, payload, drafts.client_today(today))
+    except drafts.StaleLine as stale:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_STALE) from stale
+    except drafts.DraftProblem as problem:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(problem)) from problem
+    return _draft_answer(db, user, today)
+
+
+@router.delete("/draft/sessions/{line}", response_model=schemas.DraftOut)
+def delete_draft_line(
+    line: int,
+    today: datetime.date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_member),
+):
+    """Remove a session from the draft, or a line it couldn't read."""
+    try:
+        drafts.remove_line(user, line, drafts.client_today(today))
+    except drafts.StaleLine as stale:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_STALE) from stale
+    return _draft_answer(db, user, today)
+
+
+@router.delete("/draft", response_model=schemas.DraftOut)
+def clear_draft(
+    today: datetime.date | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_member),
+):
+    """Clear: the draft is emptied, its weeks stay. The calendar is not touched."""
+    drafts.clear(user)
+    return _draft_answer(db, user, today)

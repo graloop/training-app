@@ -266,33 +266,27 @@ export const FR = {
 
   // --- Plan tab ---
   "plan.intro":
-    "Le plan des prochaines semaines et les règles qu'il suit. Demandez à Claude dans Chrome d'écrire le plan, ou tapez-le dans le brouillon plus bas. Rien ne change au calendrier tant que vous n'appuyez pas sur <strong>Mettre ce plan au calendrier</strong>.",
-  "Plan preview": "Aperçu du plan",
-  "Starting the week of": "À partir de la semaine du",
-  "Number of weeks to plan": "Nombre de semaines à planifier",
-  "Put this plan on the calendar": "Mettre ce plan au calendrier",
+    "Le plan des prochaines semaines, avant qu'il n'arrive à votre calendrier. Claude l'écrit par le connecteur, ou ajoutez et modifiez des séances vous-même avec le <strong>+</strong> de chaque jour. Rien ne change à votre calendrier tant que vous n'appuyez pas sur <strong>Pousser au calendrier</strong>.",
   "Draft plan": "Brouillon du plan",
-  "The text the preview above is made from. Claude in Chrome writes it here, and you can edit it yourself.":
-    "Le texte dont l'aperçu ci-dessus est tiré. Claude dans Chrome l'écrit ici, et vous pouvez le modifier vous-même.",
-  "plan.draftLabel": "Séances du brouillon, une par ligne : <code>date | sport | duration | details</code>",
-  "plan.format":
-    "Format : une séance par ligne, écrite <code>date | sport | duration | details</code> (en anglais). La date comme <code>Tue Oct 13</code> ou <code>2026-10-13</code>. Sport : swim, bike, run ou strength. La durée comme <code>1:15</code> ou <code>45 min</code>. Les détails sont facultatifs (la séance elle-même). Deux séances le même jour font deux lignes. Les lignes qui commencent par <code>#</code> sont des commentaires, et les jours de repos n'ont pas besoin de ligne.",
-  "Save and preview": "Enregistrer et prévisualiser",
+  "Push on main calendar": "Pousser au calendrier",
+  "Click again to clear the draft": "Cliquez encore pour vider le brouillon",
+  "Draft {sport}, {time}": "Brouillon : {sport}, {time}",
+  "Delete line {n}": "Supprimer la ligne {n}",
+  "Fix or delete the {lines} listed below first.": "Corrigez ou supprimez d'abord les {lines} ci-dessous.",
+  Clear: "Vider",
   "Rule set": "Règles",
-  "The rules every plan follows: when you can train, school and work schedule, exam periods, holidays and travel, the weekly rhythm, rules of thumb (rest when resting HR is up, long run on Sunday…). Claude reads it with your history.":
-    "Les règles que chaque plan suit : quand vous pouvez vous entraîner, horaire d'école et de travail, périodes d'examens, vacances et voyages, le rythme de la semaine, règles de base (repos quand la FC au repos est élevée, sortie longue le dimanche…). Claude les lit avec votre historique.",
+  "The rules every plan follows: when you can train, school and work schedule, exam periods, holidays and travel, the weekly rhythm, rules of thumb (rest when resting HR is up, long run on Sunday…). Claude reads it before writing a plan.":
+    "Les règles que chaque plan suit : quand vous pouvez vous entraîner, horaire d'école et de travail, périodes d'examens, vacances et voyages, le rythme de la semaine, règles de base (repos quand la FC au repos est élevée, sortie longue le dimanche…). Claude les lit avant d'écrire un plan.",
   "e.g. Free on weekday mornings and Sunday. Pool closed on Saturdays. Exams the first two weeks of December: deload. One rest day a week. Easy runs stay conversational. If resting HR is 5+ bpm above normal, swap the session for rest.":
     "p. ex. Libre les matins de semaine et le dimanche. Piscine fermée le samedi. Examens les deux premières semaines de décembre : allègement. Un jour de repos par semaine. Les sorties faciles restent à allure de conversation. Si la FC au repos est 5 bpm ou plus au-dessus de la normale, remplacer la séance par du repos.",
   "{lines} to fix before this can go on the calendar:":
     "{lines} à corriger avant de pouvoir mettre ce plan au calendrier :",
   "Line {n}: {text}": "Ligne {n} : {text}",
-  "Fix the {lines} flagged in the draft below first.": "Corrigez d'abord le brouillon ci-dessous ({lines} à corriger).",
   "Nothing to put on the calendar yet.": "Rien à mettre au calendrier pour l'instant.",
   "{sessions} already planned from {from} to {to} will be replaced.":
     "Ce qui est déjà prévu du {from} au {to} ({sessions}) sera remplacé.",
   "Nothing is planned on those dates yet.": "Rien n'est encore prévu à ces dates.",
   "Activities you already did are never touched.": "Les activités déjà faites ne sont jamais touchées.",
-  ", {lines} to fix": ", {lines} à corriger",
   "Saved: {sessions}{problems}. Not on the calendar yet.":
     "Enregistré : {sessions}{problems}. Pas encore au calendrier.",
   "Click again: replaces {sessions}": "Cliquez encore : remplace {sessions}",
@@ -482,12 +476,12 @@ export const FR = {
   "Weekly hours, training load, sleep and resting heart rate":
     "Heures de la semaine, charge d'entraînement, sommeil et FC au repos",
   "Claude writes the plan. You decide.": "Claude écrit le plan. Vous décidez.",
-  "Ask Claude, connected to the app, to read your history and write the coming weeks, one line per session. The preview shows each week and its split by sport. Nothing reaches your calendar until you press the button.":
-    "Demandez à Claude, connecté à l'app, de lire votre historique et d'écrire les prochaines semaines, une ligne par séance. L'aperçu montre chaque semaine et sa répartition par sport. Rien n'arrive à votre calendrier tant que vous n'appuyez pas sur le bouton.",
+  "Ask Claude, connected to the app, to read your history and write the coming weeks. The draft shows as a calendar, with each week's hours by sport. Nothing reaches your calendar until you press the button.":
+    "Demandez à Claude, connecté à l'app, de lire votre historique et d'écrire les prochaines semaines. Le brouillon s'affiche en calendrier, avec les heures de chaque semaine par sport. Rien n'arrive à votre calendrier tant que vous n'appuyez pas sur le bouton.",
   "One to twelve weeks at a time": "D'une à douze semaines à la fois",
   "Your rules are followed: schedule, exams, rest days": "Vos règles sont suivies : horaire, examens, jours de repos",
-  "Edit any line yourself before it goes on the calendar":
-    "Modifiez vous-même n'importe quelle ligne avant qu'elle aille au calendrier",
+  "Add, move or edit any session yourself before it goes on the calendar":
+    "Ajoutez, déplacez ou modifiez vous-même n'importe quelle séance avant qu'elle n'arrive au calendrier",
   "Your races and your numbers": "Vos courses et vos valeurs",
   "Your objectives with a countdown, your tested numbers and zones, and what Garmin knows about you. Everything here is read when a plan is written, so it is built for your next race.":
     "Vos objectifs avec un compte à rebours, vos valeurs testées et vos zones, et ce que Garmin sait de vous. Tout est lu quand un plan est écrit : il est fait pour votre prochaine course.",

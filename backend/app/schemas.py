@@ -408,6 +408,20 @@ class DraftIn(BaseModel):
     notes: str | None = Field(default=None, max_length=20000)
 
 
+class DraftSessionIn(BaseModel):
+    """One session of the draft, added or rewritten from the Plan tab's calendar."""
+
+    date: datetime.date
+    activity_type: str = Field(min_length=1, max_length=64)
+    minutes: float = Field(gt=0, le=24 * 60)
+    details: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("activity_type")
+    @classmethod
+    def _sport_not_blank(cls, value: str) -> str:
+        return _required_text(value, "a session always has a sport")
+
+
 class DraftSessionOut(BaseModel):
     line: int
     date: datetime.date

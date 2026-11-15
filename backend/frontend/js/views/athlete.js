@@ -1,7 +1,9 @@
-// Athlete tab: the athlete's own numbers (weight, zones, FTP...) and what
-// Garmin knows about them. The objectives on the same tab are in objectives.js.
-// API: GET/PUT /api/athlete (backend/app/routers/athlete.py). Markup: the
-// #profile-form and #athlete-garmin of #tab-athlete. Styles: css/athlete.css.
+// Athlete tab: the athlete's own numbers (weight, zones, FTP...), what Garmin
+// knows about them, and the rule set every plan follows. The objectives on the
+// same tab are in objectives.js.
+// API: GET/PUT /api/athlete (backend/app/routers/athlete.py), GET/PUT
+// /api/plan/rules. Markup: the #profile-form, #athlete-garmin and #rules-text
+// of #tab-athlete. Styles: css/athlete.css.
 
 import { api } from "../core/api.js";
 import { isoDate } from "../core/format.js";
@@ -10,6 +12,8 @@ import { showStatus } from "../core/ui.js";
 
 const profileForm = document.getElementById("profile-form");
 const profileStatus = document.getElementById("profile-status");
+const rulesText = document.getElementById("rules-text");
+const rulesStatus = document.getElementById("rules-status");
 // Each key has an input with id "pf-<key>" in index.html.
 const PROFILE_NUMBERS = ["weight_kg", "height_cm", "max_hr", "threshold_hr", "resting_hr", "ftp_watts"];
 const PROFILE_TEXTS = [
@@ -34,12 +38,34 @@ function fillProfile(data) {
 
 export async function loadAthletePage() {
   profileStatus.classList.add("hidden");
+  rulesStatus.classList.add("hidden");
   try {
-    fillProfile(await api(`/api/athlete?today=${isoDate(new Date())}`));
+    const [athlete, rules] = await Promise.all([
+      api(`/api/athlete?today=${isoDate(new Date())}`),
+      api("/api/plan/rules"),
+    ]);
+    fillProfile(athlete);
+    rulesText.value = rules.rules;
   } catch (err) {
     if (err.status !== 401) showStatus(profileStatus, err.message, true);
   }
 }
+
+// --- The rule set (saved on its own; Claude reads it through the connector) ---
+
+async function saveRules() {
+  try {
+    rulesText.value = (
+      await api("/api/plan/rules", { method: "PUT", body: JSON.stringify({ rules: rulesText.value }) })
+    ).rules;
+    showStatus(rulesStatus, t("Saved."));
+    rulesStatus.classList.add("ok");
+  } catch (err) {
+    if (err.status !== 401) showStatus(rulesStatus, err.message, true);
+  }
+}
+document.getElementById("rules-save").addEventListener("click", saveRules);
+rulesText.addEventListener("change", saveRules);
 
 profileForm.addEventListener("submit", async (e) => {
   e.preventDefault();

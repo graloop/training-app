@@ -62,3 +62,6 @@
   line-height: 1.5;
   white-space: pre-wrap;
 }
+
+/* The rule set (moved here from the Plan tab). */
+#rules-text { width: 100%; box-sizing: border-box; }

@@ -1,8 +1,10 @@
 // The "Plan a session" / "Edit session" dialog, opened from a day of the
-// calendar. An existing session can also be moved to another day. The caller
-// says what to refresh once a session is saved, moved or deleted.
-// API: POST /api/planned, PATCH/DELETE /api/planned/{id}. Markup: <dialog
-// id="plan-dialog"> at the end of index.html. Styles: css/calendar.css.
+// calendar or of the Plan tab's draft. An existing session can also be moved
+// to another day. The caller says what to refresh once a session is saved,
+// moved or deleted, and where it is saved: the calendar (CALENDAR_STORE, the
+// default: POST /api/planned, PATCH/DELETE /api/planned/{id}) or the draft
+// (a store from views/plan.js). Markup: <dialog id="plan-dialog"> at the end
+// of index.html. Styles: css/calendar.css.
 
 import { api } from "../core/api.js";
 import { locale, t } from "../core/i18n.js";
@@ -20,7 +22,14 @@ const planNotes = document.getElementById("plan-notes");
 const planMove = document.getElementById("plan-move");
 const planMoveField = document.getElementById("plan-move-field");
 const planMoveDate = document.getElementById("plan-move-date");
-let target = null; // { date, existing, onSaved }
+let target = null; // { date, existing, onSaved, store }
+
+// Where a session is saved. `body` is { date, activity_type, planned_duration_minutes, notes }.
+export const CALENDAR_STORE = {
+  add: (body) => api("/api/planned", { method: "POST", body: JSON.stringify(body) }),
+  update: (existing, body) => api(`/api/planned/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  remove: (existing) => api(`/api/planned/${existing.id}`, { method: "DELETE" }),
+};
 
 function renderSportOptions(extraType) {
   planSports.innerHTML = "";
@@ -44,9 +53,10 @@ function renderSportOptions(extraType) {
   }
 }
 
-// `existing` is a planned session to edit, or null to plan a new one.
-export function openSessionDialog(date, existing, onSaved) {
-  target = { date, existing, onSaved };
+// `existing` is a session to edit ({ activity_type, planned_duration_minutes,
+// notes, ... }), or null to plan a new one. `onSaved` gets what the store answered.
+export function openSessionDialog(date, existing, onSaved, store = CALENDAR_STORE) {
+  target = { date, existing, onSaved, store };
   renderSportOptions(existing && existing.activity_type);
   document.getElementById("plan-title").textContent = existing ? t("Edit session") : t("Plan a session");
   document.getElementById("plan-date").textContent = new Date(date + "T00:00:00").toLocaleDateString(locale(), {
@@ -78,18 +88,18 @@ planForm.addEventListener("submit", async (e) => {
   if (!sport) return showStatus(planError, t("Pick a sport."), true);
   if (minutes <= 0) return showStatus(planError, t("Set how long the session is."), true);
 
-  const body = { activity_type: sport.value, planned_duration_minutes: minutes, notes: planNotes.value.trim() || null };
   const moving = target.existing && !planMoveField.classList.contains("hidden");
   if (moving && !planMoveDate.value) return showStatus(planError, t("Pick the day to move it to."), true);
-  if (moving && planMoveDate.value !== target.date) body.date = planMoveDate.value;
+  const body = {
+    date: moving ? planMoveDate.value : target.date,
+    activity_type: sport.value,
+    planned_duration_minutes: minutes,
+    notes: planNotes.value.trim() || null,
+  };
   try {
-    if (target.existing) {
-      await api(`/api/planned/${target.existing.id}`, { method: "PATCH", body: JSON.stringify(body) });
-    } else {
-      await api("/api/planned", { method: "POST", body: JSON.stringify({ ...body, date: target.date }) });
-    }
+    const answer = target.existing ? await target.store.update(target.existing, body) : await target.store.add(body);
     planDialog.close();
-    await target.onSaved();
+    await target.onSaved(answer);
   } catch (err) {
     showStatus(planError, err.message, true);
   }
@@ -97,9 +107,9 @@ planForm.addEventListener("submit", async (e) => {
 
 planDelete.addEventListener("click", async () => {
   try {
-    await api(`/api/planned/${target.existing.id}`, { method: "DELETE" });
+    const answer = await target.store.remove(target.existing);
     planDialog.close();
-    await target.onSaved();
+    await target.onSaved(answer);
   } catch (err) {
     showStatus(planError, err.message, true);
   }
