@@ -60,7 +60,7 @@ then, so it is hidden by default.
 | Garmin connect and sync | `garmin/client.py` (calls to Garmin), `garmin/sync.py` (what is fetched and stored), `garmin/autosync.py` (background), `routers/garmin.py` | `js/views/garmin.js` |
 | Athlete tab | `routers/athlete.py`, `routers/objectives.py` | `js/views/athlete.js`, `js/views/objectives.js`, `css/athlete.css` |
 | Plan tab | `routers/plan.py`, `planning/draft_parser.py`, `planning/drafts.py` | `js/views/plan.js`, `js/views/plan-preview.js`, `css/plan.css` |
-| History tab (the log) | `routers/plan.py`, `planning/training_log.py`, `planning/activity_text.py`, `planning/session_detail.py` | `js/views/history.js`, `css/history.css` |
+| The training log (what Claude reads) | `routers/plan.py`, `planning/training_log.py`, `planning/activity_text.py`, `planning/session_detail.py` | (no page: `mcp/server.py`) |
 | Import tab | `routers/share.py`, `sharing.py` | `js/views/import.js`, `css/import.css` |
 | Every request to the server | `main.py` (security headers, redirects), `visitor.py`, `deps.py` (who may call what) | `js/core/api.js` |
 | Database tables | `models.py`, `database.py` | |
@@ -187,12 +187,12 @@ Only with `MCP_ENABLED=true` (README, "Connect Claude (MCP)"). Look at
   (that disconnects Claude on purpose), or the connector wasn't used for
   `MCP_TOKEN_DAYS` days.
 
-### The Plan or History tab shows something wrong
+### The Plan tab or the training log shows something wrong
 
 - A draft line flagged in red: the message says what to fix. The parser is
   `planning/draft_parser.py`, and `tests/test_plan.py` shows every format
   it accepts.
-- The History log misses or misstates something: `planning/training_log.py`
+- The training log misses or misstates something: `planning/training_log.py`
   builds it with one function per section (`_objective_lines`,
   `_athlete_section`, `_week_lines`...). One activity's line is
   `planning/activity_text.py`.

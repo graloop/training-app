@@ -1,6 +1,6 @@
 """One session up close, from its trace (garmin/activity_file.py, kept TRACE_DAYS
 days): how each rep went inside for the log, and every lap and sample for the
-"One session in detail" part of the History tab.
+connector's get_session (and GET /api/plan/sessions/{id}).
 
 trace_lines() adds one line to a session in the full log: inside each rep (HR at
 the start and peak, pace or power first vs second half), or, for a steady run

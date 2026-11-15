@@ -1,6 +1,6 @@
 """Compact text for the connector's tools (server.py), where planning/ has no
 function for it yet: a draft, a problem with what Claude sent. Everything
-else the tools return is built by planning/ (the same text as the History tab)."""
+else the tools return is built by planning/ (the same text as GET /api/plan/log)."""
 
 from pydantic import ValidationError
 

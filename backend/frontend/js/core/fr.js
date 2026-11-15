@@ -7,7 +7,6 @@ export const FR = {
   Calendar: "Calendrier",
   Athlete: "Athlète",
   Import: "Importer",
-  History: "Historique",
   Settings: "Paramètres",
   admin: "admin",
   "Reconnect Garmin": "Reconnecter Garmin",
@@ -55,7 +54,6 @@ export const FR = {
   "Next week ({date})": "La semaine prochaine ({date})",
   "Last week ({date})": "La semaine dernière ({date})",
   "View on the calendar": "Voir au calendrier",
-  "Saved. It is now part of the History tab.": "Enregistré. Cela fait maintenant partie de l'onglet Historique.",
 
   // plural(): singular and plural forms
   activity: "activité",
@@ -350,43 +348,20 @@ export const FR = {
   " in your draft": " dans votre brouillon",
   "Done: {sessions} on your calendar{replaced}.": "C'est fait : {sessions} à votre calendrier{replaced}.",
 
-  // --- History tab ---
-  "For the AI, not for reading: everything stored about your training, as text Claude in Chrome reads to coach you and write the plan. Ask Claude to read this tab, then to write the plan on the Plan tab.":
-    "Pour l'IA, pas pour la lecture : tout ce qui est conservé sur votre entraînement, en texte que Claude dans Chrome lit pour vous coacher et écrire le plan. Demandez à Claude de lire cet onglet, puis d'écrire le plan dans l'onglet Plan.",
-  "Training history": "Historique d'entraînement",
-  "Show the last": "Afficher les dernières",
-  "How many weeks of training log to show": "Nombre de semaines du journal d'entraînement à afficher",
+  "Saved.": "Enregistré.",
+  // --- Import older activities (⚙️ menu) ---
   Detail: "Détail",
-  "How much detail the training log shows": "Niveau de détail du journal d'entraînement",
   "Night mode": "Mode nuit",
-  "Full (last 4 weeks in detail)": "Complet (4 dernières semaines en détail)",
-  "One session in detail": "Une séance en détail",
-  "Every lap, with heart rate, pace and power every 5 seconds for the last 28 days. Pick a session and it shows below, for Claude to read.":
-    "Tous les tours, avec la fréquence cardiaque, l'allure et la puissance toutes les 5 secondes pour les 28 derniers jours. Choisissez une séance : elle s'affiche ci-dessous pour que Claude la lise.",
-  "Pick a session": "Choisir une séance",
-  "Couldn't load the session: {error}": "Impossible de charger la séance : {error}",
-  "Summary (one line per session)": "Résumé (une ligne par séance)",
-  "Copy log for Claude": "Copier le journal pour Claude",
-  "Objectives, the athlete's numbers and Garmin's, the rule set, every session with effort and feel, sleep and recovery, what is planned, earlier weeks as totals, then the plan being written.":
-    "Objectifs, valeurs de l'athlète et de Garmin, règles, chaque séance avec effort et ressenti, sommeil et récupération, ce qui est prévu, les semaines plus anciennes en totaux, puis le plan en cours d'écriture. Le journal est en anglais, pour Claude.",
-  "Training log": "Journal d'entraînement",
-  "The plan being written": "Le plan en cours d'écriture",
-  "The weeks being planned and the current draft": "Les semaines planifiées et le brouillon actuel",
-  "Long-term picture:": "Vue à long terme :",
   "How far back to import older activities": "Jusqu'où importer les activités plus anciennes",
   "last 6 months": "6 derniers mois",
   "last 12 months": "12 derniers mois",
   "last 2 years": "2 dernières années",
   "last 3 years": "3 dernières années",
   "Import older activities": "Importer les activités plus anciennes",
-  "Couldn't load the log: {error}": "Impossible de charger le journal : {error}",
-  "Copied. Paste it into a Claude conversation and ask for the plan.":
-    "Copié. Collez-le dans une conversation avec Claude et demandez le plan.",
-  "Couldn't copy automatically. The log is selected: press Cmd+C.":
-    "Impossible de copier automatiquement. Le journal est sélectionné : appuyez sur Cmd+C.",
   "Asking Garmin for your older activities…": "Demande de vos activités plus anciennes à Garmin…",
-  'Imported {activities} back to {date}. They are in the log under "EARLIER HISTORY".':
-    "Importé : {activities}, jusqu'au {date}. Vous les trouverez dans le journal sous « EARLIER HISTORY ».",
+  "Imported {activities} back to {date}.": "Importé : {activities}, jusqu'au {date}.",
+  "Activities from before your first sync, for the long-term weekly totals.":
+    "Les activités d'avant votre première synchronisation, pour les totaux hebdomadaires à long terme.",
 
   // --- Admin dashboard ---
   "Admin dashboard": "Tableau de bord admin",
@@ -491,8 +466,8 @@ export const FR = {
   "Weekly hours, training load, sleep and resting heart rate":
     "Heures de la semaine, charge d'entraînement, sommeil et FC au repos",
   "Claude writes the plan. You decide.": "Claude écrit le plan. Vous décidez.",
-  "Ask Claude in Chrome to read your history and write the coming weeks, one line per session. The preview shows each week and its split by sport. Nothing reaches your calendar until you press the button.":
-    "Demandez à Claude dans Chrome de lire votre historique et d'écrire les prochaines semaines, une ligne par séance. L'aperçu montre chaque semaine et sa répartition par sport. Rien n'arrive à votre calendrier tant que vous n'appuyez pas sur le bouton.",
+  "Ask Claude, connected to the app, to read your history and write the coming weeks, one line per session. The preview shows each week and its split by sport. Nothing reaches your calendar until you press the button.":
+    "Demandez à Claude, connecté à l'app, de lire votre historique et d'écrire les prochaines semaines, une ligne par séance. L'aperçu montre chaque semaine et sa répartition par sport. Rien n'arrive à votre calendrier tant que vous n'appuyez pas sur le bouton.",
   "One to twelve weeks at a time": "D'une à douze semaines à la fois",
   "Your rules are followed: schedule, exams, rest days": "Vos règles sont suivies : horaire, examens, jours de repos",
   "Edit any line yourself before it goes on the calendar":
@@ -505,8 +480,8 @@ export const FR = {
   "Your own numbers win over Garmin's estimates": "Vos propres valeurs l'emportent sur les estimations de Garmin",
   "Training with a friend? Copy their planned weeks with their name and share code, onto your plan or straight onto your calendar.":
     "Vous vous entraînez avec un ami? Copiez ses semaines prévues avec son nom et son code de partage, dans votre plan ou directement au calendrier.",
-  "Every session with effort and feel, sleep and recovery, as one text Claude reads to coach you.":
-    "Chaque séance avec effort et ressenti, sommeil et récupération, en un seul texte que Claude lit pour vous coacher.",
+  "Connect Claude to the app: it reads every session with effort and feel, sleep and recovery, and coaches you from it.":
+    "Connectez Claude à l'app : il lit chaque séance avec effort et ressenti, sommeil et récupération, et vous coache à partir de là.",
   "Accounts are made by hand. Your Garmin password is never stored, and friends only ever see the plans you share.":
     "Les comptes sont créés à la main. Votre mot de passe Garmin n'est jamais conservé, et vos amis ne voient que les plans que vous partagez.",
   "English or French": "Français ou anglais",

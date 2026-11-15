@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="/css/calendar.css" />
   <link rel="stylesheet" href="/css/athlete.css" />
   <link rel="stylesheet" href="/css/plan.css" />
-  <link rel="stylesheet" href="/css/history.css" />
   <link rel="stylesheet" href="/css/import.css" />
   <link rel="stylesheet" href="/css/admin.css" />
   <link rel="stylesheet" href="/css/landing.css" />
@@ -27,7 +26,6 @@
       <button id="tab-btn-athlete" type="button" class="tab">Athlete</button>
       <button id="tab-btn-plan" type="button" class="tab">Plan</button>
       <button id="tab-btn-import" type="button" class="tab">Import</button>
-      <button id="tab-btn-history" type="button" class="tab">History</button>
     </nav>
     <!-- Logged in: night mode, the account menu (the badge with your name) and the settings gear. -->
     <div id="user-actions" class="topbar-actions hidden">
@@ -65,6 +63,18 @@
               <button id="garmin-reconnect" type="button" class="btn-link">Reconnect Garmin</button>
               <button id="garmin-disconnect" type="button" class="btn-link danger">Disconnect</button>
             </div>
+            <label for="import-months">Import older activities</label>
+            <p class="hint">Activities from before your first sync, for the long-term weekly totals.</p>
+            <div class="import-row">
+              <select id="import-months" aria-label="How far back to import older activities">
+                <option value="6">last 6 months</option>
+                <option value="12" selected>last 12 months</option>
+                <option value="24">last 2 years</option>
+                <option value="36">last 3 years</option>
+              </select>
+              <button id="import-btn" type="button" class="btn-ghost">Import</button>
+            </div>
+            <p id="import-status" class="status hidden" role="status"></p>
             <hr />
           </div>
           <h3>Language</h3>
@@ -150,7 +160,7 @@
         <div class="feature-text">
           <span class="feature-tag">Plan</span>
           <h3>Claude writes the plan. You decide.</h3>
-          <p>Ask Claude in Chrome to read your history and write the coming weeks, one line per session. The preview shows each week and its split by sport. Nothing reaches your calendar until you press the button.</p>
+          <p>Ask Claude, connected to the app, to read your history and write the coming weeks, one line per session. The preview shows each week and its split by sport. Nothing reaches your calendar until you press the button.</p>
           <ul class="feature-points">
             <li>One to twelve weeks at a time</li>
             <li>Your rules are followed: schedule, exams, rest days</li>
@@ -182,8 +192,8 @@
         </div>
         <div class="mini-card reveal">
           <span class="mini-icon" aria-hidden="true">🧠</span>
-          <h3>History</h3>
-          <p>Every session with effort and feel, sleep and recovery, as one text Claude reads to coach you.</p>
+          <h3>Claude</h3>
+          <p>Connect Claude to the app: it reads every session with effort and feel, sleep and recovery, and coaches you from it.</p>
         </div>
         <div class="mini-card reveal">
           <span class="mini-icon" aria-hidden="true">🔒</span>
@@ -474,57 +484,6 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
           </div>
           <p class="hint friend-choices" data-i18n="import.choices"><strong>Import to plan</strong> makes it your draft on the Plan tab, to adjust before it goes on the calendar. <strong>Import to calendar</strong> puts it on your calendar now.</p>
           <p id="friend-status" class="status hidden" role="status"></p>
-        </div>
-      </section>
-    </div>
-
-    <!-- History tab: views/history.js (log, one session, import older activities). css/history.css -->
-    <div id="tab-history" class="hidden">
-      <p class="hint plan-intro">For the AI, not for reading: everything stored about your training, as text Claude in Chrome reads to coach you and write the plan. Ask Claude to read this tab, then to write the plan on the Plan tab.</p>
-
-      <section class="panel" aria-labelledby="log-title">
-        <div class="panel-header">
-          <h2 id="log-title">Training history</h2>
-          <div class="calendar-nav">
-            <label for="log-weeks" class="inline-label">Show the last</label>
-            <select id="log-weeks" aria-label="How many weeks of training log to show">
-              <option value="2">2 weeks</option>
-              <option value="4">4 weeks</option>
-              <option value="6">6 weeks</option>
-              <option value="8">8 weeks</option>
-              <option value="12">12 weeks</option>
-              <option value="16">16 weeks</option>
-              <option value="26" selected>26 weeks</option>
-            </select>
-            <label for="log-detail" class="inline-label">Detail</label>
-            <select id="log-detail" aria-label="How much detail the training log shows">
-              <option value="full" selected>Full (last 4 weeks in detail)</option>
-              <option value="summary">Summary (one line per session)</option>
-            </select>
-            <button id="log-sync" type="button" class="btn-ghost">Sync with Garmin</button>
-            <button id="log-copy" type="button" class="btn-ghost">Copy log for Claude</button>
-          </div>
-        </div>
-        <p class="hint">Objectives, the athlete's numbers and Garmin's, the rule set, every session with effort and feel, sleep and recovery, what is planned, earlier weeks as totals, then the plan being written.</p>
-        <p id="log-status" class="status hidden" role="status"></p>
-        <pre id="training-log" class="log-text" tabindex="0" aria-label="Training log"></pre>
-        <h3 class="log-subtitle">One session in detail</h3>
-        <p class="hint">Every lap, with heart rate, pace and power every 5 seconds for the last 28 days. Pick a session and it shows below, for Claude to read.</p>
-        <select id="log-session" class="log-session" aria-label="Which session to show in detail"></select>
-        <p id="log-session-status" class="status hidden" role="status"></p>
-        <pre id="log-session-text" class="log-text hidden" tabindex="0" aria-label="The session in detail"></pre>
-        <h3 class="log-subtitle">The plan being written</h3>
-        <pre id="log-context" class="log-text" tabindex="0" aria-label="The weeks being planned and the current draft"></pre>
-        <div class="form-row import-row">
-          <label for="import-months" class="inline-label">Long-term picture:</label>
-          <select id="import-months" aria-label="How far back to import older activities">
-            <option value="6">last 6 months</option>
-            <option value="12" selected>last 12 months</option>
-            <option value="24">last 2 years</option>
-            <option value="36">last 3 years</option>
-          </select>
-          <button id="import-btn" type="button" class="btn-ghost">Import older activities</button>
-          <span id="import-status" class="status hidden" role="status"></span>
         </div>
       </section>
     </div>

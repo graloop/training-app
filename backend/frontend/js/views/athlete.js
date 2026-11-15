@@ -66,7 +66,7 @@ profileForm.addEventListener("submit", async (e) => {
   }
   try {
     fillProfile(await api(`/api/athlete?today=${isoDate(new Date())}`, { method: "PUT", body: JSON.stringify(body) }));
-    showStatus(profileStatus, t("Saved. It is now part of the History tab."));
+    showStatus(profileStatus, t("Saved."));
     profileStatus.classList.add("ok");
   } catch (err) {
     if (err.status !== 401)

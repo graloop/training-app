@@ -1,15 +1,15 @@
-// Garmin: the "Connect Garmin" panel, the Reconnect/Disconnect buttons of the
-// Settings menu, and the Sync button. The sync runs on the server; the page
+// Garmin: the "Connect Garmin" panel, the Reconnect/Disconnect buttons and
+// "Import older activities" of the Settings menu, and the Sync button. The sync runs on the server; the page
 // starts it and asks how it is going (backend/app/garmin/autosync.py).
 // API: POST/DELETE /api/garmin/connect, POST /api/garmin/sync/start,
-// GET /api/garmin/sync/status. Markup: #garmin-panel and #sync-btn on the
+// GET /api/garmin/sync/status, POST /api/garmin/import-history. Markup: #garmin-panel and #sync-btn on the
 // Calendar tab, #garmin-settings in the ⚙️ menu. Styles: css/calendar.css.
 //
 // A 409 from the server means "Garmin isn't usable" (never connected, or the
 // session expired): the Connect panel is shown instead of logging out.
 
 import { api } from "../core/api.js";
-import { plural } from "../core/format.js";
+import { fmtLongDate, plural } from "../core/format.js";
 import { t } from "../core/i18n.js";
 import { closeMenus } from "../core/menus.js";
 import { getUser, setUser } from "../core/session.js";
@@ -21,7 +21,6 @@ const garminPanel = document.getElementById("garmin-panel");
 const garminForm = document.getElementById("garmin-form");
 const garminError = document.getElementById("garmin-error");
 const syncBtn = document.getElementById("sync-btn");
-const logSyncBtn = document.getElementById("log-sync"); // on the History tab
 const syncStatus = document.getElementById("sync-status");
 
 function isConnected() {
@@ -115,14 +114,14 @@ function syncProgressText(job) {
 async function refreshAfterSync() {
   await loadCalendar();
   const tab = getCurrentTab();
-  if (tab === "history" || tab === "athlete") await loadTab(tab);
+  if (tab === "athlete") await loadTab(tab);
 }
 
-// `statusEl` is where progress is shown: under the calendar, or on the History tab.
+// `statusEl` is where progress is shown: under the calendar by default.
 export async function runSync(statusEl = syncStatus) {
   if (syncing) return;
   syncing = true;
-  for (const btn of [syncBtn, logSyncBtn]) btn.disabled = true;
+  syncBtn.disabled = true;
   try {
     let job = await api("/api/garmin/sync/start", { method: "POST" });
     let roundsShown = job.rounds;
@@ -131,7 +130,7 @@ export async function runSync(statusEl = syncStatus) {
       showStatus(statusEl, syncProgressText(job));
       await wait(SYNC_POLL_MS);
       job = await api("/api/garmin/sync/status");
-      // The calendar fills in batch by batch; the History tab is rebuilt once, at the end.
+      // The calendar fills in batch by batch.
       if (job.rounds > roundsShown && job.state === "running") {
         roundsShown = job.rounds;
         await loadCalendar();
@@ -165,9 +164,35 @@ export async function runSync(statusEl = syncStatus) {
     }
   } finally {
     syncing = false;
-    logSyncBtn.disabled = false;
     syncBtn.disabled = !isConnected();
   }
 }
 
 syncBtn.addEventListener("click", () => runSync(syncStatus));
+
+// --- Older activities (the ⚙️ menu) ---
+// They come as one list from Garmin: enough for the long-term weekly totals.
+
+const importBtn = document.getElementById("import-btn");
+const importStatus = document.getElementById("import-status");
+
+importBtn.addEventListener("click", async () => {
+  importBtn.disabled = true;
+  showStatus(importStatus, t("Asking Garmin for your older activities…"));
+  try {
+    const months = Number(document.getElementById("import-months").value);
+    const result = await api("/api/garmin/import-history", { method: "POST", body: JSON.stringify({ months }) });
+    showStatus(
+      importStatus,
+      t("Imported {activities} back to {date}.", {
+        activities: plural(result.activities_imported, "older activity", "older activities"),
+        date: fmtLongDate(result.since),
+      }),
+    );
+    importStatus.classList.add("ok");
+  } catch (err) {
+    if (err.status !== 401) showStatus(importStatus, err.message, true);
+  } finally {
+    importBtn.disabled = false;
+  }
+});

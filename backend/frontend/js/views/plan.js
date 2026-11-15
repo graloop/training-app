@@ -226,14 +226,14 @@ confirmBtn.addEventListener("click", async () => {
 
 confirmView.addEventListener("click", () => showCalendarAround(planDraft.start_date));
 
-// --- The rule set (saved on its own; it shows up in the History tab) ---
+// --- The rule set (saved on its own; Claude reads it through the connector) ---
 
 async function saveRules() {
   try {
     rulesText.value = (
       await api("/api/plan/rules", { method: "PUT", body: JSON.stringify({ rules: rulesText.value }) })
     ).rules;
-    showStatus(rulesStatus, t("Saved. It is now part of the History tab."));
+    showStatus(rulesStatus, t("Saved."));
     rulesStatus.classList.add("ok");
   } catch (err) {
     if (err.status !== 401) showStatus(rulesStatus, err.message, true);

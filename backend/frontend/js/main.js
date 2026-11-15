@@ -17,7 +17,6 @@ import { showDashboard } from "./views/admin.js";
 import { loadAthletePage } from "./views/athlete.js";
 import { loadCalendar, resetCalendar } from "./views/calendar.js";
 import { renderGarminState, runSync } from "./views/garmin.js";
-import { loadHistoryPage } from "./views/history.js";
 import { loadImportPage } from "./views/import.js";
 import { loadObjectives } from "./views/objectives.js";
 import { loadPlanPage } from "./views/plan.js";
@@ -32,7 +31,6 @@ registerTab("calendar", loadCalendar);
 registerTab("athlete", loadAthletePage); // its objectives are loaded with the calendar, at login
 registerTab("plan", loadPlanPage);
 registerTab("import", loadImportPage);
-registerTab("history", loadHistoryPage);
 
 // After login (or on load with a saved token): ask the server who this is,
 // clear what a previous session left on the page, then open the dashboard
@@ -61,10 +59,8 @@ async function showAppView({ sync = false } = {}) {
   resetCalendar();
   showView("app-view");
   renderGarminState();
-  // LEGACY: the History tab was called "Logs" before v15 (2026-10-17). Keeps
-  // old #logs bookmarks working; safe to delete any time.
-  const hash = location.hash === "#logs" ? "#history" : location.hash;
-  showTab(TABS.find((tab) => `#${tab}` === hash) || "calendar", { load: false });
+  // Old #history and #logs bookmarks (the History tab, removed) open the calendar.
+  showTab(TABS.find((tab) => `#${tab}` === location.hash) || "calendar", { load: false });
   await Promise.all([loadCalendar(), loadObjectives()]);
   if (getCurrentTab() !== "calendar") await loadTab(getCurrentTab());
   if (sync && me.garmin_connected) runSync();

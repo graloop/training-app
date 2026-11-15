@@ -1,4 +1,4 @@
-"""The training log of the History tab: the text Claude reads to coach the
+"""The training log: the text Claude reads to coach the
 athlete and write the plan. build_log() puts it together, top to bottom:
 
     intro, OBJECTIVES, ATHLETE (entered, then from Garmin), TRAINING STATUS,

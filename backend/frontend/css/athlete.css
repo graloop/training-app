@@ -47,3 +47,18 @@
 .profile-fields input { width: 100%; box-sizing: border-box; }
 .profile-group > label { display: block; margin: 10px 0 4px; }
 .profile-group textarea { width: 100%; box-sizing: border-box; }
+
+/* Garmin's view of the athlete, as text (#athlete-garmin). */
+.log-text {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 420px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}

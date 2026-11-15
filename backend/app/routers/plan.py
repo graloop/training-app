@@ -1,4 +1,5 @@
-"""/api/plan: the Plan and History tabs. The training log as text (/log), one
+"""/api/plan: the Plan tab, and the training log as text (/log, the same text
+Claude reads through the connector), one
 session in detail (/sessions), the rule set, and the draft: saved and parsed
 (/draft), then put on the calendar (/draft/confirm). The logic is in planning/."""
 

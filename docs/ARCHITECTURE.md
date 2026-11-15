@@ -12,10 +12,9 @@ their own Garmin account; the server syncs their activities, sleep and
 recovery, writes it all up as text, and puts the plan they agree on with
 Claude on their calendar.
 
-There is no AI inside the app. The History tab is text written *for* Claude
-(Claude in Chrome reads the page, or the athlete copies it into a Claude
-conversation), and the Plan tab reads Claude's answer back as one session per
-line. Text out, text in.
+There is no AI inside the app. The training log is text written *for* Claude
+(Claude reads it through the connector, `mcp/`), and the Plan tab reads
+Claude's answer back as one session per line. Text out, text in.
 
 One Python process (FastAPI) serves both the API (`/api/...`) and the page
 (plain HTML, CSS and JavaScript modules, no build step). Postgres in Docker,
@@ -38,9 +37,9 @@ SQLite under `npm start`.
         │
         ├──▶ GET /api/calendar ─────────────────────────────▶ Calendar tab
         │
-        └──▶ planning/training_log.py (build_log) ──▶ GET /api/plan/log ──▶ History tab, as plain text
+        └──▶ planning/training_log.py (build_log) ──▶ the connector's get_training_log (mcp/), as plain text
                                                                               │
-                                    Claude in Chrome reads it, or "Copy log for Claude"
+                                    Claude reads it (GET /api/plan/log has the same text)
                                                                               ▼
                                     draft lines:  Tue Oct 13 | run | 1:15 | Track: 2×6×400 m
                                     in the Plan tab ──▶ PUT /api/plan/draft
@@ -111,7 +110,7 @@ Backend, under `backend/app/`:
 | `planning/basics.py` | Days, durations and sports, written the same way everywhere |
 | `planning/activity_text.py` | One activity as text: the summary line, laps, reps, detail lines |
 | `planning/session_detail.py` | What a session's 5-second trace adds, and one session in full |
-| `planning/training_log.py` | The History tab's log, one function per section (`build_log` puts them together) |
+| `planning/training_log.py` | The training log Claude reads, one function per section (`build_log` puts them together) |
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
 | `planning/drafts.py` | A draft as the page sees it: saving it, confirming it, putting sessions on the calendar |
 | `planning/planned_sessions.py` | One planned session: found, added, edited |
@@ -248,7 +247,7 @@ plain script that picks day or night colours before anything is drawn) and
 |---|---|
 | `header.topbar` | The tabs (`#tabs`), and the menus: `#user-actions` once logged in (account, settings), `#guest-actions` on the landing page (log in, language) |
 | `#auth-view` | The landing page for visitors, with the Log in window |
-| `#app-view` | A regular account's tabs: `#tab-calendar`, `#tab-athlete`, `#tab-plan`, `#tab-import`, `#tab-history` |
+| `#app-view` | A regular account's tabs: `#tab-calendar`, `#tab-athlete`, `#tab-plan`, `#tab-import` |
 | `#admin-view` | The admin dashboard |
 | `#plan-dialog` | The "Plan a session" / "Edit session" dialog |
 
@@ -291,7 +290,7 @@ them together.
 | Ask Garmin for something new | A `fetch_*` function in `garmin/client.py`, called from `garmin/sync.py` inside its own `try` |
 | Add or change one of Claude's tools | `mcp/server.py` (`build_server`): the docstring is what Claude reads to choose it. The work goes in `planning/` or `garmin/`, shared with the page. Tests: `tests/test_mcp_tools.py` (add its name to the list there) |
 | Change what the History log says | `planning/training_log.py` (`_intro_lines`, `_objective_lines`, `_athlete_section`, `_earlier_weeks`, `_week_lines`, `_ahead_lines`); one session's text in `planning/activity_text.py`; what the trace adds in `planning/session_detail.py`. Tests: `tests/test_plan.py`, `tests/test_activity_traces.py` |
-| Accept another way of writing a draft line | `planning/draft_parser.py` (`parse_duration`, `_parse_date`, `_SPORT_WORDS`), with a test in `tests/test_plan.py`. The format is also explained in `index.html` (`data-i18n="plan.format"`, and its French in `fr.js`) and in `views/history.js` (`planContextText`) |
+| Accept another way of writing a draft line | `planning/draft_parser.py` (`parse_duration`, `_parse_date`, `_SPORT_WORDS`), with a test in `tests/test_plan.py`. The format is also explained in `index.html` (`data-i18n="plan.format"`, and its French in `fr.js`) and in the connector's `save_draft` description (`mcp/server.py`) |
 | Change how a tab looks or behaves | `frontend/js/views/<tab>.js`, `frontend/css/<tab>.css`, its markup under `#tab-<tab>` in `index.html` |
 | Add a sentence to the page | Write it in English, through `t()` in a script; add its French to `js/core/fr.js` (the key is the exact English text) |
 | Change login, lockout or password rules | `routers/auth.py`, `accounts.py` (the lockout numbers head its lockout section), `security.py`, `schemas.py` (`PASSWORD_MIN`, `USERNAME_PATTERN`) |
@@ -314,7 +313,6 @@ time of writing:
 | `garmin/sync.py` `_needs_details`, the `extras IS NULL` part | Activities whose details were fetched before weather and sweat were kept (version 9, 2026-10-13) | Details are only fetched 90 days back: nothing left to do after about 2027-01-11 |
 | `garmin/sync.py` `backfill_ride_laps` | Rides whose details were fetched before ride laps were kept (2026-11-03) | Same 90-day window: after about 2027-02-01 |
 | `planning/training_log.py` `rule_set_text`, `User.athlete_notes`, `PlanDraft.notes` (`DraftIn.notes`) | The older "About you" box and block notes stand in for the rule set until it is first saved | When every account has saved a rule set. Removing it earlier hides text people wrote |
-| `frontend/js/main.js`, `#logs` | Old bookmarks of the History tab, once called Logs | Any time |
 
 Permanent leftovers, harmless: the login name in the column `email`, and
 planned sessions whose `source` says `ai` (from the chatbot removed in

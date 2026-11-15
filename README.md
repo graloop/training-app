@@ -5,9 +5,10 @@ in with an account the admin created, connects their own Garmin Connect,
 and sees their activities, sleep and resting heart rate on a 4-week
 calendar next to their planned sessions and objectives.
 
-There is no built-in chatbot and no AI API key: open the page in Chrome and
-ask the **Claude in Chrome** extension to plan your week, add objectives or
-adjust sessions — it edits the page like you would.
+There is no built-in chatbot and no AI API key: connect Claude to the app
+as a custom connector ([Connect Claude (MCP)](#connect-claude-mcp)) and ask
+it to plan your week, add objectives or adjust sessions. The **Claude in
+Chrome** extension also works: it edits the page like you would.
 
 ## Features
 
@@ -71,14 +72,13 @@ adjust sessions — it edits the page like you would.
   "multisport" session. Its legs (swim, transitions, bike, run) are fetched
   once, at any age, shown under the session on the calendar, listed in the
   log, and counted per sport in the weekly totals.
-- **Older history** — *Import older activities* on the History tab brings in
-  up to 3 years of activities (one list from Garmin). The History tab shows
-  all of it: every session for the year before the detailed weeks, weekly
+- **Older history** — *Import older activities*, in the Garmin part of the
+  ⚙️ Settings menu, brings in up to 3 years of activities (one list from
+  Garmin). The training log Claude reads shows all of it: every session for the year before the detailed weeks, weekly
   totals back to two years ago, monthly totals before that. If the Garmin session has
   expired the page shows the "Connect your Garmin account" form; you stay
   logged in.
-- **Tabs** — **Calendar**, **Athlete**, **Plan**, **Import** and
-  **History**.
+- **Tabs** — **Calendar**, **Athlete**, **Plan** and **Import**.
 - **Athlete tab** — everything about the athlete in one place:
   1. **Objectives** (see below).
   2. **Benchmarks and zones** — your own tested numbers: weight, height,
@@ -107,12 +107,10 @@ adjust sessions — it edits the page like you would.
      of thumb. It replaces the older "About you" box and block notes: until
      the rule set is first saved, their text is shown in it, so nothing is
      lost.
-- **History tab** — for the AI, not for reading: the whole training
-  history as text for Claude in Chrome (26 weeks by default, the last 4 in
-  full detail and older ones as one line per session plus its reps),
-  then the plan being written (the weeks, the line format and the current
-  draft). **Copy log for Claude** copies the
-  same text for a normal Claude conversation. The history holds, per session:
+- **Training log (for Claude)** — not a tab: the whole training history as
+  text, which Claude reads through the connector (`get_training_log`, up to
+  26 weeks, the last 4 in full detail and older ones as one line per session
+  plus its reps; `get_session` for one session in full). It holds, per session:
      duration, distance, pace, average HR, load, and the **perceived effort
      and feel you answered on the watch**. In *Full* detail also time in each
      HR zone, max HR, Garmin's session type and training effect, bike power,
@@ -124,7 +122,7 @@ adjust sessions — it edits the page like you would.
      the watch stays on one line. From each session's file, kept as a trace
      for 28 days: how each rep went inside (heart rate from start to peak,
      pace or power first half vs second half), or the heart-rate drift of a
-     steady session. **One session in detail**, under the log, shows any
+     steady session. **One session in detail** (`get_session`) shows any
      session of the last 90 days with every lap, and heart rate, pace, power
      and cadence every 5 seconds while its trace is kept. Per day: the morning **Training
      Readiness**, sleep score, duration and stages, resting HR, overnight
@@ -157,7 +155,7 @@ adjust sessions — it edits the page like you would.
   coloured good / fair / poor) and resting heart rate (heart icon, bpm); each week's
   column shows the average sleep score and average resting heart rate.
   The morning Training Readiness, overnight HRV, stress and body battery
-  are only in the History tab.
+  are only in the training log Claude reads.
 - **Training load** — each completed activity shows Garmin's training load
   next to its duration (e.g. "1 h · load 113"), and each week's column
   shows the week's total load.
@@ -221,7 +219,7 @@ How the parts work together, and where to change what:
     │   │   ├── basics.py         days, durations, sports
     │   │   ├── activity_text.py  one activity as text (pace, HR, effort, laps, weather)
     │   │   ├── session_detail.py what a session's trace adds, and one session in full
-    │   │   ├── training_log.py   the History tab's log (build_log, one function per section)
+    │   │   ├── training_log.py   the training log Claude reads (build_log, one function per section)
     │   │   ├── draft_parser.py   "date | sport | duration | details" lines -> sessions or errors
     │   │   └── drafts.py         a draft as the page sees it, putting sessions on the calendar
     │   ├── mcp/            Claude as a custom connector (MCP_ENABLED): OAuth login, bearer check, tools
@@ -234,7 +232,7 @@ How the parts work together, and where to change what:
         ├── index.html        every screen's markup; loads css/*.css, js/theme-early.js and js/main.js
         ├── img/landing/      the landing page's photos
         ├── css/              base.css (shared: colours, night mode) + one file per screen:
-        │                     landing, calendar, athlete, plan, history, import, admin
+        │                     landing, calendar, athlete, plan, import, admin, oauth
         └── js/
             ├── theme-early.js day or night colours, set before the page is drawn (a plain script, not a module)
             ├── main.js        entry point: log in, then show the landing page, the tabs or the admin dashboard
@@ -243,7 +241,7 @@ How the parts work together, and where to change what:
             │                  sports.js (names, icons), i18n.js + fr.js (English / French)
             └── views/         one file per part of the page: landing (+ landing-mocks), account and settings
                                menus, night-mode, calendar, session-dialog, garmin (connect + sync), objectives,
-                               athlete, plan, plan-preview, history, import, admin
+                               athlete, plan, plan-preview, import, admin
 ```
 
 Something broken on one tab? Its code is in `frontend/js/views/<tab>.js`
@@ -472,7 +470,7 @@ public. The most private choice, with more setup per friend. Leave
 Open the app in Chrome, log in, open the Claude extension and ask in plain
 words, for example:
 
-- "Read the **History** tab, then on the **Plan** tab plan the next 4 weeks in
+- "Read my training (the connector's `get_training_log`), then on the **Plan** tab plan the next 4 weeks in
   the draft box, one session per line in the format shown. Save and
   preview, and tell me the weekly totals." Then discuss, let it adjust the draft, and press **Put this
   plan on the calendar** yourself when you're happy.
@@ -527,7 +525,7 @@ What Claude can do through the connector:
 | Tool | What it does |
 |---|---|
 | `get_overview` | Where every chat starts: today, Claude's coach notes, objectives, the rule set, Garmin's status, the last 3 nights, the last two weeks, the next 14 days planned |
-| `get_training_log` | The History tab's log (1 to 26 weeks, `summary` or `full`) |
+| `get_training_log` | The training log (1 to 26 weeks, `summary` or `full`) |
 | `list_sessions`, `get_session` | The sessions of the last 90 days, and one of them with every lap and its 5-second trace |
 | `get_planned`, `get_objectives`, `get_rules`, `get_draft` | What is on the calendar, the target events, the rule set, the Plan tab's draft |
 | `add_planned`, `update_planned`, `delete_planned` | One planned session on the calendar |
@@ -637,7 +635,7 @@ New nullable columns are added to existing databases on startup
 | `/api/plan/sessions/{id}`| GET    | One session as text: every lap and, while it is kept, its trace. Your own sessions only. |
 | `/api/plan/log`          | GET    | Training log as text (`?weeks=6&detail=full|summary`): sessions, effort/feel, laps, sleep and recovery, athlete profile, objectives, what's planned |
 | `/api/athlete`           | GET/PUT | The athlete's own numbers (FTP, zones, CSS, equipment…), plus what Garmin knows as text |
-| `/api/plan/rules`        | GET/PUT | The rule set: free text the plan follows, added to the history |
+| `/api/plan/rules`        | GET/PUT | The rule set: free text the plan follows, added to the training log |
 | `/api/plan/draft`        | GET/PUT | The draft plan (first week, number of weeks, session lines, notes), returned parsed with errors and weekly totals |
 | `/api/plan/draft/confirm`| POST   | Put the draft on the calendar, replacing planned sessions from today to the draft's last day |
 | `/api/share`             | GET    | Your username and share code (created on first use) |
