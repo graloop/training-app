@@ -70,7 +70,7 @@ def test_restart_restores_the_known_passwords_and_roles(client, monkeypatch):
                        headers=user).status_code == 200
     user_id = next(u["id"] for u in client.get("/api/admin/users", headers=login(client, "admin", "adminadmin")).json()["users"]
                    if u["username"] == "user")
-    client.patch(f"/api/admin/users/{user_id}", json={"is_admin": True}, headers=login(client, "admin", "adminadmin"))
+    client.patch(f"/api/admin/users/{user_id}", json={"role": "admin"}, headers=login(client, "admin", "adminadmin"))
 
     _seed(monkeypatch)
     again = login(client, "user", "useruser")

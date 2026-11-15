@@ -3,8 +3,9 @@ account (rename), the generic test accounts of `npm start`, the connection log
 the admin dashboard shows, and the login lockout (in memory, so one server
 process only).
 
-Used by main.py (startup), routers/auth.py (login), routers/admin.py and
-routers/share.py (wrong share codes are limited the same way)."""
+Used by main.py (startup), routers/auth.py (login), routers/admin.py,
+routers/share.py (wrong share codes are limited the same way) and
+coaching.py (names a coach adds that aren't athletes)."""
 
 import datetime
 import logging
@@ -189,12 +190,14 @@ def record_login(db: Session, user: models.User | None, success: bool) -> None:
 MAX_FAILURES = 5
 MAX_ADDRESS_FAILURES = 20
 MAX_SHARE_FAILURES = 10  # wrong name/share code pairs per account, so codes can't be guessed
+MAX_COACH_FAILURES = 10  # names a coach adds that aren't athletes, so usernames can't be guessed
 WINDOW_SECONDS = 15 * 60
 MAX_TRACKED_USERNAMES = 5000
 
 _failures: dict[str, list[float]] = {}
 _address_failures: dict[str, list[float]] = {}
 _share_failures: dict[str, list[float]] = {}
+_coach_failures: dict[str, list[float]] = {}
 _lock = threading.Lock()
 
 
@@ -223,6 +226,16 @@ def seconds_address_blocked(address: str) -> int:
 
 def seconds_share_blocked(user_id: int) -> int:
     return _seconds_over_limit(_share_failures, str(user_id), MAX_SHARE_FAILURES)
+
+
+def seconds_coach_blocked(user_id: int) -> int:
+    return _seconds_over_limit(_coach_failures, str(user_id), MAX_COACH_FAILURES)
+
+
+def record_coach_failure(user_id: int) -> None:
+    now = time.monotonic()
+    with _lock:
+        _recent(_coach_failures, str(user_id), now).append(now)
 
 
 def record_share_failure(user_id: int) -> None:
@@ -262,3 +275,4 @@ def reset_all_failures() -> None:  # tests
         _failures.clear()
         _address_failures.clear()
         _share_failures.clear()
+        _coach_failures.clear()

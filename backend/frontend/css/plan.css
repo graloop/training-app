@@ -31,3 +31,9 @@
 .plan-expiry { margin-top: -4px; }
 .draft-errors li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .draft-errors li .error-line { flex-basis: 100%; }
+
+/* A coach planning for an athlete: who for, and what is already on their calendar, greyed. */
+.plan-for { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); }
+.plan-for select { width: auto; }
+#plan-send.confirming { background: var(--danger); color: #fff; border-color: var(--danger); }
+.entry.behind { background: none; border: 1px dashed var(--border); color: var(--muted); opacity: 0.8; }

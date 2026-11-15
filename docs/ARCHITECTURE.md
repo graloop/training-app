@@ -73,9 +73,10 @@ planned sessions into draft lines, which go through the same parser.
    belongs to the caller, and answers with another model from `schemas.py`.
 4. **Who may call it** comes from `deps.py`: `get_current_user` (a valid token
    whose version matches, see below), `get_current_member` (regular accounts
-   only: admins get a 403) or `get_current_admin`.
+   only: admins get a 403), `get_current_coach` (a member with the coach
+   role) or `get_current_admin`.
 5. **The work** is done outside the routers: `planning/`, `garmin/`,
-   `accounts.py`, `sharing.py`.
+   `accounts.py`, `sharing.py`, `coaching.py`.
 6. **The database session** comes from `database.get_db`, one per request.
    Routers commit; helpers that write say "the caller commits".
 
@@ -106,10 +107,11 @@ Backend, under `backend/app/`:
 | `accounts.py` | The first admin, renaming an account, the local test accounts, the login log, the login lockout |
 | `avatars.py` | Profile photos: what is accepted, their URL, who may see one |
 | `sharing.py` | Share codes, and a friend's planned sessions as draft lines |
+| `coaching.py` | Roles (athlete, coach, admin), coach ↔ athlete links, and what a coach may see of an athlete (`athlete_for` guards every route about one athlete) |
 | `logs.py` | Log format and level |
 | `cli.py` | Account rescue: `python -m app.cli list-users` / `reset-password` |
 | `version.py` | The version in the footer and on the first log line |
-| `routers/` | HTTP only, one file per URL prefix: `auth`, `admin`, `garmin`, `calendar`, `athlete`, `objectives`, `planned`, `plan`, `share`, `users` |
+| `routers/` | HTTP only, one file per URL prefix: `auth`, `admin`, `garmin`, `calendar`, `athlete`, `objectives`, `planned`, `plan`, `share`, `users`, `coach`, `coaches` |
 | `planning/basics.py` | Days, durations and sports, written the same way everywhere |
 | `planning/activity_text.py` | One activity as text: the summary line, laps, reps, detail lines |
 | `planning/session_detail.py` | What a session's 5-second trace adds, and one session in full |
@@ -117,6 +119,7 @@ Backend, under `backend/app/`:
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
 | `planning/drafts.py` | A draft as the page sees it: saving it, editing one session (one line) at a time, clearing it, confirming it, putting sessions on the calendar, and emptying it 24 h after its last change (`expire_if_old`, called by every read and write) |
 | `planning/planned_sessions.py` | One planned session: found, added, edited |
+| `planning/calendar_days.py` | The days of a calendar (done, sleep, planned), for the Calendar tab and, without sleep, for a coach |
 | `planning/objectives.py` | Target events: listed, added, edited |
 | `mcp/` | Claude as a custom connector, only with `MCP_ENABLED`: see [Claude's connector](#claudes-connector-mcp) |
 | `garmin/client.py` | Every call to Garmin, through the `garth` / `garminconnect` libraries |
@@ -222,6 +225,13 @@ renamed, removed or changed in type. So:
   `email`, from when accounts were Garmin emails.
 - An earlier version still runs on a newer database: it ignores the new
   columns. That is what makes rolling back safe.
+- One exception: `database.migrate_plan_drafts` (coaches, 2026-11) changed a
+  constraint, from one draft per user to one per user and coach, which
+  `add_missing_columns` can't do: SQLite rebuilds the table and copies its
+  rows, Postgres alters it in place. `tests/test_planned.py` runs it on the
+  old schema. Rolling back past it works as long as no coach has made a
+  draft: an older version would see the athlete's and the coach's drafts as
+  two "own" drafts.
 
 Worth knowing about the data:
 
@@ -303,6 +313,7 @@ them together.
 | Add a sentence to the page | Write it in English, through `t()` in a script; add its French to `js/core/fr.js` (the key is the exact English text) |
 | Change login, lockout or password rules | `routers/auth.py`, `accounts.py` (the lockout numbers head its lockout section), `security.py`, `schemas.py` (`PASSWORD_MIN`, `USERNAME_PATTERN`) |
 | Change who may call an endpoint | `deps.py`, and the `Depends(...)` of that endpoint |
+| Change what a coach sees of an athlete | `coaching.py` (`athlete_profile`, `HIDDEN_FROM_COACH`), `routers/coach.py` (the calendar without sleep), `avatars.may_see`. Tests: `tests/test_coaching.py` |
 | Add an endpoint | The router of its URL prefix (or a new file in `routers/` and an `include_router` in `main.py`); its models in `schemas.py`; its logic outside `routers/` |
 | Add a setting | `config.py`, then `.env.example`, `docker-compose.yml` and the README's table |
 | Change security headers, the content policy or the https redirect | `main.py` (`security_headers`, `CONTENT_SECURITY_POLICY`), `visitor.py` |

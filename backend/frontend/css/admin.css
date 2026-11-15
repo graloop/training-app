@@ -122,3 +122,6 @@
 .reset-form { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
 .reset-form label { margin: 0; }
 .reset-form input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 14em; }
+
+/* The role of each account (views/admin.js). */
+.role-select { width: auto; padding: 2px 6px; font-size: 0.85rem; }

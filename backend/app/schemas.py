@@ -8,7 +8,7 @@ can change without changing what the page receives, and the reverse.
 """
 
 import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -49,6 +49,7 @@ class MeOut(BaseModel):
     garmin_connected: bool
     garmin_email: str | None
     avatar_url: str | None = None  # avatars.url: fetched with the token, never an <img src>
+    is_coach: bool = False
 
     @classmethod
     def of(cls, user) -> "MeOut":
@@ -60,6 +61,7 @@ class MeOut(BaseModel):
             garmin_connected=bool(user.garmin_session_encrypted),
             garmin_email=user.garmin_email if user.garmin_session_encrypted else None,
             avatar_url=avatars.url(user),
+            is_coach=bool(user.is_coach),
         )
 
 
@@ -82,10 +84,14 @@ class AccountData(BaseModel):
     objectives: int = 0
 
 
+Role = Literal["athlete", "coach", "admin"]
+
+
 class AdminUserOut(BaseModel):
     id: int
     username: str
     is_admin: bool
+    role: Role = "athlete"
     has_password: bool
     garmin_connected: bool
     data: AccountData
@@ -95,14 +101,15 @@ class AdminUserOut(BaseModel):
 
 
 class AdminUserCreate(BaseModel):
+    """A new account is always an athlete; its role is changed afterwards (AdminUserUpdate.role)."""
+
     username: str = Field(pattern=USERNAME_PATTERN)
     password: str = Field(min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
-    is_admin: bool = False
 
 
 class AdminUserUpdate(BaseModel):
     password: str | None = Field(default=None, min_length=PASSWORD_MIN, max_length=PASSWORD_MAX)
-    is_admin: bool | None = None
+    role: Role | None = None  # coaching.set_role
     username: str | None = Field(default=None, pattern=USERNAME_PATTERN)  # rename (accounts.rename)
 
 
@@ -277,6 +284,7 @@ class PlannedTrainingOut(BaseModel):
     planned_duration_minutes: float | None
     notes: str | None
     source: str
+    planned_by: str | None = None  # the coach who pushed it (source "coach")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -499,3 +507,53 @@ class ImportPreview(BaseModel):
     replace_from: datetime.date
     existing_planned: int  # your planned sessions "Import to calendar" replaces
     draft_sessions: int  # sessions in your Plan draft, replaced by "Import to plan"
+
+
+# --- Coaching (coaching.py, routers/coach.py and routers/coaches.py) ---
+
+
+class CoachAthleteAdd(BaseModel):
+    username: str = Field(min_length=1, max_length=255)
+
+
+class CoachAthleteOut(BaseModel):
+    """One of a coach's athletes, in the list on the coach's Athlete tab."""
+
+    id: int
+    username: str
+    avatar_url: str | None
+    main_objective: str | None  # the next dated objective: "City 10k · 2027-04-25"
+    planned_minutes: float  # this week, Monday to Sunday
+    done_minutes: float
+    garmin_synced_at: UtcDatetime | None
+
+
+class CoachAthletesResponse(BaseModel):
+    athletes: list[CoachAthleteOut]
+
+
+class CoachAthleteProfile(BaseModel):
+    """What a coach sees of an athlete: objectives, benchmarks and zones (not their
+    health notes), Garmin's zones and records, and the rule set. No sleep or recovery."""
+
+    id: int
+    username: str
+    objectives: list[ObjectiveOut]
+    profile: dict
+    garmin: list[str]
+    rules: str
+
+
+class CoachOut(BaseModel):
+    link_id: int
+    id: int
+    username: str
+    avatar_url: str | None
+
+
+class CoachesResponse(BaseModel):
+    coaches: list[CoachOut]
+
+
+class SendResult(BaseModel):
+    sessions: int

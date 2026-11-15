@@ -5,7 +5,8 @@ with it (cascade), which is how the admin's "delete account" removes all data.
           ├─ SleepRecord                one row per night, from Garmin
           ├─ DailyMetrics               one row per day: readiness, training status, stress
           ├─ PlannedTraining            sessions on the calendar, typed or from a confirmed plan
-          ├─ PlanDraft                  the Plan tab's draft (at most one)
+          ├─ PlanDraft                  the Plan tab's draft (one), and a coach's draft per athlete
+          ├─ CoachLink                  coach ↔ athlete (coaching.py)
           ├─ Objective                  target events
           ├─ LoginEvent                 the connection log (admin dashboard)
           └─ McpAuthCode, McpToken      Claude's connector: login codes and tokens (app/mcp/)
@@ -24,11 +25,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,6 +57,9 @@ class User(Base):
     # scrypt hash (see security.hash_password); "" = no password, can't log in.
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    # A coach plans for the athletes linked to them (coaching.py) and keeps their own
+    # calendar. Never together with is_admin (an admin has no calendar).
+    is_coach: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
     # Bumped on password change/reset: every token issued before stops working.
     token_version: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
 
@@ -86,6 +92,8 @@ class User(Base):
 
     # Set on every successful login; shown to the admin next to the account.
     last_login_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When Garmin's activity list last came in (garmin/sync.py): shown to the athlete's coaches.
+    garmin_synced_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -94,7 +102,22 @@ class User(Base):
     planned_sessions: Mapped[list["PlannedTraining"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     login_events: Mapped[list["LoginEvent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     objective_items: Mapped[list["Objective"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    plan_draft: Mapped["PlanDraft | None"] = relationship(back_populates="user", cascade="all, delete-orphan")
+    # The account's own draft (coach_id NULL). A coach's drafts for this athlete are
+    # only reachable through drafts.draft_of, so the athlete never sees them unsent.
+    plan_draft: Mapped["PlanDraft | None"] = relationship(
+        primaryjoin="and_(User.id == PlanDraft.user_id, PlanDraft.coach_id.is_(None))",
+        uselist=False,
+        cascade="all, delete-orphan",
+        overlaps="drafts_as_athlete,user",
+    )
+    drafts_as_athlete: Mapped[list["PlanDraft"]] = relationship(
+        foreign_keys="PlanDraft.user_id", cascade="all, delete-orphan", overlaps="plan_draft,user"
+    )
+    drafts_as_coach: Mapped[list["PlanDraft"]] = relationship(foreign_keys="PlanDraft.coach_id", cascade="all, delete-orphan")
+    links_as_coach: Mapped[list["CoachLink"]] = relationship(foreign_keys="CoachLink.coach_id", cascade="all, delete-orphan")
+    links_as_athlete: Mapped[list["CoachLink"]] = relationship(
+        foreign_keys="CoachLink.athlete_id", cascade="all, delete-orphan"
+    )
     daily_metrics: Mapped[list["DailyMetrics"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     mcp_auth_codes: Mapped[list["McpAuthCode"]] = relationship(cascade="all, delete-orphan")
     mcp_tokens: Mapped[list["McpToken"]] = relationship(cascade="all, delete-orphan")
@@ -181,7 +204,8 @@ class SleepRecord(Base):
 
 class PlannedTraining(Base):
     """A session on the calendar that is still to do. `source` says where it came
-    from: "manual" (the calendar's dialog), "plan" (a confirmed draft) or "import"."""
+    from: "manual" (the calendar's dialog), "plan" (a confirmed draft), "import",
+    "mcp" (Claude's connector) or "coach" (pushed by a coach, see planned_by)."""
 
     __tablename__ = "planned_training"
 
@@ -193,6 +217,8 @@ class PlannedTraining(Base):
     planned_duration_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="manual")  # older rows may say "ai"
+    # source "coach": who pushed it, as named then (shown "by <coach>" on the calendar).
+    planned_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -236,14 +262,30 @@ class LoginEvent(Base):
 
 
 class PlanDraft(Base):
-    """The Plan page's working draft: the weeks being planned, the sessions as
-    typed (one per line) and the block notes. Nothing here is on the calendar
-    until the user confirms."""
+    """A working draft: the weeks being planned and the sessions as typed (one per
+    line). Nothing here is on the calendar until it is pushed (drafts.confirm).
+
+    coach_id NULL is the account's own draft (the Plan tab, the connector); a
+    coach has one draft per athlete (coach_id = the coach). At most one of each:
+    the partial index stops a second own draft, since NULLs never clash in a
+    plain unique constraint. Changed from "one per user" by
+    database.migrate_plan_drafts."""
 
     __tablename__ = "plan_drafts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "coach_id", name="uq_plan_drafts_user_coach"),
+        Index(
+            "uq_plan_drafts_own",
+            "user_id",
+            unique=True,
+            sqlite_where=text("coach_id IS NULL"),
+            postgresql_where=text("coach_id IS NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    coach_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     start_date: Mapped[datetime.date] = mapped_column(nullable=False)  # a Monday
     weeks: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -252,7 +294,23 @@ class PlanDraft(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     confirmed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    user: Mapped["User"] = relationship(back_populates="plan_draft")
+    user: Mapped["User"] = relationship(foreign_keys=[user_id], overlaps="plan_draft,drafts_as_athlete")
+
+
+class CoachLink(Base):
+    """A coach and one of their athletes (coaching.py). Made by the coach with the
+    athlete's username, no approval; either of them can remove it."""
+
+    __tablename__ = "coach_links"
+    __table_args__ = (UniqueConstraint("coach_id", "athlete_id", name="uq_coach_links"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    coach_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    athlete_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    coach: Mapped["User"] = relationship(foreign_keys=[coach_id], overlaps="links_as_coach")
+    athlete: Mapped["User"] = relationship(foreign_keys=[athlete_id], overlaps="links_as_athlete")
 
 
 class DailyMetrics(Base):

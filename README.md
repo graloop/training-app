@@ -38,10 +38,31 @@ Chrome** extension also works: it edits the page like you would.
   to create an account, reset a password, rename an account (its owner stays
   logged in and logs in with the new name from then on; the accounts named
   by `ADMIN_USERNAME` and `MCP_USERNAME` can't be renamed, nor can another
-  account take those names), grant or remove admin rights and
-  delete an account (the dashboard lists what the account holds and asks
+  account take those names), set each account's **role** (athlete, coach or
+  admin; every new account starts as an athlete, and you can't change your
+  own) and delete an account (the dashboard lists what the account holds and asks
   for its username to be typed first; deleting can't be undone). Admins have no calendar, plan, objectives or Garmin
   connection, so keep a separate regular account for your own training.
+- **Coaches** — the admin makes an account a **coach**. A coach is still an
+  athlete (own calendar, Garmin and plan) and also:
+  - **My athletes**, at the top of their Athlete tab: adds an athlete by
+    username (it works straight away, no approval; unknown names are
+    limited like logins, so names can't be guessed), sees each one's next
+    objective, this week's planned and done hours and last Garmin sync, and
+    opens their profile: objectives, benchmarks and zones, Garmin's zones and
+    records, rule set. Never their sleep, recovery or health notes.
+  - **Plan for**, on the Plan tab: Me, or one of their athletes. For an
+    athlete the coach works in their own draft for them (the athlete doesn't
+    see it), with the athlete's planned and done sessions greyed behind it,
+    then either **Push on {athlete}'s calendar** (those sessions say "by
+    {coach}" on the athlete's calendar) or **Send to {athlete}'s Plan tab**
+    (it replaces the athlete's own draft, after a second click if they had
+    one; the athlete adjusts it and pushes it). A coach's draft empties after
+    24 h like any other.
+
+  An athlete sees their coaches in Settings and can remove one; a coach can
+  remove an athlete. An athlete can have several coaches. Claude's connector
+  stays on your own account.
 - **Connect Garmin** — after logging in, each person links their own Garmin
   Connect account (once; reconnect if Garmin expires the session). Garmin
   problems never log you out of the app — the page just asks to reconnect.
@@ -237,7 +258,8 @@ How the parts work together, and where to change what:
     │   ├── cli.py          account rescue: python -m app.cli list-users / reset-password
     │   ├── version.py      the version in the footer and on the first log line (bump it with each release)
     │   ├── routers/        HTTP only, one file per URL prefix: auth, admin, garmin, calendar,
-    │   │                   athlete, objectives, planned, plan, share, users. They never import each other.
+    │   │                   athlete, objectives, planned, plan, share, users, coach, coaches.
+    │   │                   They never import each other.
     │   ├── planning/       the training log and the draft plan
     │   │   ├── basics.py         days, durations, sports
     │   │   ├── activity_text.py  one activity as text (pace, HR, effort, laps, weather)
@@ -612,8 +634,11 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 - **DailyMetrics** — per day: morning Training Readiness, Garmin's training
   status, acute and chronic load and their ratio, load by intensity, VO2max,
   stress and body battery.
-- **PlanDraft** — one per user: the weeks being planned, the session lines as
-  typed and the block notes. Not on the calendar until confirmed.
+- **PlanDraft** — the weeks being planned, the session lines as typed and the
+  block notes. Not on the calendar until pushed. One per user of their own
+  (`coach_id` empty) and one per coach and athlete (`coach_id` = the coach).
+- **CoachLink** — a coach and one of their athletes (`User.is_coach` marks
+  coaches). `User.garmin_synced_at` is when Garmin's activity list last came in.
 - **Activity** — one row per completed Garmin activity: type, start time,
   duration, distance, avg HR, aerobic/anaerobic training effect, training load, calories,
   perceived effort (1-10) and feel, the laps of runs, rides and swims, weather and sweat
@@ -628,7 +653,8 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   answer, about 100 KB a night of minute-by-minute data, isn't kept; nights
   stored whole by older versions are trimmed on startup.
 - **PlannedTraining** — future sessions: date, activity type, planned
-  duration and workout details.
+  duration and workout details, where it came from (`source`: manual, plan,
+  import, mcp, coach) and, for a coach's, who (`planned_by`).
 - **McpClient / McpAuthCode / McpToken** — Claude's connector: the Claude
   apps that registered, and the hashed login codes and tokens of the one
   account that may connect. `User.coach_notes` holds Claude's notes between chats.
@@ -648,7 +674,7 @@ New nullable columns are added to existing databases on startup
 | `/api/auth/avatar`       | PUT/DELETE | Your profile photo: the JPEG or PNG itself as the body, at most 200 KB / remove it |
 | `/api/users/{id}/avatar` | GET    | A profile photo (yours; the admin sees all). The URL from `avatar_url` changes with the photo, so it is cached |
 | `/api/admin/users`       | GET/POST | Admin: list users / create a user                            |
-| `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin, rename (`username`; 409 if taken) / delete user and their data (`?confirm=<username>` required) |
+| `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, `role` (`athlete`, `coach` or `admin`), rename (`username`; 409 if taken) / delete user and their data (`?confirm=<username>` required) |
 | `/api/admin/activity`    | GET    | Admin: logins and failed attempts per day (`?days=7&tz_offset=`), totals, recent connections |
 | `/api/garmin/connect`    | POST/DELETE | Link your Garmin (email/password sent once to Garmin) / unlink |
 | `/api/garmin/sync/start` | POST   | Start syncing on the server (batches until nothing waits) and answer straight away; 409 = connect Garmin first |
@@ -675,10 +701,17 @@ New nullable columns are added to existing databases on startup
 | `/api/share/import/calendar` | POST | Same body: put them on your calendar, replacing your planned sessions from today to the last imported day |
 | `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
 | `/api/planned/{id}`      | PATCH/DELETE | Edit (a new `date` moves it), or remove a planned session |
+| `/api/coach/athletes`    | GET/POST | Coach: your athletes with this week's hours / add one by `username` (404 for a name that isn't an athlete, 429 after too many) |
+| `/api/coach/athletes/{id}` | GET/DELETE | Coach: an athlete's profile as a coach sees it / stop coaching them |
+| `/api/coach/athletes/{id}/calendar` | GET | Coach: their planned and done sessions `?start=&end=`, without sleep |
+| `/api/coaches`           | GET    | Your coaches                                                   |
+| `/api/coaches/{link_id}` | DELETE | Remove one of your coaches                                     |
+| `/api/plan/draft…?athlete_id=` | | A coach planning for one of their athletes: the same draft routes (GET, DELETE, `/sessions`, `/confirm`) on the coach's draft for them; 404 without a link |
+| `/api/plan/draft/send`   | POST   | Coach: `?athlete_id=` copies your draft for them into their own draft; 409 when they have one, `&replace=true` replaces it |
 
 Every endpoint except `/api/health`, `/api/auth/*` and `/api/admin/*` is for
 regular accounts; an admin account gets a 403 there. The `/api/admin/*`
-endpoints are admin-only.
+endpoints are admin-only, the `/api/coach/*` ones coach-only.
 
 Interactive API docs are at `/docs` (Swagger UI) when `ENABLE_API_DOCS=true`.
 

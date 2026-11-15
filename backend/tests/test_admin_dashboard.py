@@ -56,11 +56,11 @@ def test_regular_users_keep_the_app_but_not_the_dashboard(client, auth):
 def test_granting_admin_swaps_the_calendar_for_the_dashboard(client, auth):
     client.post("/api/objectives", json={"title": "kept"}, headers=auth)
     user_id = client.get("/api/auth/me", headers=auth).json()["id"]
-    client.patch(f"/api/admin/users/{user_id}", json={"is_admin": True}, headers=admin_auth(client))
+    client.patch(f"/api/admin/users/{user_id}", json={"role": "admin"}, headers=admin_auth(client))
     assert client.get("/api/calendar", headers=auth).status_code == 403
     assert client.get("/api/admin/activity", headers=auth).status_code == 200
     # Taking admin back returns the calendar, with the data untouched.
-    client.patch(f"/api/admin/users/{user_id}", json={"is_admin": False}, headers=admin_auth(client))
+    client.patch(f"/api/admin/users/{user_id}", json={"role": "athlete"}, headers=admin_auth(client))
     assert [o["title"] for o in client.get("/api/objectives", headers=auth).json()["objectives"]] == ["kept"]
 
 

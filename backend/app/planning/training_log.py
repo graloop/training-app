@@ -240,6 +240,12 @@ def garmin_lines(db: Session, user: models.User, today: datetime.date) -> list[s
     return _athlete_lines(user) + ["", "Training status:"] + _status_lines(latest_status(db, user, today))
 
 
+def garmin_profile_lines(user: models.User) -> list[str]:
+    """Zones, thresholds, records and predictions as Garmin has them, without the
+    training status (what a coach sees of an athlete, coaching.py)."""
+    return _athlete_lines(user)
+
+
 def _athlete_lines(user: models.User) -> list[str]:
     """Zones, thresholds, records and predictions as Garmin has them."""
     profile = user.garmin_profile or {}

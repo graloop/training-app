@@ -330,6 +330,7 @@ def sync_user(db: Session, api: Any, user: models.User, today: datetime.date, lo
     start = today - datetime.timedelta(days=lookback_days)
     raw_activities = garmin_client.fetch_activities(api, start, today)
     activities_synced = save_activities(db, user, raw_activities)
+    user.garmin_synced_at = models.utcnow()  # the list came in: the athlete's coaches see when
     db.commit()
 
     days_synced = sleep_synced = days_remaining = details_synced = 0

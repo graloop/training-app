@@ -7,14 +7,23 @@
 // connector writes too): each change rewrites one line, found by its number,
 // and the answer is the whole draft parsed again, which this file redraws.
 // It never parses a line itself (backend/app/planning/draft_parser.py, drafts.py).
+//
+// A coach also picks who to plan for ("Plan for": Me or one of their
+// athletes, or planFor() from the Athlete tab). For an athlete it is the
+// coach's own draft for them, every route with ?athlete_id=; the athlete's
+// planned and done sessions show greyed behind it, and Send copies it to the
+// athlete's own Plan tab.
 // API: GET/DELETE /api/plan/draft, POST /api/plan/draft/sessions, PATCH/DELETE
-// /api/plan/draft/sessions/{line}, POST /api/plan/draft/confirm.
+// /api/plan/draft/sessions/{line}, POST /api/plan/draft/confirm, POST
+// /api/plan/draft/send, GET /api/coach/athletes(/{id}/calendar).
 // Markup: #tab-plan. Styles: css/plan.css (and css/calendar.css for the grid).
 
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtHours, fmtSpan, isoDate, plural } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
+import { getUser } from "../core/session.js";
 import { sportLabel } from "../core/sports.js";
+import { showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
 import { addButton, addNotes, dayCell, gridHead, makeEditable, makeEntry } from "../core/week-grid.js";
 import { showCalendarAround } from "./calendar.js";
@@ -26,11 +35,15 @@ const clearBtn = document.getElementById("plan-clear");
 const confirmBtn = document.getElementById("draft-confirm");
 const confirmView = document.getElementById("confirm-view");
 const confirmStatus = document.getElementById("confirm-status");
+const sendBtn = document.getElementById("plan-send");
+const planForSelect = document.getElementById("plan-for");
 
 let planDraft = null; // the server's last answer: parsed sessions, errors, weekly totals
+let athlete = null; // { id, username } when a coach plans for one of their athletes, else null
+let behind = {}; // date -> that athlete's planned and done sessions, shown greyed
 
 const today = () => isoDate(new Date());
-const draftUrl = (path = "") => `/api/plan/draft${path}?today=${today()}`;
+const draftUrl = (path = "") => `/api/plan/draft${path}?today=${today()}${athlete ? `&athlete_id=${athlete.id}` : ""}`;
 
 // The session dialog saves here instead of on the calendar. A session of the
 // draft is { line, activity_type, planned_duration_minutes, notes }.
@@ -91,6 +104,11 @@ function renderGrid(draft) {
     for (let i = 0; i < 7; i++) {
       const date = isoDate(addDays(new Date(week.start + "T00:00:00"), i));
       const { cell } = dayCell(date, now);
+      for (const [type, time, what] of behind[date] || []) {
+        const entry = makeEntry("behind", type, time);
+        entry.title = t("{name}'s calendar: {what}", { name: athlete.username, what });
+        cell.appendChild(entry);
+      }
       for (const s of week.sessions.filter((x) => x.date === date)) {
         const time = fmtHours(s.minutes);
         const entry = makeEntry("planned", s.activity_type, time);
@@ -155,7 +173,11 @@ function resetButtons() {
   clearBtn.classList.remove("confirming");
   clearBtn.textContent = t("Clear");
   confirmBtn.classList.remove("confirming");
-  confirmBtn.textContent = t("Push on main calendar");
+  confirmBtn.textContent = athlete
+    ? t("Push on {name}'s calendar", { name: athlete.username })
+    : t("Push on main calendar");
+  sendBtn.classList.remove("confirming");
+  sendBtn.textContent = athlete ? t("Send to {name}'s Plan tab", { name: athlete.username }) : "";
 }
 
 function armed(button, text) {
@@ -172,6 +194,8 @@ function renderSummary(draft) {
   resetButtons();
   confirmBtn.disabled = !(draft.sessions_count > 0 && draft.errors.length === 0);
   clearBtn.disabled = !draft.text.trim();
+  sendBtn.classList.toggle("hidden", !athlete);
+  sendBtn.disabled = !draft.sessions_count;
   if (draft.errors.length) {
     summary.textContent = t("Fix or delete the {lines} listed below first.", {
       lines: plural(draft.errors.length, "line"),
@@ -216,15 +240,68 @@ function applyDraft(draft) {
   renderSummary(draft);
 }
 
+// For a coach planning for an athlete: what is already on the athlete's calendar
+// over the draft's weeks (planned, and done from Garmin), to plan around it.
+async function loadBehind(draft) {
+  behind = {};
+  if (!athlete) return;
+  const data = await api(`/api/coach/athletes/${athlete.id}/calendar?start=${draft.start_date}&end=${draft.end_date}`);
+  for (const day of data.days) {
+    const items = [];
+    for (const p of day.planned) {
+      const time = fmtHours(p.planned_duration_minutes || 0);
+      items.push([p.activity_type, time, t("planned {sport} {time}", { sport: sportLabel(p.activity_type), time })]);
+    }
+    for (const a of day.activities) {
+      const time = a.duration_seconds ? fmtHours(a.duration_seconds / 60) : "";
+      items.push([a.activity_type, time, t("done {sport} {time}", { sport: sportLabel(a.activity_type), time })]);
+    }
+    if (items.length) behind[day.date] = items;
+  }
+}
+
+// "Plan for": Me, or one of the coach's athletes. Hidden for anyone else.
+async function fillPlanFor() {
+  const me = getUser();
+  const field = document.getElementById("plan-for-field");
+  field.classList.toggle("hidden", !(me && me.is_coach));
+  if (!me || !me.is_coach) {
+    athlete = null;
+    return;
+  }
+  const { athletes } = await api(`/api/coach/athletes?today=${today()}`);
+  planForSelect.innerHTML = "";
+  planForSelect.appendChild(new Option(t("Me"), ""));
+  for (const a of athletes) planForSelect.appendChild(new Option(a.username, String(a.id)));
+  const known = athlete && athletes.find((a) => a.id === athlete.id);
+  athlete = known ? { id: known.id, username: known.username } : null;
+  planForSelect.value = athlete ? String(athlete.id) : "";
+}
+
 export async function loadPlanPage() {
   confirmStatus.classList.add("hidden");
   confirmView.classList.add("hidden");
   try {
-    applyDraft(await api(draftUrl()));
+    await fillPlanFor();
+    const draft = await api(draftUrl());
+    await loadBehind(draft);
+    applyDraft(draft);
   } catch (err) {
     if (err.status !== 401) showStatus(confirmStatus, err.message, true);
   }
 }
+
+// Opens the Plan tab on one of the coach's athletes (the Athlete tab's Plan button).
+export function planFor(athleteId) {
+  athlete = { id: athleteId, username: "" };
+  showTab("plan");
+}
+
+planForSelect.addEventListener("change", () => {
+  const option = planForSelect.selectedOptions[0];
+  athlete = planForSelect.value ? { id: Number(planForSelect.value), username: option.textContent } : null;
+  loadPlanPage();
+});
 
 clearBtn.addEventListener("click", async () => {
   if (!armed(clearBtn, t("Click again to clear the draft"))) return;
@@ -253,13 +330,21 @@ confirmBtn.addEventListener("click", async () => {
     const replaced = result.replaced
       ? t(", replacing {sessions}", { sessions: plural(result.replaced, "planned session") })
       : "";
-    applyDraft(await api(draftUrl()));
+    const draft = await api(draftUrl());
+    await loadBehind(draft);
+    applyDraft(draft);
     showStatus(
       confirmStatus,
-      t("Done: {sessions} on the calendar{replaced}.", { sessions: plural(result.added, "session"), replaced }),
+      athlete
+        ? t("Done: {sessions} on {name}'s calendar{replaced}.", {
+            sessions: plural(result.added, "session"),
+            name: athlete.username,
+            replaced,
+          })
+        : t("Done: {sessions} on the calendar{replaced}.", { sessions: plural(result.added, "session"), replaced }),
     );
     confirmStatus.classList.add("ok");
-    confirmView.classList.remove("hidden");
+    confirmView.classList.toggle("hidden", Boolean(athlete)); // their calendar isn't yours to open
   } catch (err) {
     if (err.status !== 401) showStatus(confirmStatus, err.message, true);
     confirmBtn.disabled = false;
@@ -267,3 +352,28 @@ confirmBtn.addEventListener("click", async () => {
 });
 
 confirmView.addEventListener("click", () => showCalendarAround(planDraft.start_date));
+
+// Send: copy this draft to the athlete's own Plan tab. A 409 means they already
+// have a draft there: the button asks for a second click, which replaces it.
+sendBtn.addEventListener("click", async () => {
+  if (!athlete || !planDraft) return;
+  const replace = sendBtn.classList.contains("confirming");
+  try {
+    const { sessions } = await api(
+      `/api/plan/draft/send?athlete_id=${athlete.id}&today=${today()}${replace ? "&replace=true" : ""}`,
+      { method: "POST" },
+    );
+    resetButtons();
+    showStatus(
+      confirmStatus,
+      t("Sent: {sessions} on {name}'s Plan tab, for them to adjust and push.", {
+        sessions: plural(sessions, "session"),
+        name: athlete.username,
+      }),
+    );
+    confirmStatus.classList.add("ok");
+  } catch (err) {
+    if (err.status === 409) armed(sendBtn, t("Click again: replaces the draft {name} has", { name: athlete.username }));
+    else if (err.status !== 401) showStatus(confirmStatus, err.message, true);
+  }
+});

@@ -59,6 +59,7 @@ then, so it is hidden by default.
 | Calendar | `routers/calendar.py`, `routers/planned.py` | `js/views/calendar.js`, `js/views/session-dialog.js`, `css/calendar.css` |
 | Garmin connect and sync | `garmin/client.py` (calls to Garmin), `garmin/sync.py` (what is fetched and stored), `garmin/autosync.py` (background), `routers/garmin.py` | `js/views/garmin.js` |
 | Athlete tab | `routers/athlete.py`, `routers/objectives.py` | `js/views/athlete.js`, `js/views/objectives.js`, `css/athlete.css` |
+| Coaches (My athletes, Plan for, My coaches) | `coaching.py`, `routers/coach.py`, `routers/coaches.py`, `routers/plan.py` (`?athlete_id=`), `planning/drafts.py` | `js/views/coaching.js`, `js/views/plan.js`, `js/views/settings.js`, `css/athlete.css`, `css/plan.css` |
 | Plan tab | `routers/plan.py`, `planning/draft_parser.py`, `planning/drafts.py` | `js/views/plan.js`, `js/views/plan-preview.js`, `css/plan.css` |
 | The training log (what Claude reads) | `routers/plan.py`, `planning/training_log.py`, `planning/activity_text.py`, `planning/session_detail.py` | (no page: `mcp/server.py`) |
 | Import tab | `routers/share.py`, `sharing.py` | `js/views/import.js`, `css/import.css` |

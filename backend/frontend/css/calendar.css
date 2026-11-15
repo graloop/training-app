@@ -158,6 +158,7 @@
   overflow: hidden;
 }
 .entry.completed .entry-notes { color: var(--completed-extra); font-weight: 400; }
+.entry-by { flex-basis: 100%; font-size: 0.72rem; color: var(--muted); font-style: italic; }
 
 /* --- The "Plan a session" dialog (views/session-dialog.js) --- */
 dialog#plan-dialog {

@@ -3,6 +3,7 @@ that shows them (routers/calendar.py) and the startup column migration."""
 
 import datetime
 
+import pytest
 from conftest import make_user
 from sqlalchemy import create_engine, inspect, text
 
@@ -114,3 +115,45 @@ def test_old_tables_get_new_columns(tmp_path, monkeypatch):
     cols = {c["name"] for c in inspect(engine).get_columns("users")}
     assert {"is_admin", "token_version", "last_login_at"} <= cols
 
+
+
+OLD_PLAN_DRAFTS = """CREATE TABLE plan_drafts (
+    id INTEGER NOT NULL, user_id INTEGER NOT NULL, start_date DATE NOT NULL, weeks INTEGER NOT NULL,
+    text TEXT NOT NULL, notes TEXT, updated_at DATETIME NOT NULL, confirmed_at DATETIME,
+    PRIMARY KEY (id), UNIQUE (user_id), FOREIGN KEY(user_id) REFERENCES users (id))"""  # as v17 created it
+
+
+def test_plan_drafts_move_to_one_draft_per_user_and_coach(tmp_path):
+    """database.migrate_plan_drafts on a database made before coaches: the rows are kept,
+    a coach can then have a draft for an athlete, and an athlete still has one draft of their own."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app import database
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, email VARCHAR(255), hashed_password VARCHAR(255))"))
+        conn.execute(text("INSERT INTO users (id, email, hashed_password) VALUES (1, 'athlete', ''), (2, 'coach', '')"))
+        conn.execute(text(OLD_PLAN_DRAFTS))
+        conn.execute(text("INSERT INTO plan_drafts (id, user_id, start_date, weeks, text, notes, updated_at) "
+                          "VALUES (7, 1, '2026-11-16', 4, '2026-11-17 | run | 1:00', 'block notes', '2026-11-14 10:00:00')"))
+
+    assert database.migrate_plan_drafts(engine) is True
+    assert database.migrate_plan_drafts(engine) is False  # once only
+    with engine.begin() as conn:
+        rows = conn.execute(text("SELECT id, user_id, coach_id, text, notes, weeks FROM plan_drafts")).all()
+        assert rows == [(7, 1, None, "2026-11-17 | run | 1:00", "block notes", 4)]
+        conn.execute(text("INSERT INTO plan_drafts (user_id, coach_id, start_date, weeks, text, updated_at) "
+                          "VALUES (1, 2, '2026-11-16', 2, '', '2026-11-14 10:00:00')"))  # the coach's draft for them
+    for coach_id in ("NULL", "2"):  # a second own draft, a second draft of the same coach
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(text(f"INSERT INTO plan_drafts (user_id, coach_id, start_date, weeks, text, updated_at) "
+                              f"VALUES (1, {coach_id}, '2026-11-16', 2, '', '2026-11-14 10:00:00')"))
+    assert "coach_id" in {c["name"] for c in inspect(engine).get_columns("plan_drafts")}
+    assert not inspect(engine).has_table("plan_drafts_old")
+
+
+def test_a_new_database_needs_no_plan_drafts_migration(client):
+    from app import database
+
+    assert database.migrate_plan_drafts() is False

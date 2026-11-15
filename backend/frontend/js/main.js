@@ -16,6 +16,7 @@ import { showLogin, showView } from "./core/ui.js";
 import { showDashboard } from "./views/admin.js";
 import { loadAthletePage } from "./views/athlete.js";
 import { loadCalendar, resetCalendar } from "./views/calendar.js";
+import { loadMyAthletes } from "./views/coaching.js";
 import { renderGarminState, runSync } from "./views/garmin.js";
 import { loadImportPage } from "./views/import.js";
 import { loadObjectives } from "./views/objectives.js";
@@ -27,7 +28,7 @@ import "./views/night-mode.js";
 translatePage();
 
 registerTab("calendar", loadCalendar);
-registerTab("athlete", loadAthletePage); // its objectives are loaded with the calendar, at login
+registerTab("athlete", () => Promise.all([loadAthletePage(), loadMyAthletes()])); // objectives load with the calendar
 registerTab("plan", loadPlanPage);
 registerTab("import", loadImportPage);
 

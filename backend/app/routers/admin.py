@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .. import accounts, avatars, models, schemas
+from .. import accounts, avatars, coaching, models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
 from ..security import hash_password
@@ -40,6 +40,7 @@ def _out(user: models.User, data: schemas.AccountData | None = None) -> schemas.
         id=user.id,
         username=user.username,
         is_admin=bool(user.is_admin),
+        role=coaching.role_of(user),
         has_password=bool(user.hashed_password),
         garmin_connected=bool(user.garmin_session_encrypted),
         data=data or schemas.AccountData(),
@@ -118,13 +119,12 @@ def create_user(
     db: Session = Depends(get_db),
     _: models.User = Depends(get_current_admin),
 ):
-    """A new account. Its owner changes the password from the account menu."""
+    """A new account, always an athlete (the role is changed afterwards). Its owner
+    changes the password in Settings."""
     username = accounts.normalize_username(payload.username)
     if db.query(models.User).filter(models.User.username == username).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f'"{username}" already exists')
-    user = models.User(
-        username=username, hashed_password=hash_password(payload.password), is_admin=payload.is_admin, token_version=0
-    )
+    user = models.User(username=username, hashed_password=hash_password(payload.password), is_admin=False, token_version=0)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -138,8 +138,9 @@ def update_user(
     db: Session = Depends(get_db),
     admin: models.User = Depends(get_current_admin),
 ):
-    """Reset a password (logs that user out everywhere), change admin rights,
-    and/or rename the account (the owner stays logged in)."""
+    """Reset a password (logs that user out everywhere), change the role
+    (athlete, coach or admin: coaching.set_role), and/or rename the account
+    (the owner stays logged in)."""
     user = _get(db, user_id)
     if payload.username is not None:
         try:
@@ -151,10 +152,10 @@ def update_user(
         user.hashed_password = hash_password(payload.password)
         user.token_version = (user.token_version or 0) + 1
         accounts.clear_failures(user.username)
-    if payload.is_admin is not None:
-        if user.id == admin.id and not payload.is_admin:
+    if payload.role is not None:
+        if user.id == admin.id and payload.role != "admin":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You can't remove your own admin rights")
-        user.is_admin = payload.is_admin
+        coaching.set_role(db, user, payload.role)
     db.commit()
     db.refresh(user)
     return _out(user, _account_data(db).get(user.id))

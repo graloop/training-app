@@ -238,6 +238,38 @@
     <div id="tab-athlete" class="hidden">
       <p class="hint plan-intro">Who you are as an athlete: your objectives, your tested numbers and zones, and what Garmin knows. Everything here is read with your history when a plan is written. Leave a box empty if you don't know it yet.</p>
 
+      <!-- A coach's athletes: views/coaching.js. Hidden for everyone else. -->
+      <section id="athletes-panel" class="panel hidden" aria-labelledby="athletes-title">
+        <div class="panel-header">
+          <h2 id="athletes-title">My athletes</h2>
+          <form id="athlete-add-form" class="inline-form" novalidate>
+            <label for="athlete-add-name" class="visually-hidden">Athlete's username</label>
+            <input id="athlete-add-name" type="text" placeholder="Athlete's username" autocomplete="off" autocapitalize="none" spellcheck="false" />
+            <button type="submit" class="btn-ghost">+ Add an athlete</button>
+          </form>
+        </div>
+        <p id="athletes-status" class="status hidden" role="status"></p>
+        <ul id="athletes-list" class="people-list athletes-list"></ul>
+        <div id="athlete-view" class="athlete-view hidden">
+          <div class="panel-header">
+            <h3 id="athlete-view-name"></h3>
+            <div class="calendar-nav">
+              <button id="athlete-view-plan" type="button">Plan</button>
+              <button id="athlete-view-remove" type="button" class="btn-link danger">Remove</button>
+              <button id="athlete-view-close" type="button" class="btn-ghost">Close</button>
+            </div>
+          </div>
+          <h4>Objectives</h4>
+          <ul id="athlete-view-objectives" class="athlete-view-list"></ul>
+          <h4>Benchmarks and zones</h4>
+          <ul id="athlete-view-profile" class="athlete-view-list"></ul>
+          <h4>From Garmin</h4>
+          <pre id="athlete-view-garmin" class="log-text" tabindex="0"></pre>
+          <h4>Rule set</h4>
+          <pre id="athlete-view-rules" class="log-text" tabindex="0"></pre>
+        </div>
+      </section>
+
       <section id="objectives-panel" class="panel" aria-labelledby="objectives-title">
         <div class="panel-header">
           <h2 id="objectives-title">Objectives</h2>
@@ -330,7 +362,9 @@
             <p id="plan-range" class="subtle"></p>
           </div>
           <div class="calendar-nav">
+            <label id="plan-for-field" class="plan-for hidden">Plan for <select id="plan-for"></select></label>
             <button id="plan-clear" type="button" class="btn-ghost">Clear</button>
+            <button id="plan-send" type="button" class="btn-ghost hidden">Send to their Plan tab</button>
             <button id="draft-confirm" type="button">Push on main calendar</button>
             <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
           </div>
@@ -478,7 +512,7 @@
           <input id="new-password" type="text" autocomplete="off" spellcheck="false" />
           <button id="gen-password" type="button" class="btn-ghost">Generate</button>
         </div>
-        <label class="checkbox"><input id="new-admin" type="checkbox" /> Admin: sees this dashboard instead of a calendar</label>
+        <p class="hint">Every account starts as an athlete; change its role in the table above.</p>
         <button type="submit">Create account</button>
         <p id="create-status" class="status hidden" role="status"></p>
       </form>
@@ -548,6 +582,13 @@
         <button id="import-btn" type="button" class="btn-ghost">Import</button>
       </div>
       <p id="import-status" class="status hidden" role="status"></p>
+    </section>
+
+    <section id="coaches-settings" class="settings-section hidden" aria-labelledby="coaches-title">
+      <h3 id="coaches-title">My coaches</h3>
+      <p class="hint">They see your calendar, objectives, zones and rule set (never your sleep or health notes), and can plan for you.</p>
+      <ul id="coaches-list" class="people-list"></ul>
+      <p id="coaches-status" class="status hidden" role="status"></p>
     </section>
 
     <section class="settings-section" aria-labelledby="lang-title">

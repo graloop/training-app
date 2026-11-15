@@ -157,12 +157,12 @@ def test_admin_reset_logs_the_user_out(client):
 def test_admin_can_grant_admin_but_not_demote_or_delete_self(client):
     admin = admin_auth(client)
     admin_id = client.get("/api/auth/me", headers=admin).json()["id"]
-    assert client.patch(f"/api/admin/users/{admin_id}", json={"is_admin": False}, headers=admin).status_code == 400
+    assert client.patch(f"/api/admin/users/{admin_id}", json={"role": "athlete"}, headers=admin).status_code == 400
     assert client.delete(f"/api/admin/users/{admin_id}", headers=admin).status_code == 400
 
     friend = make_user(client, "friend", garmin=False)
     friend_id = client.get("/api/auth/me", headers=friend).json()["id"]
-    client.patch(f"/api/admin/users/{friend_id}", json={"is_admin": True}, headers=admin)
+    client.patch(f"/api/admin/users/{friend_id}", json={"role": "admin"}, headers=admin)
     assert client.get("/api/admin/users", headers=friend).status_code == 200
 
 

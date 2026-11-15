@@ -250,6 +250,14 @@ function matchDay(day) {
 
 // --- One entry (a done activity or a planned session) in a day ---
 
+// Under a session a coach pushed: "by {coach}".
+function addBy(entry, by) {
+  const el = document.createElement("span");
+  el.className = "entry-by";
+  el.textContent = by;
+  entry.appendChild(el);
+}
+
 // What was answered on the watch after the session: ", effort 7/10, felt strong".
 const FEEL_WORDS = { 0: "very weak", 25: "weak", 50: "normal", 75: "strong", 100: "very strong" };
 
@@ -344,10 +352,12 @@ function renderCalendar(data) {
       for (const p of planned) {
         const detail = p.planned_duration_minutes ? fmtHours(p.planned_duration_minutes) : "";
         const entry = makeEntry("planned", p.activity_type, detail);
+        const by = p.planned_by ? t("by {coach}", { coach: p.planned_by }) : "";
         entry.title =
           t("Planned {sport}, {time}", { sport: sportLabel(p.activity_type), time: detail }) +
-          `${p.notes ? `: ${p.notes}` : ""}${t(". Click to edit.")}`;
+          `${by ? ` (${by})` : ""}${p.notes ? `: ${p.notes}` : ""}${t(". Click to edit.")}`;
         addNotes(entry, p.notes);
+        if (by) addBy(entry, by);
         makeEditable(entry, edit(day.date, p));
         cell.appendChild(entry);
       }

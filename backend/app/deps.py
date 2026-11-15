@@ -3,6 +3,7 @@
     user = Depends(get_current_user)    any logged-in account
     user = Depends(get_current_member)  a regular account (calendar, plan, Garmin...)
     user = Depends(get_current_admin)   an admin account (/api/admin/*)
+    user = Depends(get_current_coach)   a coach (/api/coach/*), who is a member too
 
 401 = not logged in or the session is over (the page shows the login);
 403 = logged in, but the wrong kind of account.
@@ -55,4 +56,11 @@ def get_current_member(user: models.User = Depends(get_current_user)) -> models.
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin accounts manage users and don't have a training calendar",
         )
+    return user
+
+
+def get_current_coach(user: models.User = Depends(get_current_member)) -> models.User:
+    """A coach: a regular account the admin gave the coach role. It keeps its own calendar."""
+    if not user.is_coach:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Coaches only")
     return user

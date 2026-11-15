@@ -28,14 +28,14 @@ from starlette.routing import Route
 
 from .accounts import bootstrap_admin, seed_test_accounts
 from .config import get_settings
-from .database import Base, SessionLocal, add_missing_columns, engine
+from .database import Base, SessionLocal, add_missing_columns, engine, migrate_plan_drafts
 from .garmin import autosync
 from .garmin import sync as garmin_sync
 from .logs import setup_logging
 from .mcp import auth as mcp_auth
 from .mcp import oauth as mcp_oauth
 from .mcp.server import McpApp
-from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share, users
+from .routers import admin, athlete, auth, calendar, coach, coaches, garmin, objectives, plan, planned, share, users
 from .security import check_jwt_secret
 from .version import VERSION
 from .visitor import is_https
@@ -60,6 +60,7 @@ def startup() -> None:
         f"https://{settings.app_domain}" if settings.app_domain else "none (local network only)",
     )
     Base.metadata.create_all(bind=engine)  # new tables only; never alters existing ones
+    migrate_plan_drafts()  # one draft per user -> one per user and coach (database.py)
     add_missing_columns()  # ... so new nullable columns are added here (database.py)
     with SessionLocal() as db:
         garmin_sync.trim_stored_sleep(db)  # LEGACY: nights stored whole by versions before 15 (garmin/sync.py)
@@ -180,6 +181,8 @@ app.include_router(planned.router)
 app.include_router(plan.router)
 app.include_router(share.router)
 app.include_router(users.router)
+app.include_router(coach.router)
+app.include_router(coaches.router)
 
 # Claude's connector, only with MCP_ENABLED and MCP_USERNAME (mcp/__init__.py).
 # Two plain routes rather than a mount, so /mcp answers without a redirect to /mcp/.

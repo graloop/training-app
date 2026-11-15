@@ -1,5 +1,6 @@
 """/api/users/{id}: what one account may see of another. For now, the profile
-photo (avatars.py): your own, and every account's for the admin."""
+photo (avatars.py): your own, every account's for the admin, and a coach's and
+their athletes' for each other."""
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, undefer
@@ -16,7 +17,7 @@ def get_avatar(user_id: int, db: Session = Depends(get_db), viewer: models.User 
     """The photo itself. 404 when there is none or it isn't yours to see. The URL
     changes with each new photo (?v=), so the browser may keep it."""
     owner = db.query(models.User).options(undefer(models.User.avatar)).filter(models.User.id == user_id).first()
-    if owner is None or owner.avatar is None or not avatars.may_see(viewer, owner):
+    if owner is None or owner.avatar is None or not avatars.may_see(db, viewer, owner):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No photo")
     return Response(
         owner.avatar,

@@ -1,8 +1,9 @@
 // Settings: one dialog, opened by the ⚙️ and by the badge with your name in
-// the top bar. Profile photo, username, password, language, switch account
-// and log out are here; the Garmin section is wired in garmin.js.
+// the top bar. Profile photo, username, password, your coaches, language,
+// switch account and log out are here; the Garmin section is wired in garmin.js.
 // API: PUT/DELETE /api/auth/avatar, POST /api/auth/username, POST
-// /api/auth/password (returns a fresh token: the others stop working).
+// /api/auth/password (returns a fresh token: the others stop working),
+// GET /api/coaches, DELETE /api/coaches/{link_id}.
 // Markup: #settings-dialog. Styles: css/settings.css.
 
 import { api } from "../core/api.js";
@@ -29,6 +30,63 @@ export function openSettings() {
   for (const id of ["username-password", "pw-current", "pw-new"]) document.getElementById(id).value = "";
   dialog.showModal();
   document.getElementById("username-new").focus();
+  loadCoaches();
+}
+
+// --- My coaches: who sees your calendar and plans for you (hidden when nobody does) ---
+
+const coachesSection = document.getElementById("coaches-settings");
+const coachesStatus = document.getElementById("coaches-status");
+
+async function loadCoaches() {
+  coachesSection.classList.add("hidden");
+  if (getUser().is_admin) return;
+  let coaches;
+  try {
+    ({ coaches } = await api("/api/coaches"));
+  } catch (_) {
+    return; // not essential: the rest of Settings works without it
+  }
+  const list = document.getElementById("coaches-list");
+  list.innerHTML = "";
+  for (const coach of coaches) {
+    const item = document.createElement("li");
+    item.className = "person";
+    const face = document.createElement("span");
+    face.className = "avatar";
+    showAvatar(face, coach.avatar_url);
+    const name = document.createElement("strong");
+    name.className = "person-text";
+    name.textContent = coach.username;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn-link danger";
+    remove.textContent = t("Remove");
+    remove.setAttribute("aria-label", t("Remove {name} as your coach", { name: coach.username }));
+    remove.addEventListener("click", async () => {
+      if (!remove.classList.contains("confirming")) {
+        remove.classList.add("confirming");
+        remove.textContent = t("Click again to remove");
+        setTimeout(() => {
+          remove.classList.remove("confirming");
+          remove.textContent = t("Remove");
+        }, 4000);
+        return;
+      }
+      try {
+        await api(`/api/coaches/${coach.link_id}`, { method: "DELETE" });
+        await loadCoaches();
+        showStatus(coachesStatus, t("{name} is no longer your coach.", { name: coach.username }));
+        coachesStatus.classList.add("ok");
+        coachesSection.classList.remove("hidden"); // the message shows even after the last one
+      } catch (err) {
+        if (err.status !== 401) showStatus(coachesStatus, err.message, true);
+      }
+    });
+    item.append(face, name, remove);
+    list.appendChild(item);
+  }
+  coachesSection.classList.toggle("hidden", coaches.length === 0);
 }
 
 for (const id of ["settings-btn", "account-btn"]) document.getElementById(id).addEventListener("click", openSettings);

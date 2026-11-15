@@ -1,5 +1,6 @@
 """GET /api/calendar: the Calendar tab's data, one entry per day with what was
-done (Garmin activities), last night's sleep and what is planned. Matching
+done (Garmin activities), last night's sleep and what is planned (built by
+planning/calendar_days.py). Matching
 planned against done happens in the page (views/calendar.js, matchDay)."""
 
 import datetime
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from ..deps import get_current_member
+from ..planning.calendar_days import calendar_days
 
 router = APIRouter(prefix="/api/calendar", tags=["calendar"])
 
@@ -35,48 +37,5 @@ def get_calendar(
             detail=f"Ask for at most {MAX_SPAN_DAYS} days at a time.",
         )
 
-    activities = (
-        db.query(models.Activity)
-        .filter(
-            models.Activity.user_id == user.id,
-            models.Activity.start_time >= datetime.datetime.combine(start, datetime.time.min),
-            models.Activity.start_time <= datetime.datetime.combine(end, datetime.time.max),
-        )
-        .order_by(models.Activity.start_time)
-        .all()
-    )
-    sleep_records = (
-        db.query(models.SleepRecord)
-        .filter(models.SleepRecord.user_id == user.id, models.SleepRecord.date >= start, models.SleepRecord.date <= end)
-        .all()
-    )
-    planned = (
-        db.query(models.PlannedTraining)
-        .filter(models.PlannedTraining.user_id == user.id, models.PlannedTraining.date >= start, models.PlannedTraining.date <= end)
-        .order_by(models.PlannedTraining.date)
-        .all()
-    )
-
-    sleep_by_date = {s.date: s for s in sleep_records}
-    activities_by_date: dict[datetime.date, list[models.Activity]] = {}
-    for a in activities:
-        activities_by_date.setdefault(a.start_time.date(), []).append(a)
-    planned_by_date: dict[datetime.date, list[models.PlannedTraining]] = {}
-    for p in planned:
-        planned_by_date.setdefault(p.date, []).append(p)
-
-    days = []
-    # Counted, not stepped with `day += 1 day` until past `end`: that step
-    # overflows when end is 9999-12-31.
-    for offset in range((end - start).days + 1):
-        day = start + datetime.timedelta(days=offset)
-        days.append(
-            schemas.CalendarDay(
-                date=day,
-                activities=activities_by_date.get(day, []),
-                sleep=sleep_by_date.get(day),
-                planned=planned_by_date.get(day, []),
-            )
-        )
-
+    days = calendar_days(db, user, start, end)
     return schemas.CalendarResponse(start=start, end=end, days=days)

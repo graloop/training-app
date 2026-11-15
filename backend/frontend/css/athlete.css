@@ -65,3 +65,25 @@
 
 /* The rule set (moved here from the Plan tab). */
 #rules-text { width: 100%; box-sizing: border-box; }
+
+/* A coach's athletes (views/coaching.js) and an athlete's coaches (Settings). */
+.people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.person { display: flex; align-items: center; gap: 10px; }
+.person-text { display: flex; flex-direction: column; flex: 1; min-width: 0; text-align: left; }
+.athletes-list .person {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.athletes-list .person:hover { border-color: var(--accent); background: var(--bg); }
+.inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inline-form input { min-width: 12em; }
+.athlete-view { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.athlete-view h3 { margin: 0; font-size: 1rem; }
+.athlete-view h4 { margin: 14px 0 6px; font-size: 0.9rem; }
+.athlete-view-list { margin: 0; padding-left: 18px; font-size: 0.9rem; }
+#athlete-view-remove.confirming { font-weight: 600; }

@@ -179,34 +179,6 @@ function renderActivity(activity) {
 
 // --- Accounts ---
 
-// A danger button that needs two clicks: the first arms it (shows `armedLabel`
-// for 4 s), the second runs `action`; an error lands in the accounts status line.
-// Two clicks instead of confirm(): a native dialog would block tools driving the page.
-function confirmButton(label, armedLabel, ariaName, action) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "btn-link danger";
-  btn.textContent = label;
-  btn.setAttribute("aria-label", `${label} ${ariaName}`);
-  btn.addEventListener("click", async () => {
-    if (!btn.classList.contains("confirming")) {
-      btn.classList.add("confirming");
-      btn.textContent = armedLabel;
-      setTimeout(() => {
-        btn.classList.remove("confirming");
-        btn.textContent = label;
-      }, 4000);
-      return;
-    }
-    try {
-      await action();
-    } catch (err) {
-      showStatus(userStatus, err.message, true);
-    }
-  });
-  return btn;
-}
-
 // Opens a row under the account with a generated password to give them (PATCH resets it and logs them out).
 function renderResetForm(row, u) {
   const existing = usersBody.querySelector("tr.reset-row");
@@ -409,12 +381,45 @@ function renderDeleteForm(row, u) {
   input.focus();
 }
 
+const ROLES = [
+  ["athlete", "Athlete"],
+  ["coach", "Coach"],
+  ["admin", "Admin"],
+];
+const ROLE_DONE = {
+  athlete: "{name} is now an athlete.",
+  coach: "{name} is now a coach: they add their athletes on their Athlete tab.",
+  admin: "{name} is now an admin: they see this dashboard instead of a calendar.",
+};
+
+// Athlete, coach or admin. Your own role can't change (you'd lose this dashboard).
+function roleSelect(u, isMe) {
+  const select = document.createElement("select");
+  select.className = "role-select";
+  select.setAttribute("aria-label", t("Role of {name}", { name: u.username }));
+  for (const [value, label] of ROLES) select.appendChild(new Option(t(label), value));
+  select.value = u.role;
+  select.disabled = isMe;
+  select.addEventListener("change", async () => {
+    try {
+      await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ role: select.value }) });
+      await loadDashboard();
+      showStatus(userStatus, t(ROLE_DONE[select.value], { name: u.username }));
+      userStatus.classList.add("ok");
+    } catch (err) {
+      select.value = u.role;
+      showStatus(userStatus, err.message, true);
+    }
+  });
+  return select;
+}
+
 // The accounts table: one row each with its role, last login, Garmin, created date and actions.
 function renderUsers(users) {
   usersBody.innerHTML = "";
-  const admins = users.filter((u) => u.is_admin).length;
+  const count = (role) => users.filter((u) => u.role === role).length;
   document.getElementById("stat-accounts-note").textContent =
-    `${plural(users.length - admins, "user")} · ${plural(admins, "admin")}`;
+    `${plural(count("athlete"), "athlete")} · ${plural(count("coach"), "coach", "coaches")} · ${plural(count("admin"), "admin")}`;
 
   for (const u of users) {
     const isMe = u.id === getUser().id;
@@ -429,8 +434,8 @@ function renderUsers(users) {
     name.className = "account-name";
     name.append(face, label);
     const role = document.createElement("td");
-    role.textContent = u.is_admin ? t("Admin") : t("User");
-    if (!u.has_password) role.textContent += t(" · no password");
+    role.appendChild(roleSelect(u, isMe));
+    if (!u.has_password) role.append(t(" · no password"));
     const lastLogin = timeCell(u.last_login_at, t("Never"));
     const garmin = document.createElement("td");
     garmin.textContent = u.is_admin ? "–" : u.garmin_connected ? t("Connected") : t("Not connected");
@@ -458,25 +463,6 @@ function renderUsers(users) {
     actions.appendChild(rename);
 
     if (!isMe) {
-      const makeAdmin = !u.is_admin;
-      actions.appendChild(
-        confirmButton(
-          makeAdmin ? t("Make admin") : t("Make user"),
-          makeAdmin ? t("Click again: they lose the calendar view") : t("Click again to remove admin rights"),
-          u.username,
-          async () => {
-            await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_admin: makeAdmin }) });
-            await loadDashboard();
-            showStatus(
-              userStatus,
-              makeAdmin
-                ? t("{name} is now an admin.", { name: u.username })
-                : t("{name} is now a regular user.", { name: u.username }),
-            );
-            userStatus.classList.add("ok");
-          },
-        ),
-      );
       const del = document.createElement("button");
       del.type = "button";
       del.className = "btn-link danger";
@@ -530,10 +516,9 @@ document.getElementById("user-form").addEventListener("submit", async (e) => {
   try {
     await api("/api/admin/users", {
       method: "POST",
-      body: JSON.stringify({ username, password, is_admin: document.getElementById("new-admin").checked }),
+      body: JSON.stringify({ username, password }),
     });
     document.getElementById("new-username").value = "";
-    document.getElementById("new-admin").checked = false;
     document.getElementById("new-password").value = randomPassword();
     await loadDashboard();
     showStatus(

@@ -27,6 +27,18 @@ def url(user: models.User) -> str | None:
     return f"/api/users/{user.id}/avatar?v={int(user.avatar_updated_at.timestamp())}"
 
 
-def may_see(viewer: models.User, owner: models.User) -> bool:
-    """Your own photo; the admin sees everyone's (the accounts table)."""
-    return viewer.id == owner.id or bool(viewer.is_admin)
+def may_see(db, viewer: models.User, owner: models.User) -> bool:
+    """Your own photo; the admin sees everyone's (the accounts table); a coach and
+    their athletes see each other's (the coach's list, the athlete's Settings)."""
+    if viewer.id == owner.id or viewer.is_admin:
+        return True
+    link = models.CoachLink
+    return (
+        db.query(link)
+        .filter(
+            ((link.coach_id == viewer.id) & (link.athlete_id == owner.id))
+            | ((link.coach_id == owner.id) & (link.athlete_id == viewer.id))
+        )
+        .first()
+        is not None
+    )
