@@ -1,9 +1,9 @@
-// Garmin: the "Connect Garmin" panel, the Reconnect/Disconnect buttons and
-// "Import older activities" of the Settings menu, and the Sync button. The sync runs on the server; the page
+// Garmin: the "Connect Garmin" panel, the Garmin section of Settings
+// (Reconnect, Disconnect, Import older activities), and the Sync button. The sync runs on the server; the page
 // starts it and asks how it is going (backend/app/garmin/autosync.py).
 // API: POST/DELETE /api/garmin/connect, POST /api/garmin/sync/start,
 // GET /api/garmin/sync/status, POST /api/garmin/import-history. Markup: #garmin-panel and #sync-btn on the
-// Calendar tab, #garmin-settings in the ⚙️ menu. Styles: css/calendar.css.
+// Calendar tab, #garmin-settings in the Settings dialog. Styles: css/calendar.css.
 //
 // A 409 from the server means "Garmin isn't usable" (never connected, or the
 // session expired): the Connect panel is shown instead of logging out.
@@ -11,7 +11,6 @@
 import { api } from "../core/api.js";
 import { fmtLongDate, plural } from "../core/format.js";
 import { t } from "../core/i18n.js";
-import { closeMenus } from "../core/menus.js";
 import { getUser, setUser } from "../core/session.js";
 import { getCurrentTab, loadTab, showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
@@ -79,7 +78,7 @@ garminForm.addEventListener("submit", async (e) => {
 });
 
 document.getElementById("garmin-reconnect").addEventListener("click", () => {
-  closeMenus();
+  document.getElementById("settings-dialog").close();
   showGarminConnect(t("Log in to Garmin again to refresh the connection."));
 });
 
@@ -91,7 +90,7 @@ document.getElementById("garmin-disconnect").addEventListener("click", async () 
     if (err.status !== 401) alert(t("Couldn't disconnect Garmin: {error}", { error: err.message }));
     return;
   }
-  closeMenus();
+  document.getElementById("settings-dialog").close();
   renderGarminState();
 });
 
@@ -170,7 +169,7 @@ export async function runSync(statusEl = syncStatus) {
 
 syncBtn.addEventListener("click", () => runSync(syncStatus));
 
-// --- Older activities (the ⚙️ menu) ---
+// --- Older activities (Settings) ---
 // They come as one list from Garmin: enough for the long-term weekly totals.
 
 const importBtn = document.getElementById("import-btn");

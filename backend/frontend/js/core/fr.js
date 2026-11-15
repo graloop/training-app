@@ -363,6 +363,17 @@ export const FR = {
   "Activities from before your first sync, for the long-term weekly totals.":
     "Les activités d'avant votre première synchronisation, pour les totaux hebdomadaires à long terme.",
 
+  // --- Settings ---
+  Close: "Fermer",
+  "Profile photo": "Photo de profil",
+  Change: "Changer",
+  Remove: "Retirer",
+  "New username": "Nouveau nom d'utilisateur",
+  "Save username": "Enregistrer le nom",
+  "Garmin Connect": "Garmin Connect",
+  "Saved. Log in with {name} from now on.": "Enregistré. Connectez-vous désormais avec {name}.",
+  "This file isn't an image the browser can read.": "Ce fichier n'est pas une image que le navigateur peut lire.",
+
   // --- Admin dashboard ---
   Rename: "Renommer",
   "Rename {name}": "Renommer {name}",

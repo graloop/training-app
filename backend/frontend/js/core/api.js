@@ -3,7 +3,9 @@
 // HTTP status (err.status).
 //
 // The contract callers rely on:
-// - resolves with the parsed JSON (null for 204 No Content);
+// - resolves with the parsed JSON (null for 204 No Content), or with a Blob
+//   when called with { as: "blob" } (a profile photo);
+// - a Blob or File body is sent as it is (an upload), anything else as JSON;
 // - a 401 with a token = the session is over: the token is dropped, the Log in
 //   window opens, and the Error is still thrown. That is why callers write
 //   `if (err.status !== 401) showStatus(...)`: the login window already said it;
@@ -14,9 +16,10 @@ import { t } from "./i18n.js";
 import { clearSession, getToken } from "./session.js";
 import { showLogin } from "./ui.js";
 
-export async function api(path, options = {}) {
+export async function api(path, { as = "json", ...options } = {}) {
   const headers = options.headers || {};
-  headers["Content-Type"] = "application/json";
+  if (options.body instanceof Blob) headers["Content-Type"] = options.body.type || "application/octet-stream";
+  else headers["Content-Type"] = "application/json";
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -45,5 +48,5 @@ export async function api(path, options = {}) {
     throw error;
   }
   if (res.status === 204) return null;
-  return res.json();
+  return as === "blob" ? res.blob() : res.json();
 }

@@ -57,7 +57,7 @@ MAX_CLIENTS = 50
 # applies form-action to the redirect that follows the login form, so it must
 # allow going back to Claude. tests/test_mcp_oauth.py keeps the two in step.
 AUTHORIZE_CSP = (
-    "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+    "default-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
     "form-action 'self' https://claude.ai https://claude.com"
 )
 _CHALLENGE = re.compile(r"[A-Za-z0-9._~-]{43,128}")  # RFC 7636: a base64url SHA-256 is 43 characters

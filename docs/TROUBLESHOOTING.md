@@ -53,7 +53,7 @@ then, so it is hidden by default.
 
 | Part of the app | Backend (Python) | Page (JavaScript / CSS) |
 |---|---|---|
-| Login, logout, password | `routers/auth.py`, `accounts.py`, `security.py`, `deps.py` | `js/main.js` (log in), `js/views/landing.js` (Log in window), `js/views/account.js` (password, log out) |
+| Login, logout, Settings (password, username, photo) | `routers/auth.py`, `routers/users.py`, `accounts.py`, `avatars.py`, `security.py`, `deps.py` | `js/main.js` (log in), `js/views/landing.js` (Log in window), `js/views/settings.js` (Settings), `js/core/avatars.js`, `css/settings.css` |
 | Landing page, top bar, language, night mode | | `js/views/landing.js`, `js/views/landing-mocks.js`, `js/views/settings.js`, `js/views/night-mode.js`, `js/theme-early.js`, `js/core/menus.js`, `js/core/i18n.js`, `js/core/fr.js`, `css/landing.css`, `css/base.css` |
 | Admin dashboard | `routers/admin.py` | `js/views/admin.js`, `css/admin.css` |
 | Calendar | `routers/calendar.py`, `routers/planned.py` | `js/views/calendar.js`, `js/views/session-dialog.js`, `css/calendar.css` |
@@ -140,7 +140,7 @@ connection and last login. Locally: `cd backend && .venv/bin/python -m app.cli l
 
 | Message on the page | Meaning, and what to do |
 |---|---|
-| "Connect your Garmin account first." | ⚙️ Settings → Reconnect Garmin |
+| "Connect your Garmin account first." | Settings (⚙️) → Garmin Connect → Reconnect Garmin |
 | "Your Garmin session expired, please reconnect Garmin." | Garmin ended the stored session: reconnect. If it happens to **everyone at once** after a redeploy, `FERNET_KEY` changed (the log says "Could not decrypt stored Garmin session") |
 | "Garmin login failed: Garmin rejected that email or password." | Check them on connect.garmin.com |
 | "...accounts with MFA enabled aren't supported yet." | Turn off two-step verification on the Garmin account, or use another one |

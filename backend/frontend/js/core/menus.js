@@ -1,5 +1,5 @@
-// The top bar's pop-up menus (account, settings, log in): a button that opens
-// a panel under it. One is open at a time; Escape or a click elsewhere closes it.
+// The top bar's pop-up menus (today only Log in, on the landing page; Settings
+// is a dialog, views/settings.js): a button that opens a panel under it. One is open at a time; Escape or a click elsewhere closes it.
 
 const menus = []; // { button, panel, onOpen }
 

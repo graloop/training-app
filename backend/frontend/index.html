@@ -13,12 +13,14 @@
   <link rel="stylesheet" href="/css/import.css" />
   <link rel="stylesheet" href="/css/admin.css" />
   <link rel="stylesheet" href="/css/landing.css" />
+  <link rel="stylesheet" href="/css/settings.css" />
 </head>
 <body>
   <!-- Top bar, on every screen: logo, the member's tabs (js/core/tabs.js), and
-       the menus on the right (js/core/menus.js; account: views/account.js,
-       settings: views/settings.js, log in: views/landing.js, night mode:
-       views/night-mode.js). Styles: css/base.css. -->
+       on the right the buttons that open Settings (the badge with your name and
+       the ⚙️: views/settings.js), night mode (views/night-mode.js) and, on the
+       landing page, the Log in menu (js/core/menus.js, views/landing.js).
+       Styles: css/base.css. -->
   <header class="topbar">
     <h1 class="brand"><span class="logo" role="img" aria-label="graloop">gral<svg viewBox="-2 -2 116 60" fill="none" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M56 28 C66 12 78 4 86 4 C99 4 108 15 108 28 C108 41 99 52 86 52 C78 52 66 44 56 28 C46 12 34 4 26 4 C13 4 4 15 4 28 C4 41 13 52 26 52 C34 52 46 44 56 28 Z"></path></svg>p</span><span>Training App</span></h1>
     <nav id="tabs" class="tabs hidden" aria-label="Sections">
@@ -27,64 +29,14 @@
       <button id="tab-btn-plan" type="button" class="tab">Plan</button>
       <button id="tab-btn-import" type="button" class="tab">Import</button>
     </nav>
-    <!-- Logged in: night mode, the account menu (the badge with your name) and the settings gear. -->
+    <!-- Logged in: night mode, then the badge with your name and the gear, which both open Settings. -->
     <div id="user-actions" class="topbar-actions hidden">
       <button type="button" class="theme-switch" role="switch" aria-checked="false" aria-label="Night mode" title="Night mode"><span class="theme-knob" aria-hidden="true"><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4.5" fill="currentColor"></circle><path d="M12 1.5v2.5M12 20v2.5M1.5 12H4M20 12h2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"></path></svg><svg class="moon" viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"></path></svg></span></button>
-      <div class="menu">
-        <button id="account-btn" class="user-badge" aria-haspopup="dialog" aria-expanded="false" aria-controls="account-menu">
-          <span class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="9.5" r="4.5"></circle><path d="M2.5 25c0-5.5 4.3-9.5 9.5-9.5s9.5 4 9.5 9.5z"></path></svg></span>
-          <span id="user-name"></span>
-          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-        </button>
-        <div id="account-menu" class="menu-panel hidden" role="dialog" aria-label="Account">
-          <h3>Change password</h3>
-          <form id="password-form" class="menu-fields" novalidate>
-            <label for="pw-current">Current password</label>
-            <input id="pw-current" type="password" autocomplete="current-password" />
-            <label for="pw-new">New password (8+ characters)</label>
-            <input id="pw-new" type="password" autocomplete="new-password" minlength="8" />
-            <button type="submit" class="btn-ghost">Change password</button>
-          </form>
-          <p id="pw-status" class="status hidden" role="status"></p>
-          <hr />
-          <div class="menu-actions">
-            <button id="switch-account-btn" type="button" class="btn-link">Switch account</button>
-            <button id="logout-btn" type="button" class="btn-link">Log out</button>
-          </div>
-        </div>
-      </div>
-      <div class="menu">
-        <button id="settings-btn" class="icon-btn" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
-        <div id="settings-menu" class="menu-panel hidden" role="dialog" aria-label="Settings">
-          <div id="garmin-settings" class="menu-fields">
-            <h3>Garmin</h3>
-            <p id="garmin-state" class="hint"></p>
-            <div class="menu-actions">
-              <button id="garmin-reconnect" type="button" class="btn-link">Reconnect Garmin</button>
-              <button id="garmin-disconnect" type="button" class="btn-link danger">Disconnect</button>
-            </div>
-            <label for="import-months">Import older activities</label>
-            <p class="hint">Activities from before your first sync, for the long-term weekly totals.</p>
-            <div class="import-row">
-              <select id="import-months" aria-label="How far back to import older activities">
-                <option value="6">last 6 months</option>
-                <option value="12" selected>last 12 months</option>
-                <option value="24">last 2 years</option>
-                <option value="36">last 3 years</option>
-              </select>
-              <button id="import-btn" type="button" class="btn-ghost">Import</button>
-            </div>
-            <p id="import-status" class="status hidden" role="status"></p>
-            <hr />
-          </div>
-          <h3>Language</h3>
-          <select id="lang-select" aria-label="Language">
-            <option value="en" lang="en">English</option>
-            <option value="fr" lang="fr">Français</option>
-          </select>
-          <p id="lang-status" class="status hidden" role="status"></p>
-        </div>
-      </div>
+      <button id="account-btn" type="button" class="user-badge" aria-haspopup="dialog" aria-controls="settings-dialog" title="Settings">
+        <span id="user-avatar" class="avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="9.5" r="4.5"></circle><path d="M2.5 25c0-5.5 4.3-9.5 9.5-9.5s9.5 4 9.5 9.5z"></path></svg></span>
+        <span id="user-name"></span>
+      </button>
+      <button id="settings-btn" type="button" class="icon-btn" aria-label="Settings" title="Settings" aria-haspopup="dialog" aria-controls="settings-dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
     </div>
 
     <!-- Not logged in (the landing page): night mode, the language and the Log in window. -->
@@ -560,6 +512,86 @@ Wed Oct 14 | bike | 1:15 | 3×10 min tempo, 5 min easy between"></textarea>
       </form>
     </section>
   </main>
+
+  <!-- Settings, opened by the ⚙️ and by the badge with your name: views/settings.js
+       (photo, username, password, language, leaving) and views/garmin.js (the
+       Garmin section). css/settings.css -->
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+    <div class="settings-head">
+      <h2 id="settings-title">Settings</h2>
+      <button id="settings-close" type="button" class="icon-btn settings-close" aria-label="Close" title="Close">×</button>
+    </div>
+
+    <section class="settings-section" aria-labelledby="avatar-title">
+      <h3 id="avatar-title">Profile photo</h3>
+      <div class="avatar-row">
+        <span id="avatar-preview" class="avatar avatar-large" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="9.5" r="4.5"></circle><path d="M2.5 25c0-5.5 4.3-9.5 9.5-9.5s9.5 4 9.5 9.5z"></path></svg></span>
+        <label for="avatar-file" class="btn-ghost file-button">Change</label>
+        <input id="avatar-file" type="file" accept="image/*" class="visually-hidden" />
+        <button id="avatar-remove" type="button" class="btn-link danger hidden">Remove</button>
+      </div>
+      <p id="avatar-status" class="status hidden" role="status"></p>
+    </section>
+
+    <section class="settings-section" aria-labelledby="username-title">
+      <h3 id="username-title">Username</h3>
+      <form id="username-form" class="menu-fields" novalidate>
+        <label for="username-new">New username</label>
+        <input id="username-new" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" />
+        <label for="username-password">Current password</label>
+        <input id="username-password" type="password" autocomplete="current-password" />
+        <button type="submit" class="btn-ghost">Save username</button>
+      </form>
+      <p id="username-status" class="status hidden" role="status"></p>
+    </section>
+
+    <section class="settings-section" aria-labelledby="password-title">
+      <h3 id="password-title">Change password</h3>
+      <form id="password-form" class="menu-fields" novalidate>
+        <label for="pw-current">Current password</label>
+        <input id="pw-current" type="password" autocomplete="current-password" />
+        <label for="pw-new">New password (8+ characters)</label>
+        <input id="pw-new" type="password" autocomplete="new-password" minlength="8" />
+        <button type="submit" class="btn-ghost">Change password</button>
+      </form>
+      <p id="pw-status" class="status hidden" role="status"></p>
+    </section>
+
+    <section id="garmin-settings" class="settings-section" aria-labelledby="garmin-settings-title">
+      <h3 id="garmin-settings-title">Garmin Connect</h3>
+      <p id="garmin-state" class="hint"></p>
+      <div class="menu-actions">
+        <button id="garmin-reconnect" type="button" class="btn-link">Reconnect Garmin</button>
+        <button id="garmin-disconnect" type="button" class="btn-link danger">Disconnect</button>
+      </div>
+      <label for="import-months">Import older activities</label>
+      <p class="hint">Activities from before your first sync, for the long-term weekly totals.</p>
+      <div class="import-row">
+        <select id="import-months" aria-label="How far back to import older activities">
+          <option value="6">last 6 months</option>
+          <option value="12" selected>last 12 months</option>
+          <option value="24">last 2 years</option>
+          <option value="36">last 3 years</option>
+        </select>
+        <button id="import-btn" type="button" class="btn-ghost">Import</button>
+      </div>
+      <p id="import-status" class="status hidden" role="status"></p>
+    </section>
+
+    <section class="settings-section" aria-labelledby="lang-title">
+      <h3 id="lang-title">Language</h3>
+      <select id="lang-select" aria-labelledby="lang-title">
+        <option value="en" lang="en">English</option>
+        <option value="fr" lang="fr">Français</option>
+      </select>
+      <p id="lang-status" class="status hidden" role="status"></p>
+    </section>
+
+    <div class="settings-leave">
+      <button id="switch-account-btn" type="button" class="btn-link">Switch account</button>
+      <button id="logout-btn" type="button" class="btn-link">Log out</button>
+    </div>
+  </dialog>
 
   <!-- "Plan a session" / "Edit session", opened from a calendar day:
        views/session-dialog.js. css/calendar.css -->

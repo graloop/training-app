@@ -128,7 +128,7 @@ body[data-view="auth-view"] .topbar { position: sticky; top: 0; }
 
 .topbar-actions { grid-column: 3; justify-self: end; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
 
-/* You, as a badge: opens the account menu. */
+/* You, as a badge: opens Settings (views/settings.js). */
 .user-badge {
   display: inline-flex;
   align-items: center;
@@ -142,9 +142,7 @@ body[data-view="auth-view"] .topbar { position: sticky; top: 0; }
   font-weight: 500;
   white-space: nowrap;
 }
-.user-badge:hover, .user-badge[aria-expanded="true"] { background: rgba(255, 255, 255, 0.16); }
-.user-badge .chevron { width: 14px; height: 14px; opacity: 0.7; transition: transform 0.15s; }
-.user-badge[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.user-badge:hover { background: rgba(255, 255, 255, 0.16); }
 .avatar {
   display: grid;
   width: 30px;
@@ -154,6 +152,9 @@ body[data-view="auth-view"] .topbar { position: sticky; top: 0; }
   background: #c3cad6;
 }
 .avatar svg { width: 100%; height: 100%; fill: #fff; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-small { width: 22px; height: 22px; }
+.avatar-large { width: 72px; height: 72px; }
 
 .icon-btn {
   display: grid;
@@ -293,7 +294,6 @@ button:hover { background: var(--accent-hover); }
 .menu-panel .hint { font-size: 0.8rem; color: var(--muted); margin: 0; }
 .menu-panel a { color: var(--accent-text); }
 .menu-panel hr { width: 100%; border: none; border-top: 1px solid var(--border); margin: 8px 0 4px; }
-.menu-panel #logout-btn { align-self: flex-start; }
 .menu-fields { display: flex; flex-direction: column; gap: 6px; }
 .btn-link:hover { background: none; text-decoration: underline; }
 .status.ok { color: var(--ok-text); }

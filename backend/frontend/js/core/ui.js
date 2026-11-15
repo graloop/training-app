@@ -7,6 +7,7 @@ const VIEWS = ["auth-view", "app-view", "admin-view"];
 
 export function showView(id) {
   closeMenus();
+  for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close(); // Settings, a session
   for (const view of VIEWS) document.getElementById(view).classList.toggle("hidden", view !== id);
   // The top bar: the tabs for a member, the account and settings menus once
   // logged in, Log in on the landing page.

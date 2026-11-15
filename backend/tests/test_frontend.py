@@ -140,3 +140,11 @@ def test_every_text_has_its_french():
     """The page opens in French: an English text without its French in fr.js shows up in English."""
     missing = (_page_texts() | _script_texts()) - _french_keys() - SAME_IN_FRENCH
     assert sorted(missing) == []
+
+
+def test_no_french_text_is_given_twice():
+    """A second entry for the same English text silently replaces the first."""
+    source = (FRONTEND / "js" / "core" / "fr.js").read_text()
+    found = re.findall(r'^\s{2}(?:"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\'|([A-Za-z_]\w*))\s*:', source, re.M)
+    keys = [a or b or c for a, b, c in found]
+    assert sorted({key for key in keys if keys.count(key) > 1}) == []

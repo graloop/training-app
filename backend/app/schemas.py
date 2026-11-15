@@ -12,6 +12,8 @@ from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from . import avatars
+
 
 def _as_utc(value: datetime.datetime) -> datetime.datetime:
     # SQLite hands back naive datetimes; they are stored in UTC. Without the
@@ -46,6 +48,7 @@ class MeOut(BaseModel):
     is_admin: bool
     garmin_connected: bool
     garmin_email: str | None
+    avatar_url: str | None = None  # avatars.url: fetched with the token, never an <img src>
 
     @classmethod
     def of(cls, user) -> "MeOut":
@@ -56,7 +59,13 @@ class MeOut(BaseModel):
             is_admin=bool(user.is_admin),
             garmin_connected=bool(user.garmin_session_encrypted),
             garmin_email=user.garmin_email if user.garmin_session_encrypted else None,
+            avatar_url=avatars.url(user),
         )
+
+
+class UsernameChange(BaseModel):
+    new_username: str = Field(pattern=USERNAME_PATTERN)
+    current_password: str = Field(min_length=1, max_length=256)
 
 
 class PasswordChange(BaseModel):
@@ -82,6 +91,7 @@ class AdminUserOut(BaseModel):
     data: AccountData
     created_at: UtcDatetime | None
     last_login_at: UtcDatetime | None
+    avatar_url: str | None = None
 
 
 class AdminUserCreate(BaseModel):

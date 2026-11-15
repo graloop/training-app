@@ -258,3 +258,82 @@ def test_every_page_shows_the_logo_author_contact_and_version(client):
     assert "Created by Julien Tremblay" in footer and "data-contact" in footer  # the address is filled in by landing.js
     assert f"Version {VERSION}</footer>" in footer
     assert "__APP_VERSION__" not in html and "__APP_VERSION__" not in client.get("/index.html").text
+
+
+# --- Settings: profile photo (avatars.py) and username ---------------------------------
+
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 1000
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 1000
+
+
+def _put_avatar(client, headers, data, content_type="image/jpeg"):
+    return client.put("/api/auth/avatar", content=data, headers={**headers, "Content-Type": content_type})
+
+
+def test_a_photo_is_uploaded_shown_and_removed(client, auth):
+    assert client.get("/api/auth/me", headers=auth).json()["avatar_url"] is None
+    res = _put_avatar(client, auth, JPEG)
+    assert res.status_code == 200
+    url = res.json()["avatar_url"]
+    assert url.startswith(f"/api/users/{res.json()['id']}/avatar?v=")
+    photo = client.get(url, headers=auth)
+    assert photo.status_code == 200 and photo.content == JPEG and photo.headers["content-type"] == "image/jpeg"
+    assert "max-age" in photo.headers["cache-control"]  # the URL changes with the photo
+
+    assert _put_avatar(client, auth, PNG, "image/png").status_code == 200
+    assert client.get(client.get("/api/auth/me", headers=auth).json()["avatar_url"], headers=auth).headers[
+        "content-type"] == "image/png"
+
+    res = client.delete("/api/auth/avatar", headers=auth)
+    assert res.status_code == 200 and res.json()["avatar_url"] is None
+    assert client.get(url, headers=auth).status_code == 404
+
+
+def test_a_photo_must_be_a_small_jpeg_or_png(client, auth):
+    assert _put_avatar(client, auth, b"GIF89a" + b"\x00" * 100, "image/gif").status_code == 415
+    assert _put_avatar(client, auth, b"<svg></svg>", "image/jpeg").status_code == 415  # the bytes decide, not the header
+    assert _put_avatar(client, auth, JPEG + b"\x00" * (200 * 1024), "image/jpeg").status_code == 413
+    assert client.get("/api/auth/me", headers=auth).json()["avatar_url"] is None
+
+
+def test_a_photo_is_only_seen_by_its_owner_and_the_admin(client, auth):
+    url = _put_avatar(client, auth, JPEG).json()["avatar_url"]
+    friend = make_user(client, "friend", garmin=False)
+    assert client.get(url, headers=friend).status_code == 404
+    assert client.get(url).status_code == 401
+    assert client.get(url, headers=admin_auth(client)).status_code == 200
+    users = client.get("/api/admin/users", headers=admin_auth(client)).json()["users"]
+    assert next(u for u in users if u["username"] == "athlete")["avatar_url"] == url
+
+
+def test_deleting_an_account_deletes_its_photo(client, auth):
+    _put_avatar(client, auth, JPEG)
+    with SessionLocal() as db:
+        user_id = db.query(models.User).filter_by(username="athlete").one().id
+    res = client.delete(f"/api/admin/users/{user_id}", params={"confirm": "athlete"}, headers=admin_auth(client))
+    assert res.status_code == 204
+    assert client.get(f"/api/users/{user_id}/avatar", headers=admin_auth(client)).status_code == 404
+
+
+def _change_username(client, headers, new, password=USER_PASSWORD):
+    return client.post("/api/auth/username", json={"new_username": new, "current_password": password},
+                       headers=headers)
+
+
+def test_you_change_your_own_username_and_stay_logged_in(client):
+    headers = make_user(client, "friend", garmin=False)
+    res = _change_username(client, headers, "buddy")
+    assert res.status_code == 200 and res.json()["username"] == "buddy"
+    assert client.get("/api/auth/me", headers=headers).json()["username"] == "buddy"
+    assert login(client, "buddy")
+
+
+def test_username_change_needs_the_password_and_a_free_valid_name(client, auth):
+    headers = make_user(client, "friend", garmin=False)
+    assert _change_username(client, headers, "buddy", "wrong-password").status_code == 400
+    assert _change_username(client, headers, "athlete").status_code == 400  # MCP_USERNAME in conftest
+    make_user(client, "other", garmin=False)
+    assert _change_username(client, headers, "other").status_code == 409
+    assert _change_username(client, headers, "No Spaces").status_code == 422
+    assert _change_username(client, auth, "runner").status_code == 400  # athlete is MCP_USERNAME itself
+    assert client.get("/api/auth/me", headers=headers).json()["username"] == "friend"

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from .. import accounts, models, schemas
+from .. import accounts, avatars, models, schemas
 from ..database import get_db
 from ..deps import get_current_admin
 from ..security import hash_password
@@ -45,6 +45,7 @@ def _out(user: models.User, data: schemas.AccountData | None = None) -> schemas.
         data=data or schemas.AccountData(),
         created_at=user.created_at,
         last_login_at=user.last_login_at,
+        avatar_url=avatars.url(user),
     )
 
 

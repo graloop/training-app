@@ -20,10 +20,9 @@ import { renderGarminState, runSync } from "./views/garmin.js";
 import { loadImportPage } from "./views/import.js";
 import { loadObjectives } from "./views/objectives.js";
 import { loadPlanPage } from "./views/plan.js";
-import "./views/account.js";
+import { renderAccount } from "./views/settings.js";
 import "./views/landing.js";
 import "./views/night-mode.js";
-import "./views/settings.js";
 
 translatePage();
 
@@ -45,12 +44,11 @@ async function showAppView({ sync = false } = {}) {
   const me = getUser();
   // Nothing from a previous session should linger (status lines, half-typed forms).
   for (const el of document.querySelectorAll(
-    "#app-view .status, #app-view .error, #admin-view .status, #admin-view .error, .menu-panel .status",
+    "#app-view .status, #app-view .error, #admin-view .status, #admin-view .error",
   ))
     el.classList.add("hidden");
   document.getElementById("garmin-password").value = "";
-  document.getElementById("user-name").textContent = me.username + (me.is_admin ? ` · ${t("admin")}` : "");
-  document.getElementById("garmin-settings").classList.toggle("hidden", me.is_admin);
+  renderAccount();
 
   if (me.is_admin) {
     await showDashboard();

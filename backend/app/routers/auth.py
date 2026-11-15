@@ -1,10 +1,11 @@
 """/api/auth: logging in (no sign-up: the admin creates accounts), who is
-logged in, and changing your own password. Lockout rules are in accounts.py."""
+logged in, and the account's own settings: password, username, profile photo.
+Lockout and renaming rules are in accounts.py, the photo's in avatars.py."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from .. import accounts, models, schemas, visitor
+from .. import accounts, avatars, models, schemas, visitor
 from ..database import get_db
 from ..deps import get_current_user
 from ..security import create_access_token, hash_password, verify_password
@@ -54,3 +55,46 @@ def change_password(
     user.token_version = (user.token_version or 0) + 1
     db.commit()
     return schemas.TokenResponse(access_token=create_access_token(user.id, user.token_version))
+
+
+@router.post("/username", response_model=schemas.MeOut)
+def change_username(
+    payload: schemas.UsernameChange,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Change your own login name (the password is asked again). You stay logged in."""
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is wrong")
+    try:
+        accounts.rename(db, user, payload.new_username)
+    except accounts.RenameProblem as problem:
+        code = status.HTTP_409_CONFLICT if problem.taken else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=str(problem)) from problem
+    db.commit()
+    return schemas.MeOut.of(user)
+
+
+@router.put("/avatar", response_model=schemas.MeOut)
+async def set_avatar(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Your profile photo: the image itself as the request body (JPEG or PNG, at most 200 KB)."""
+    if int(request.headers.get("content-length") or 0) > avatars.MAX_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="The photo is too big (200 KB at most)")
+    data = await request.body()
+    if len(data) > avatars.MAX_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="The photo is too big (200 KB at most)")
+    if avatars.image_type(data) is None:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="The photo must be a JPEG or PNG")
+    user.avatar = data
+    user.avatar_updated_at = models.utcnow()
+    db.commit()
+    return schemas.MeOut.of(user)
+
+
+@router.delete("/avatar", response_model=schemas.MeOut)
+def delete_avatar(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Remove your profile photo."""
+    user.avatar = None
+    user.avatar_updated_at = None
+    db.commit()
+    return schemas.MeOut.of(user)

@@ -8,10 +8,12 @@
 // (loadDashboard), so the page never keeps its own copy of the accounts.
 
 import { api } from "../core/api.js";
+import { showAvatar } from "../core/avatars.js";
 import { plural } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
 import { clearSession, getUser, setUser } from "../core/session.js";
 import { showStatus, showView } from "../core/ui.js";
+import { renderAccount } from "./settings.js";
 
 const DASH_DAYS = 7;
 const usersBody = document.getElementById("users-body");
@@ -324,7 +326,7 @@ function renderRenameForm(row, u) {
       await api(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ username }) });
       if (u.id === getUser().id) {
         setUser({ ...getUser(), username });
-        document.getElementById("user-name").textContent = `${username} · ${t("admin")}`;
+        renderAccount();
       }
       await loadDashboard();
       showStatus(
@@ -418,7 +420,14 @@ function renderUsers(users) {
     const isMe = u.id === getUser().id;
     const row = document.createElement("tr");
     const name = document.createElement("td");
-    name.textContent = u.username + (isMe ? t(" (you)") : "");
+    const face = document.createElement("span");
+    face.className = "avatar avatar-small";
+    face.setAttribute("aria-hidden", "true");
+    showAvatar(face, u.avatar_url);
+    const label = document.createElement("span");
+    label.textContent = u.username + (isMe ? t(" (you)") : "");
+    name.className = "account-name";
+    name.append(face, label);
     const role = document.createElement("td");
     role.textContent = u.is_admin ? t("Admin") : t("User");
     if (!u.has_password) role.textContent += t(" · no password");

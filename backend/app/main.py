@@ -35,7 +35,7 @@ from .logs import setup_logging
 from .mcp import auth as mcp_auth
 from .mcp import oauth as mcp_oauth
 from .mcp.server import McpApp
-from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share
+from .routers import admin, athlete, auth, calendar, garmin, objectives, plan, planned, share, users
 from .security import check_jwt_secret
 from .version import VERSION
 from .visitor import is_https
@@ -106,8 +106,10 @@ if settings.cors_allow_origins.strip():
 
 # The page loads its script and stylesheet from this app and nothing else, so
 # a script that somehow got into the page can't run or send data elsewhere.
+# blob: images are the profile photos, fetched with the token (js/core/avatars.js).
 CONTENT_SECURITY_POLICY = (
-    "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+    "default-src 'self'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+    "form-action 'self'"
 )
 # How long a browser that has used https://APP_DOMAIN refuses plain http for
 # it. A month, not the usual year: long enough for friends who open the app
@@ -177,6 +179,7 @@ app.include_router(objectives.router)
 app.include_router(planned.router)
 app.include_router(plan.router)
 app.include_router(share.router)
+app.include_router(users.router)
 
 # Claude's connector, only with MCP_ENABLED and MCP_USERNAME (mcp/__init__.py).
 # Two plain routes rather than a mount, so /mcp answers without a redirect to /mcp/.

@@ -101,12 +101,13 @@ Backend, under `backend/app/`:
 | `security.py` | Password hashing (scrypt), session tokens (JWT), encryption of Garmin sessions (Fernet) |
 | `deps.py` | Who may call an endpoint |
 | `visitor.py` | The visitor's address and whether they came over https, as the proxy reports them |
-| `accounts.py` | The first admin, the local test accounts, the login log, the login lockout |
+| `accounts.py` | The first admin, renaming an account, the local test accounts, the login log, the login lockout |
+| `avatars.py` | Profile photos: what is accepted, their URL, who may see one |
 | `sharing.py` | Share codes, and a friend's planned sessions as draft lines |
 | `logs.py` | Log format and level |
 | `cli.py` | Account rescue: `python -m app.cli list-users` / `reset-password` |
 | `version.py` | The version in the footer and on the first log line |
-| `routers/` | HTTP only, one file per URL prefix: `auth`, `admin`, `garmin`, `calendar`, `athlete`, `objectives`, `planned`, `plan`, `share` |
+| `routers/` | HTTP only, one file per URL prefix: `auth`, `admin`, `garmin`, `calendar`, `athlete`, `objectives`, `planned`, `plan`, `share`, `users` |
 | `planning/basics.py` | Days, durations and sports, written the same way everywhere |
 | `planning/activity_text.py` | One activity as text: the summary line, laps, reps, detail lines |
 | `planning/session_detail.py` | What a session's 5-second trace adds, and one session in full |
@@ -246,11 +247,12 @@ plain script that picks day or night colours before anything is drawn) and
 
 | Part of `index.html` | What it is |
 |---|---|
-| `header.topbar` | The tabs (`#tabs`), and the menus: `#user-actions` once logged in (account, settings), `#guest-actions` on the landing page (log in, language) |
+| `header.topbar` | The tabs (`#tabs`); `#user-actions` once logged in (night mode, the badge with your name and the ⚙️, which both open Settings); `#guest-actions` on the landing page (log in menu, language) |
 | `#auth-view` | The landing page for visitors, with the Log in window |
 | `#app-view` | A regular account's tabs: `#tab-calendar`, `#tab-athlete`, `#tab-plan`, `#tab-import` |
 | `#admin-view` | The admin dashboard |
 | `#plan-dialog` | The "Plan a session" / "Edit session" dialog |
+| `#settings-dialog` | Settings: photo, username, password, Garmin, language, leaving (`views/settings.js`, Garmin part in `views/garmin.js`) |
 
 The scripts:
 
@@ -258,14 +260,15 @@ The scripts:
   loads, logs in, then opens the landing page, the tabs or the dashboard.
 - `js/core/`: what every view uses. `api.js` (calls to the server),
   `session.js` (the token, kept in `localStorage`, and who is logged in),
-  `tabs.js`, `menus.js` (the top bar's pop-ups), `ui.js` (which screen, status
+  `tabs.js`, `menus.js` (the landing page's Log in pop-up), `avatars.js`
+  (profile photos, fetched with the token), `ui.js` (which screen, status
   lines), `format.js` (dates, durations, plurals), `sports.js` (names, icons),
   `i18n.js` and `fr.js` (English / French).
 - `js/views/`: one file per part of the page, and `css/` one stylesheet per
   screen on top of `base.css` (colours, night mode, shared parts).
 
 **Translations.** The page opens in **French** unless English was chosen
-(the ⚙️ menu or the landing page's button, kept in `localStorage`). The
+(Settings or the landing page's button, kept in `localStorage`). The
 English text is written in `index.html` and the scripts. `fr.js` maps each English text to its French; `t("Connected as
 {email}.", { email })` looks it up, and anything missing stays English. An
 element with markup inside carries `data-i18n="<key>"` and is replaced

@@ -13,15 +13,21 @@ Chrome** extension also works: it edits the page like you would.
 ## Features
 
 - **French or English** — the page opens in French; English is one click
-  away (⚙️ menu, or the button on the landing page) and the choice is kept
+  away (Settings, or the button on the landing page) and the choice is kept
   in the browser. What the server writes (error messages, the training log
   for Claude) stays in English.
 - **Night mode** — the sun/moon switch in the top bar (on the landing page
   too). The choice is kept in the browser; until one is made, the device's
   own light or dark setting is followed.
+- **Settings** — the ⚙️ and the badge with your name (top bar) both open
+  one Settings window: profile photo (cropped to a square and shrunk in the
+  browser, shown in the badge and the admin's accounts table), username
+  (the password is asked again; you stay logged in), password, Garmin
+  (reconnect, disconnect, import older activities), language, switch
+  account and log out. Full screen on a phone.
 - **Private accounts** — only people the admin created can log in (username
-  + password, no sign-up). Everyone can change their own password in the
-  account menu (the badge with their name in the top bar). Five wrong
+  + password, no sign-up). Everyone can change their own password and
+  username in Settings. Five wrong
   passwords lock that username for 15 minutes, and
   twenty from one address stop that address; a password change or reset logs
   out every other session.
@@ -80,7 +86,7 @@ Chrome** extension also works: it edits the page like you would.
   once, at any age, shown under the session on the calendar, listed in the
   log, and counted per sport in the weekly totals.
 - **Older history** — *Import older activities*, in the Garmin part of the
-  ⚙️ Settings menu, brings in up to 3 years of activities (one list from
+  Settings window, brings in up to 3 years of activities (one list from
   Garmin). The training log Claude reads shows all of it: every session for the year before the detailed weeks, weekly
   totals back to two years ago, monthly totals before that. If the Garmin session has
   expired the page shows the "Connect your Garmin account" form; you stay
@@ -221,7 +227,7 @@ How the parts work together, and where to change what:
     │   ├── cli.py          account rescue: python -m app.cli list-users / reset-password
     │   ├── version.py      the version in the footer and on the first log line (bump it with each release)
     │   ├── routers/        HTTP only, one file per URL prefix: auth, admin, garmin, calendar,
-    │   │                   athlete, objectives, planned, plan, share. They never import each other.
+    │   │                   athlete, objectives, planned, plan, share, users. They never import each other.
     │   ├── planning/       the training log and the draft plan
     │   │   ├── basics.py         days, durations, sports
     │   │   ├── activity_text.py  one activity as text (pace, HR, effort, laps, weather)
@@ -239,15 +245,15 @@ How the parts work together, and where to change what:
         ├── index.html        every screen's markup; loads css/*.css, js/theme-early.js and js/main.js
         ├── img/landing/      the landing page's photos
         ├── css/              base.css (shared: colours, night mode) + one file per screen:
-        │                     landing, calendar, athlete, plan, import, admin, oauth
+        │                     landing, calendar, athlete, plan, import, admin, settings, oauth
         └── js/
             ├── theme-early.js day or night colours, set before the page is drawn (a plain script, not a module)
             ├── main.js        entry point: log in, then show the landing page, the tabs or the admin dashboard
             ├── core/          shared by every view: api.js (fetch + errors), session.js (token, logged-in user),
-            │                  tabs.js, menus.js (the top bar's pop-ups), ui.js, format.js (dates, durations),
+            │                  tabs.js, menus.js (the Log in pop-up), avatars.js, ui.js, format.js (dates, durations),
             │                  sports.js (names, icons), i18n.js + fr.js (English / French)
-            └── views/         one file per part of the page: landing (+ landing-mocks), account and settings
-                               menus, night-mode, calendar, session-dialog, garmin (connect + sync), objectives,
+            └── views/         one file per part of the page: landing (+ landing-mocks), settings (the
+                               Settings window), night-mode, calendar, session-dialog, garmin (connect + sync), objectives,
                                athlete, plan, plan-preview, import, admin
 ```
 
@@ -372,8 +378,8 @@ says where to look.
    account**, make one for yourself (your training account) and one for each
    friend (**Generate** makes a random password). Send each friend their
    username, password and the URL; they connect their own Garmin on first
-   login and can change their password in the account menu (the badge with
-   their name).
+   login and can change their password in Settings (the badge with their
+   name, or the ⚙️).
 
 **The admin account is not a training account.** It only shows the
 dashboard, so don't set `ADMIN_USERNAME` to an account that holds training
@@ -579,7 +585,8 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 
 ## Data model
 
-- **User** — username (stored in the historical `email` column), scrypt
+- **User** — username (stored in the historical `email` column), profile
+  photo (`avatar`, loaded only when asked for, and `avatar_updated_at`), scrypt
   password hash, admin flag, token version (bumped on password change to
   log out old sessions), last login time, Garmin email + encrypted Garmin
   session token, the athlete profile Garmin keeps (zones, thresholds,
@@ -625,8 +632,11 @@ New nullable columns are added to existing databases on startup
 |--------------------------|--------|---------------------------------------------------------------|
 | `/api/health`            | GET    | `{"status": "ok"}`: Docker's health check                       |
 | `/api/auth/login`        | POST   | Username/password → JWT (429 after 5 failures for a username, or 20 from one address, in 15 min) |
-| `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status                    |
+| `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status, `avatar_url`      |
 | `/api/auth/password`     | POST   | Change your own password; returns a new token                 |
+| `/api/auth/username`     | POST   | `{new_username, current_password}`: change your own login name (409 if taken; the accounts `ADMIN_USERNAME` and `MCP_USERNAME` name are refused) |
+| `/api/auth/avatar`       | PUT/DELETE | Your profile photo: the JPEG or PNG itself as the body, at most 200 KB / remove it |
+| `/api/users/{id}/avatar` | GET    | A profile photo (yours; the admin sees all). The URL from `avatar_url` changes with the photo, so it is cached |
 | `/api/admin/users`       | GET/POST | Admin: list users / create a user                            |
 | `/api/admin/users/{id}`  | PATCH/DELETE | Admin: reset password, grant/remove admin, rename (`username`; 409 if taken) / delete user and their data (`?confirm=<username>` required) |
 | `/api/admin/activity`    | GET    | Admin: logins and failed attempts per day (`?days=7&tz_offset=`), totals, recent connections |
