@@ -1,6 +1,7 @@
-// The page's language: English (the words written in index.html and in the
-// scripts) or French. A French word is looked up by its English text in fr.js;
-// anything missing stays in English. Words from the server (error messages,
+// The page's language: French by default, English when chosen (kept in this
+// browser). The words are written in English in index.html and the scripts; a
+// French word is looked up by its English text in fr.js, and anything missing
+// stays in English. Words from the server (error messages,
 // the training log, Garmin's data) stay in English.
 
 import { FR } from "./fr.js";
@@ -15,7 +16,7 @@ function savedLang() {
   }
 }
 
-const lang = savedLang() === "fr" ? "fr" : "en";
+const lang = savedLang() === "en" ? "en" : "fr";
 
 export function getLang() {
   return lang;

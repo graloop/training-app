@@ -68,3 +68,75 @@ def test_no_script_hides_the_translation_function():
         if not re.search(r"import \{[^}]*\bt\b[^}]*\} from", text):
             continue
         assert re.findall(r"\b(?:const|let|var|function)\s+t\b|[(,]\s*t\s*[,)=]", text) == [], path.name
+
+
+# --- Every text has its French (the page opens in French by default) ---------------
+
+# Words written the same in both languages, or names.
+SAME_IN_FRENCH = {
+    "ABCD-EFGH", "Sections", "graloop", "gral", "Claude", "English", "Français", "Garmin", "Plan", "Sport",
+    "Training App", "FTP (W)", "min", "· Version __APP_VERSION__", "Admin", "Total",
+}
+
+
+def _french_keys() -> set[str]:
+    source = (FRONTEND / "js" / "core" / "fr.js").read_text()
+    keys = re.findall(r'^\s{2}"((?:[^"\\]|\\.)*)"\s*:', source, re.M)
+    keys += re.findall(r"^\s{2}'((?:[^'\\]|\\.)*)'\s*:", source, re.M)
+    keys += re.findall(r"^\s{2}([A-Za-z_]\w*)\s*:", source, re.M)
+    return {key.replace('\\"', '"').replace("\\'", "'") for key in keys}
+
+
+def _page_texts() -> set[str]:
+    """The English text i18n.translatePage() looks up: text nodes and a few attributes,
+    outside script/pre/textarea and elements carrying data-i18n."""
+    from html.parser import HTMLParser
+
+    found: set[str] = set()
+    normalize = lambda s: re.sub(r"\s+", " ", s).strip()  # noqa: E731
+    void = {"input", "meta", "link", "br", "hr", "img", "source", "path", "circle"}
+
+    class Page(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.skipping: list[bool] = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            skip = any(self.skipping) or tag in ("script", "pre", "textarea", "style", "svg") or "data-i18n" in attrs
+            if not skip:
+                for name in ("placeholder", "aria-label", "title", "alt"):
+                    if re.search("[A-Za-z]", attrs.get(name) or ""):
+                        found.add(normalize(attrs[name]))
+            if tag not in void:
+                self.skipping.append(skip)
+
+        def handle_endtag(self, tag):
+            if self.skipping and tag not in void:
+                self.skipping.pop()
+
+        def handle_data(self, data):
+            if not any(self.skipping) and re.search("[A-Za-z]{2}", data):
+                found.add(normalize(data))
+
+    Page().feed(HTML[HTML.index("<body"):])
+    return found
+
+
+def _script_texts() -> set[str]:
+    found = set()
+    for path in JS_FILES:
+        if path.name == "fr.js":
+            continue
+        text = path.read_text()
+        for quoted in re.findall(r'\bt\(\s*("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|`[^`$]*`)', text):
+            found.add(quoted[1:-1].replace('\\"', '"').replace("\\'", "'"))
+        for words in re.findall(r'plural\([^,]+,\s*"([^"]+)"(?:,\s*"([^"]+)")?', text):
+            found |= {word for word in words if word}
+    return found
+
+
+def test_every_text_has_its_french():
+    """The page opens in French: an English text without its French in fr.js shows up in English."""
+    missing = (_page_texts() | _script_texts()) - _french_keys() - SAME_IN_FRENCH
+    assert sorted(missing) == []

@@ -138,6 +138,7 @@ Each rule has a test, so breaking it fails `npm test`:
 | Every element a script looks up exists in `index.html`, ids are unique, every linked file and import exists | `tests/test_frontend.py` |
 | No script names a variable `t` (it would hide the translation function) | `tests/test_frontend.py` |
 | The Sync button never waits on one long request | `tests/test_frontend.py` |
+| Every text on the page and every `t("...")` has its French in `fr.js` (or is listed as the same in both languages) | `tests/test_frontend.py` |
 
 And one rule by convention: only `garmin/client.py` talks to Garmin. The
 tests replace its functions with fakes, so nothing else has to be faked.
@@ -263,8 +264,9 @@ The scripts:
 - `js/views/`: one file per part of the page, and `css/` one stylesheet per
   screen on top of `base.css` (colours, night mode, shared parts).
 
-**Translations.** The English text is written in `index.html` and the
-scripts. `fr.js` maps each English text to its French; `t("Connected as
+**Translations.** The page opens in **French** unless English was chosen
+(the ⚙️ menu or the landing page's button, kept in `localStorage`). The
+English text is written in `index.html` and the scripts. `fr.js` maps each English text to its French; `t("Connected as
 {email}.", { email })` looks it up, and anything missing stays English. An
 element with markup inside carries `data-i18n="<key>"` and is replaced
 whole. What the server writes (error messages, the training log) stays in

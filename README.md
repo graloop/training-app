@@ -12,6 +12,10 @@ Chrome** extension also works: it edits the page like you would.
 
 ## Features
 
+- **French or English** — the page opens in French; English is one click
+  away (⚙️ menu, or the button on the landing page) and the choice is kept
+  in the browser. What the server writes (error messages, the training log
+  for Claude) stays in English.
 - **Night mode** — the sun/moon switch in the top bar (on the landing page
   too). The choice is kept in the browser; until one is made, the device's
   own light or dark setting is followed.
