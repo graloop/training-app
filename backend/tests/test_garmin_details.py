@@ -7,6 +7,7 @@ session. Pure conversions first, then whole syncs against a fake Garmin client."
 import datetime
 
 import pytest
+from conftest import log_text
 
 from app import models
 from app.database import SessionLocal
@@ -545,7 +546,7 @@ def test_only_the_parts_of_a_night_that_are_read_are_stored(client, auth, monkey
         night = db.query(models.SleepRecord).one()
         assert set(night.raw_json) == set(garmin_sync.SLEEP_KEPT)
         assert night.sleep_score == 80 and night.resting_heart_rate == 48
-    text = client.get("/api/plan/log", headers=auth).json()["text"]
+    text = log_text(client, auth)
     assert "HRV 61 balanced · body battery +55 overnight" in text
 
 

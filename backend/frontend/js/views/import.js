@@ -11,9 +11,9 @@
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";
 import { isSingular, locale, t } from "../core/i18n.js";
-import { showTab } from "../core/tabs.js";
 import { selectContents, showStatus } from "../core/ui.js";
 import { showCalendarAround } from "./calendar.js";
+import { planFor } from "./plan.js";
 import { renderDraftPreview } from "./plan-preview.js";
 
 const shareCode = document.getElementById("share-code");
@@ -229,7 +229,7 @@ friendToPlan.addEventListener("click", async () => {
       body: JSON.stringify(friendRequest()),
     });
     clearFriendPreview();
-    showTab("plan"); // the draft is there, ready to adjust
+    planFor(); // your own draft, ready to adjust
   } catch (err) {
     if (err.status !== 401) showStatus(friendStatus, err.message, true);
   } finally {

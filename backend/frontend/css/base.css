@@ -365,7 +365,6 @@ textarea { resize: vertical; width: 100%; line-height: 1.4; }
 .tab.active { background: rgba(255, 255, 255, 0.12); color: #fff; }
 
 .plan-intro { font-size: 0.9rem; color: var(--muted); margin: 0 0 16px; max-width: 80ch; }
-.inline-label { margin: 0; }
 
 /* Narrow screens: the tabs get a row of their own and scroll sideways. */
 @media (max-width: 860px) {

@@ -115,7 +115,8 @@ def test_only_planned_sessions_are_shared(client):
     assert preview["from_username"] == "marie" and preview["sessions_count"] == 2 and preview["errors"] == []
     sessions = [s for week in preview["weeks_preview"] for s in week["sessions"]]
     assert [(s["sport"], s["minutes"]) for s in sessions] == [("swim", 45), ("bike", 90)]
-    assert sessions[0]["details"] == "8×100 m / 20 s rest steady"  # one line, no column breaks
+    # One line; a "|" in the details is kept (the parser reads all after the third "|" as details).
+    assert sessions[0]["details"] == "8×100 m | 20 s rest steady"
     assert "Secret run" not in res.text and "55" not in res.text.replace("0:55", "")
     assert preview["text"].splitlines()[0].startswith("# Imported from marie")
 
@@ -152,13 +153,16 @@ def test_days_already_past_are_left_out(client):
 def test_import_to_plan_makes_it_the_draft(client):
     marie, paul = make_user(client, "marie", garmin=False), make_user(client, "paul", garmin=False)
     _plan(client, marie, NEXT_MONDAY + datetime.timedelta(days=1), "running", 75, "Track: 6×800 m")
-    client.put("/api/plan/draft", headers=paul, params={"today": TODAY.isoformat()}, json={
-        "start_date": NEXT_MONDAY.isoformat(), "weeks": 4, "text": "", "notes": "My block notes"})
+    with SessionLocal() as db:  # an older draft, with the LEGACY block notes
+        db.add(models.PlanDraft(user_id=db.query(models.User).filter_by(username="paul").one().id,
+                                start_date=NEXT_MONDAY, weeks=4, text="", notes="My block notes"))
+        db.commit()
     res = _ask(client, paul, "plan", _code(client, marie))
     assert res.status_code == 200, res.text
     draft = client.get("/api/plan/draft", headers=paul, params={"today": TODAY.isoformat()}).json()
     assert (draft["start_date"], draft["weeks"], draft["sessions_count"], draft["errors"]) == (NEXT_MONDAY.isoformat(), 1, 1, [])
-    assert draft["notes"] == "My block notes"  # kept
+    with SessionLocal() as db:
+        assert db.query(models.PlanDraft).filter_by(coach_id=None).one().notes == "My block notes"  # kept
     assert "| run | 1:15 | Track: 6×800 m" in draft["text"]
     assert _planned("paul") == []  # the calendar isn't touched
     assert len(_planned("marie")) == 1  # and neither is theirs
@@ -195,3 +199,28 @@ def test_weeks_are_limited_like_the_plan(client):
     assert _ask(client, paul, "preview", code, weeks=0).status_code == 422
     assert _ask(client, paul, "preview", code, weeks=13).status_code == 422
     assert _ask(client, paul, "preview", code, weeks=12).status_code == 200
+
+
+def test_the_import_preview_ignores_an_expired_draft(client):
+    """An expired draft holds nothing, so the preview doesn't warn about replacing it."""
+    marie, paul = make_user(client, "marie", garmin=False), make_user(client, "paul", garmin=False)
+    _plan(client, marie, NEXT_MONDAY + datetime.timedelta(days=1), "running", 75)
+    assert _ask(client, paul, "plan", _code(client, marie)).status_code == 200
+    assert _ask(client, paul, "preview", _code(client, marie)).json()["draft_sessions"] == 1
+    with SessionLocal() as db:
+        db.query(models.PlanDraft).one().updated_at = models.utcnow() - datetime.timedelta(hours=25)
+        db.commit()
+    assert _ask(client, paul, "preview", _code(client, marie)).json()["draft_sessions"] == 0
+
+
+def test_importing_the_same_plan_again_restarts_the_day(client):
+    marie, paul = make_user(client, "marie", garmin=False), make_user(client, "paul", garmin=False)
+    _plan(client, marie, NEXT_MONDAY + datetime.timedelta(days=1), "running", 75)
+    _ask(client, paul, "plan", _code(client, marie))
+    with SessionLocal() as db:
+        db.query(models.PlanDraft).one().updated_at = models.utcnow() - datetime.timedelta(hours=23)
+        db.commit()
+    _ask(client, paul, "plan", _code(client, marie))  # the same text again
+    with SessionLocal() as db:
+        changed = db.query(models.PlanDraft).one().updated_at
+    assert models.utcnow() - changed.replace(tzinfo=datetime.UTC) < datetime.timedelta(minutes=1)

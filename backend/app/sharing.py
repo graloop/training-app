@@ -13,13 +13,12 @@ from sqlalchemy.orm import Session
 
 from . import models
 from .accounts import normalize_username
-from .planning.basics import fmt_day, fmt_minutes
+from .planning.basics import fmt_day
+from .planning.drafts import draft_line
 
 # No 0/O, 1/I/L: the code is read out loud or typed from a message.
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 CODE_LENGTH = 8  # about 40 bits, and wrong guesses are limited per account
-
-_DRAFT_SPORT = {"swimming": "swim", "cycling": "bike", "running": "run", "strength_training": "strength"}
 
 
 def normalize_code(text: str) -> str:
@@ -58,11 +57,6 @@ def find_sharer(db: Session, username: str, code: str) -> models.User | None:
     return user
 
 
-def _cell(text: str | None) -> str:
-    # A draft line is split on "|" and ends at a line break.
-    return " ".join((text or "").replace("|", "/").split())
-
-
 def draft_lines(
     db: Session, sharer: models.User, source_start: datetime.date, weeks: int,
     target_start: datetime.date, today: datetime.date,
@@ -93,8 +87,5 @@ def draft_lines(
         if day < today:
             skipped += 1
             continue
-        sport = _DRAFT_SPORT.get(p.activity_type, _cell(p.activity_type))
-        line = f"{fmt_day(day)} | {sport} | {fmt_minutes(p.planned_duration_minutes)}"
-        details = _cell(p.notes)
-        lines.append(f"{line} | {details}" if details else line)
+        lines.append(draft_line(day, p.activity_type, p.planned_duration_minutes, p.notes))
     return "\n".join(lines), skipped

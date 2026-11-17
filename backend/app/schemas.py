@@ -354,24 +354,6 @@ class CalendarResponse(BaseModel):
 MAX_PLAN_WEEKS = 12
 
 
-class TrainingLog(BaseModel):
-    text: str
-    start: datetime.date
-    end: datetime.date
-    weeks: int
-    detail: str  # "full" | "summary"
-
-
-class SessionChoice(BaseModel):
-    id: int
-    label: str
-
-
-class SessionDetail(BaseModel):
-    id: int
-    text: str
-
-
 class RuleSet(BaseModel):
     """The Plan tab's rules: availability, constraints, rules of thumb, in the athlete's words."""
 
@@ -411,9 +393,6 @@ class DraftIn(BaseModel):
     start_date: datetime.date  # any day of the first week to plan
     weeks: int = Field(ge=1, le=MAX_PLAN_WEEKS)
     text: str = Field(default="", max_length=30000)
-    # LEGACY (block notes, replaced by the rule set in v14, 2026-10-17): the page no
-    # longer sends this; kept so older notes survive until the rule set is saved.
-    notes: str | None = Field(default=None, max_length=20000)
 
 
 class DraftSessionIn(BaseModel):
@@ -459,7 +438,6 @@ class DraftOut(BaseModel):
     end_date: datetime.date
     weeks: int
     text: str
-    notes: str
     sessions_count: int
     errors: list[DraftErrorOut]
     weeks_preview: list[DraftWeekOut]

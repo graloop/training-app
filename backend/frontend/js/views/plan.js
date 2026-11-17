@@ -63,7 +63,10 @@ const DRAFT_STORE = {
 
 // A 409 means the draft changed elsewhere (another tab, Claude): show the new one.
 async function afterSave(draft) {
-  if (draft) applyDraft(draft);
+  if (!draft) return;
+  const grew = planDraft && (draft.start_date !== planDraft.start_date || draft.end_date !== planDraft.end_date);
+  if (athlete && grew) await loadBehind(draft);
+  applyDraft(draft);
 }
 
 // --- The grid ---
@@ -291,9 +294,10 @@ export async function loadPlanPage() {
   }
 }
 
-// Opens the Plan tab on one of the coach's athletes (the Athlete tab's Plan button).
-export function planFor(athleteId) {
-  athlete = { id: athleteId, username: "" };
+// Opens the Plan tab on one of the coach's athletes (the Athlete tab's Plan
+// button), or on your own draft without an id (after Import to plan).
+export function planFor(athleteId = null) {
+  athlete = athleteId ? { id: athleteId, username: "" } : null;
   showTab("plan");
 }
 

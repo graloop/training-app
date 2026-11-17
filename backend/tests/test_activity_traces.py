@@ -7,7 +7,7 @@ import struct
 import zipfile
 
 import pytest
-from conftest import make_user
+from conftest import log_text, make_user
 
 from app import models
 from app.database import SessionLocal
@@ -16,7 +16,7 @@ from app.garmin import client as garmin_client
 from app.garmin import sync as garmin_sync
 from app.planning import activity_text
 from app.planning.basics import monday_of
-from app.planning.session_detail import session_text, trace_lines
+from app.planning.session_detail import session_choices, session_text, trace_lines
 from app.planning.training_log import build_log
 
 TODAY = datetime.date.today()
@@ -311,11 +311,11 @@ def test_the_log_says_what_happened_inside_each_rep(client, auth):
         user = db.query(models.User).filter_by(username="athlete").one()
         db.add(_session_with_trace(user.id))
         db.commit()
-    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    text = log_text(client, auth, **{"weeks": 2})
     line = next(line for line in text.splitlines() if "within reps" in line)
     assert line.strip().startswith("within reps (HR start→peak, pace first→second half): 1) 150→155, 4:10→3:58 | 2) 159→164, 3:58→3:58")
     assert "One session in detail" in text
-    assert "second half" not in client.get("/api/plan/log", params={"weeks": 2, "detail": "summary"}, headers=auth).json()["text"]
+    assert "second half" not in log_text(client, auth, **{"weeks": 2, "detail": "summary"})
 
 
 def test_a_steady_session_shows_its_drift():
@@ -366,25 +366,15 @@ def test_one_session_in_detail(client, auth):
         db.add(activity)
         db.commit()
         activity_id = activity.id
-    listed = client.get("/api/plan/sessions", headers=auth).json()
-    assert [s["id"] for s in listed] == [activity_id] and "Reps" in listed[0]["label"]
-    text = client.get(f"/api/plan/sessions/{activity_id}", headers=auth).json()["text"]
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        listed = session_choices(db, user, AT.date())
+        activity = db.get(models.Activity, activity_id)
+        text = session_text(activity, activity.trace)
+    assert [activity_id for activity_id, _ in listed] == [activity_id] and "Reps" in listed[0][1]
     assert text.startswith("SESSION · ")
     assert "ALL LAPS\n1. rep 500 m 2:00 (4:00 /km, HR 170)\n2. recovery 100 m 1:00 (10:00 /km)\n3. rep 500 m 2:00" in text
     assert "time · HR · /km\n0:00 150 4:10\n0:05 150 4:10\n" in text
-
-
-def test_only_your_own_session_can_be_opened(client, auth):
-    with SessionLocal() as db:
-        user = db.query(models.User).filter_by(username="athlete").one()
-        activity = _session_with_trace(user.id)
-        db.add(activity)
-        db.commit()
-        activity_id = activity.id
-    other = make_user(client, "other")
-    assert client.get(f"/api/plan/sessions/{activity_id}", headers=other).status_code == 404
-    assert client.get("/api/plan/sessions", headers=other).json() == []
-    assert client.get(f"/api/plan/sessions/{activity_id}").status_code == 401
 
 
 def test_an_older_session_keeps_its_laps_and_says_the_trace_is_gone():

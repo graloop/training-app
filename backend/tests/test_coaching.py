@@ -275,3 +275,16 @@ def test_the_athletes_own_draft_and_the_connector_are_unaffected(client, auth):
     with SessionLocal() as db:
         user = db.query(models.User).filter_by(username="athlete").one()
         assert user.plan_draft.coach_id is None and "swim" in user.plan_draft.text
+
+
+def test_a_session_the_athlete_edits_is_no_longer_the_coachs(client, auth):
+    coach = _coach(client)
+    _link(client, coach)
+    client.post(f"/api/plan/draft/sessions?athlete_id={_id('athlete')}", json=_session(day(1)), headers=coach)
+    client.post(f"/api/plan/draft/confirm?athlete_id={_id('athlete')}", headers=coach)
+    span = {"start": day(1).isoformat(), "end": day(1).isoformat()}
+    planned = client.get("/api/calendar", params=span, headers=auth).json()["days"][0]["planned"][0]
+    assert planned["planned_by"] == "coach"
+    client.patch(f"/api/planned/{planned['id']}", json={"planned_duration_minutes": 30}, headers=auth)
+    edited = client.get("/api/calendar", params=span, headers=auth).json()["days"][0]["planned"][0]
+    assert (edited["source"], edited["planned_by"]) == ("manual", None)

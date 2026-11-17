@@ -25,7 +25,7 @@ const planMoveDate = document.getElementById("plan-move-date");
 let target = null; // { date, existing, onSaved, store }
 
 // Where a session is saved. `body` is { date, activity_type, planned_duration_minutes, notes }.
-export const CALENDAR_STORE = {
+const CALENDAR_STORE = {
   add: (body) => api("/api/planned", { method: "POST", body: JSON.stringify(body) }),
   update: (existing, body) => api(`/api/planned/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) }),
   remove: (existing) => api(`/api/planned/${existing.id}`, { method: "DELETE" }),

@@ -121,7 +121,6 @@ def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, to
         end_date=end,
         weeks=weeks,
         text=text,
-        notes=(draft.notes or "") if draft else "",
         sessions_count=len(parsed.sessions),
         errors=[schemas.DraftErrorOut(line=e.line, text=e.text, message=e.message) for e in parsed.errors],
         weeks_preview=weeks_preview(parsed.sessions, start, weeks),
@@ -154,11 +153,10 @@ def save(db: Session, user: models.User, payload: schemas.DraftIn) -> None:
     if draft is None:
         draft = models.PlanDraft(user_id=user.id)
         db.add(draft)
+        user.plan_draft = draft  # so whoever reads user.plan_draft next sees it
     draft.start_date = monday_of(payload.start_date)
     draft.weeks = payload.weeks
     draft.text = payload.text
-    if payload.notes is not None:
-        draft.notes = payload.notes.strip() or None
     draft.confirmed_at = None
     draft.updated_at = models.utcnow()  # even when nothing differs: saving again restarts the 24 h
 
@@ -197,13 +195,18 @@ def confirm(
 _SPORT_WORD = {"running": "run", "cycling": "bike", "swimming": "swim", "strength_training": "strength"}
 
 
-def session_line(session: schemas.DraftSessionIn) -> str:
+def draft_line(day: datetime.date, activity_type: str, minutes: float, details: str | None = None) -> str:
     """ "2026-11-17 | run | 1:15 | Tempo run 3×10 min": one draft line, which the
-    parser reads back as the same session. Details stay on the one line."""
-    sport = _SPORT_WORD.get(session.activity_type, session.activity_type)
-    line = f"{session.date.isoformat()} | {sport} | {fmt_minutes(session.minutes)}"
-    details = " ".join((session.details or "").split())
-    return f"{line} | {details}" if details else line
+    parser reads back as the same session. The Plan tab's calendar and the
+    Import tab (sharing.py) both write their sessions with it."""
+    sport = _SPORT_WORD.get(activity_type, " ".join(activity_type.replace("|", "/").split()))
+    line = f"{day.isoformat()} | {sport} | {fmt_minutes(minutes)}"
+    text = " ".join((details or "").split())  # a session is one line
+    return f"{line} | {text}" if text else line
+
+
+def session_line(session: schemas.DraftSessionIn) -> str:
+    return draft_line(session.date, session.activity_type, session.minutes, session.details)
 
 
 def draft_of(db: Session, user: models.User, coach: models.User | None = None) -> models.PlanDraft | None:
@@ -316,13 +319,29 @@ def send_to_athlete(db: Session, coach: models.User, athlete: models.User, today
     expire_if_old(mine, today)
     if mine is None or not mine.text.strip():
         raise DraftProblem("Your draft for them is empty.")
-    theirs = _draft_for(db, athlete, today)
-    if theirs.text.strip() and not replace:
+    if sessions_in(athlete.plan_draft, today) and not replace:
         raise AthleteHasADraft(f"{athlete.username} already has a draft on their Plan tab.")
-    theirs.start_date, theirs.weeks = mine.start_date, mine.weeks
-    _changed(theirs, mine.text.splitlines())
-    end = mine.start_date + datetime.timedelta(days=mine.weeks * 7 - 1)
-    return len(parse_draft(mine.text, mine.start_date, end, today).sessions)
+    replace_own(db, athlete, mine.start_date, mine.weeks, mine.text, today)
+    return sessions_in(mine, today)
+
+
+def replace_own(
+    db: Session, user: models.User, start: datetime.date, weeks: int, text: str, today: datetime.date
+) -> None:
+    """Make this the account's own draft (an import, or what a coach sent),
+    restarting its 24 h. Its LEGACY block notes stay. The caller commits."""
+    draft = _draft_for(db, user, today)
+    draft.start_date, draft.weeks = monday_of(start), weeks
+    _changed(draft, text.splitlines())
+
+
+def sessions_in(draft: models.PlanDraft | None, today: datetime.date) -> int:
+    """How many sessions a draft holds now (0 once it has expired)."""
+    expire_if_old(draft, today)
+    if draft is None:
+        return 0
+    end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
+    return len(parse_draft(draft.text, draft.start_date, end, today).sessions)
 
 
 class StaleLine(LookupError):

@@ -8,7 +8,7 @@ import datetime
 import json
 
 import pytest
-from conftest import GARMIN_PASSWORD, make_user
+from conftest import GARMIN_PASSWORD, log_text, make_user
 from test_mcp_oauth import connect
 
 from app import models
@@ -171,8 +171,8 @@ def test_overview_of_an_empty_account(tool):
     assert "- none yet" in text and "- nothing planned" in text and "- nothing written yet" in text
 
 
-def test_training_log_is_the_history_tabs_text(client, auth, tool):
-    page = client.get("/api/plan/log", params={"weeks": 3, "detail": "summary"}, headers=auth).json()["text"]
+def test_training_log_is_build_logs_text(client, auth, tool):
+    page = log_text(client, auth, **{"weeks": 3, "detail": "summary"})
     assert tool("get_training_log", weeks=3) == page
     assert tool("get_training_log", weeks=3, detail="full") != page
     assert tool("get_training_log", weeks=40) == "weeks must be between 1 and 26."

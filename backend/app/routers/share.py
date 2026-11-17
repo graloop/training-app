@@ -66,11 +66,6 @@ def preview_import(
     day = drafts.client_today(today)
     sharer, source_start, start, end, text, skipped, parsed = _prepare(db, user, payload, day)
     replace_from = max(start, day)
-    draft = user.plan_draft
-    draft_sessions = 0
-    if draft is not None:
-        draft_end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
-        draft_sessions = len(parse_draft(draft.text, draft.start_date, draft_end, day).sessions)
     return schemas.ImportPreview(
         from_username=sharer.username,
         source_start=source_start,
@@ -85,7 +80,7 @@ def preview_import(
         weeks_preview=drafts.weeks_preview(parsed.sessions, start, payload.weeks),
         replace_from=replace_from,
         existing_planned=drafts.planned_between(db, user, replace_from, end).count(),
-        draft_sessions=draft_sessions,
+        draft_sessions=drafts.sessions_in(user.plan_draft, day),  # an expired draft holds none
     )
 
 
@@ -102,14 +97,7 @@ def import_to_plan(
     _, _, start, _, text, _, parsed = _prepare(db, user, payload, day)
     if not parsed.sessions:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There are no sessions to import in those weeks.")
-    draft = user.plan_draft
-    if draft is None:
-        draft = models.PlanDraft(user_id=user.id)
-        db.add(draft)
-    draft.start_date = start
-    draft.weeks = payload.weeks
-    draft.text = text
-    draft.confirmed_at = None
+    drafts.replace_own(db, user, start, payload.weeks, text, day)
     db.commit()
     db.refresh(user)
     return drafts.draft_out(db, user, user.plan_draft, day)

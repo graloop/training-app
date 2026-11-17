@@ -6,9 +6,9 @@ activity_text.py), the rule set and the athlete's own numbers."""
 import datetime
 
 import pytest
-from conftest import admin_auth, make_user
+from conftest import admin_auth, log_text, make_user
 
-from app import models
+from app import models, schemas
 from app.database import SessionLocal
 from app.planning import basics, draft_parser
 
@@ -161,9 +161,19 @@ def test_sessions_come_back_sorted_by_day_then_line():
 # --- Draft API ---------------------------------------------------------------------
 
 
-def _save(client, auth, text="", weeks=2, start=None, notes="", **params):
-    res = client.put("/api/plan/draft", params=params, headers=auth,
-                     json={"start_date": (start or NEXT_MONDAY).isoformat(), "weeks": weeks, "text": text, "notes": notes})
+def _save(client, auth, text="", weeks=2, start=None, notes=None):
+    """Save a whole draft as Claude's connector does (drafts.save), then read it back
+    as the Plan tab does. `notes` sets the LEGACY block notes (PlanDraft.notes)."""
+    from app.planning import drafts
+
+    user_id = client.get("/api/auth/me", headers=auth).json()["id"]
+    with SessionLocal() as db:
+        user = db.get(models.User, user_id)
+        drafts.save(db, user, schemas.DraftIn(start_date=start or NEXT_MONDAY, weeks=weeks, text=text))
+        if notes is not None:
+            user.plan_draft.notes = notes.strip() or None
+        db.commit()
+    res = client.get("/api/plan/draft", headers=auth)
     assert res.status_code == 200, res.text
     return res.json()
 
@@ -186,7 +196,7 @@ def test_save_returns_a_preview_and_touches_nothing_on_the_calendar(client, auth
         "nonsense line",
     ])
     data = _save(client, auth, text, notes="  Goal: 70.3  ")
-    assert data["saved"] is True and data["notes"] == "Goal: 70.3" and data["text"] == text
+    assert data["saved"] is True and data["text"] == text
     assert data["sessions_count"] == 5 and [e["line"] for e in data["errors"]] == [6]
     week1, week2 = data["weeks_preview"]
     assert week1["start"] == NEXT_MONDAY.isoformat() and week1["end"] == day(6).isoformat()
@@ -207,7 +217,8 @@ def test_any_day_of_the_week_selects_that_week_and_further_weeks_can_be_planned(
     assert data["start_date"] == (NEXT_MONDAY + datetime.timedelta(weeks=9)).isoformat()
     assert data["end_date"] == (NEXT_MONDAY + datetime.timedelta(weeks=12) - datetime.timedelta(days=1)).isoformat()
     assert data["sessions_count"] == 1 and data["errors"] == []
-    assert client.put("/api/plan/draft", headers=auth, json={"start_date": far.isoformat(), "weeks": 13}).status_code == 422
+    with pytest.raises(ValueError):  # pydantic's ValidationError: 12 weeks at most
+        schemas.DraftIn(start_date=far, weeks=13)
 
 
 def test_changing_the_weeks_re_checks_the_same_text(client, auth):
@@ -298,9 +309,9 @@ def test_drafts_are_private_and_admins_have_none(client, auth):
     assert client.get("/api/plan/draft", headers=other).json()["saved"] is False
     assert client.post("/api/plan/draft/confirm", headers=other).status_code == 400
     admin = admin_auth(client)
-    for method, path in [("get", "/api/plan/draft"), ("get", "/api/plan/log"), ("post", "/api/plan/draft/confirm")]:
+    for method, path in [("get", "/api/plan/draft"), ("post", "/api/plan/draft/confirm")]:
         assert getattr(client, method)(path, headers=admin).status_code == 403
-    assert client.get("/api/plan/log").status_code == 401
+    assert client.get("/api/plan/draft").status_code == 401
 
 
 # --- Training log ------------------------------------------------------------------
@@ -333,11 +344,8 @@ def test_log_text(client, auth):
         ])
         db.commit()
 
-    res = client.get("/api/plan/log", params={"weeks": 2}, headers=auth)
-    assert res.status_code == 200
-    data = res.json()
-    assert data["start"] == monday.isoformat() and data["end"] == TODAY.isoformat() and data["weeks"] == 2
-    text = data["text"]
+    text = log_text(client, auth, weeks=2)
+    assert f"Covers {label(monday)} to {label(TODAY)} (2 weeks)" in text
     assert text.startswith("TRAINING LOG · athlete\nToday is ")
     assert f"- City half marathon · {(TODAY + datetime.timedelta(days=600)).isoformat()} (600 days away) · target 1:45:00" in text
     assert (f"WEEK OF {label(monday).upper()} · done 2:33 (swim 1:02 · bike 0:41 · run 0:30 · other 0:20) · planned 1:30"
@@ -360,16 +368,16 @@ def test_log_text(client, auth):
 
 
 def test_log_for_a_new_account(client, auth):
-    text = client.get("/api/plan/log", headers=auth).json()["text"]
+    text = log_text(client, auth)
     assert "OBJECTIVES\n- none yet" in text and "- nothing planned yet" in text
-    assert client.get("/api/plan/log", params={"weeks": 27}, headers=auth).status_code == 422
 
 
-def test_client_date_is_used_only_when_plausible(client, auth):
+def test_client_date_is_used_only_when_plausible():
+    from app.planning.drafts import client_today
+
     tomorrow = TODAY + datetime.timedelta(days=1)
-    assert client.get("/api/plan/log", params={"today": tomorrow.isoformat()}, headers=auth).json()["end"] == tomorrow.isoformat()
-    far = TODAY + datetime.timedelta(days=30)
-    assert client.get("/api/plan/log", params={"today": far.isoformat()}, headers=auth).json()["end"] == TODAY.isoformat()
+    assert client_today(tomorrow) == tomorrow and client_today(None) == TODAY
+    assert client_today(TODAY + datetime.timedelta(days=30)) == TODAY
 
 
 _RULES = "RULE SET (the athlete's availability, constraints and rules: the plan must follow them)"
@@ -430,7 +438,7 @@ def _seed_detailed(db):
 def test_full_log_shows_details_recovery_and_the_athlete(client, auth):
     with SessionLocal() as db:
         monday = _seed_detailed(db)
-    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    text = log_text(client, auth, **{"weeks": 2})
 
     # what the athlete answered on the watch
     assert "  done  run 1:20 · 16.0 km · 5:00 /km · avg HR 150 · load 200 · effort 7/10, felt strong — Track" in text
@@ -464,21 +472,18 @@ def test_full_log_shows_details_recovery_and_the_athlete(client, auth):
 def test_summary_log_keeps_one_line_per_session(client, auth):
     with SessionLocal() as db:
         monday = _seed_detailed(db)
-    full = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()
-    summary = client.get("/api/plan/log", params={"weeks": 2, "detail": "summary"}, headers=auth).json()
-    assert full["detail"] == "full" and summary["detail"] == "summary"
-    text = summary["text"]
+    full = log_text(client, auth, weeks=2)
+    text = log_text(client, auth, weeks=2, detail="summary")
     assert "effort 7/10, felt strong — Track" in text            # the essentials stay
     assert f"{label(monday)} · sleep 80 · RHR 50\n" in text         # the night in short
     weekly = text[text.index("\nWEEK OF"):]  # the athlete block above keeps its HR zones
     for detail_only in ("HR zones", "laps:", "intervals:", "cadence", "HRV", "normalized"):
         assert detail_only not in weekly
-    assert "\nATHLETE (from Garmin)\n" in text and len(text) < len(full["text"])
-    assert client.get("/api/plan/log", params={"detail": "everything"}, headers=auth).status_code == 422
+    assert "\nATHLETE (from Garmin)\n" in text and len(text) < len(full)
 
 
 def test_log_before_any_details_or_profile(client, auth):
-    text = client.get("/api/plan/log", headers=auth).json()["text"]
+    text = log_text(client, auth)
     assert "ATHLETE (from Garmin)\n- nothing from Garmin yet: press Sync with Garmin" in text
     assert "TRAINING STATUS (Garmin)\n- nothing from Garmin yet: press Sync with Garmin" in text
     assert "no effort, laps or recovery)\n- no earlier activities stored" in text
@@ -491,14 +496,14 @@ def test_rule_set_round_trip_and_privacy(client, auth):
     assert client.get("/api/plan/rules", headers=auth).json() == {"rules": ""}
     res = client.put("/api/plan/rules", json={"rules": "  Exams in December.  "}, headers=auth)
     assert res.json() == {"rules": "Exams in December."}
-    assert _RULES + "\nExams in December." in client.get("/api/plan/log", headers=auth).json()["text"]
+    assert _RULES + "\nExams in December." in log_text(client, auth)
     assert client.put("/api/plan/rules", json={"rules": "x" * 20001}, headers=auth).status_code == 422
     other = make_user(client, "other")
     assert client.get("/api/plan/rules", headers=other).json() == {"rules": ""}
-    assert "Exams" not in client.get("/api/plan/log", headers=other).json()["text"]
+    assert "Exams" not in log_text(client, other)
     assert client.get("/api/plan/rules", headers=admin_auth(client)).status_code == 403
     client.put("/api/plan/rules", json={"rules": ""}, headers=auth)
-    assert "- nothing written yet" in client.get("/api/plan/log", headers=auth).json()["text"]
+    assert "- nothing written yet" in log_text(client, auth)
 
 
 def test_older_notes_stand_in_for_the_rule_set_until_it_is_saved(client, auth):
@@ -508,8 +513,8 @@ def test_older_notes_stand_in_for_the_rule_set_until_it_is_saved(client, auth):
         db.commit()
     _save(client, auth, notes="Easy runs stay easy.")
     assert client.get("/api/plan/rules", headers=auth).json()["rules"] == "Pool closed Saturdays.\n\nEasy runs stay easy."
-    # saving the draft later without notes keeps them
-    client.put("/api/plan/draft", json={"start_date": NEXT_MONDAY.isoformat(), "weeks": 2, "text": ""}, headers=auth)
+    # saving the draft later keeps them
+    _save(client, auth, text="")
     assert "Easy runs stay easy." in client.get("/api/plan/rules", headers=auth).json()["rules"]
     client.put("/api/plan/rules", json={"rules": "Only this."}, headers=auth)
     assert client.get("/api/plan/rules", headers=auth).json()["rules"] == "Only this."
@@ -522,7 +527,7 @@ def test_athlete_profile_round_trip_and_log(client, auth):
             "css_pace": "1:45", "equipment": "  Smart trainer  ", "health": "", "weight_kg": 70.5}
     res = client.put("/api/athlete", json=body, headers=auth).json()["profile"]
     assert res["ftp_watts"] == 250 and res["equipment"] == "Smart trainer" and res["health"] is None
-    text = client.get("/api/plan/log", headers=auth).json()["text"]
+    text = log_text(client, auth)
     assert "- Bike: FTP 250 W (tested 2026-03-25) · power zones Z2 138-187 W" in text
     assert "- Run: threshold pace 4:30 /km" in text and "- Swim: CSS 1:45 /100 m" in text
     assert "- Equipment: Smart trainer" in text and "weight 70.5 kg" in text
@@ -532,7 +537,7 @@ def test_athlete_profile_round_trip_and_log(client, auth):
     assert client.get("/api/athlete", headers=other).json()["profile"]["ftp_watts"] is None
     assert client.get("/api/athlete", headers=admin_auth(client)).status_code == 403
     client.put("/api/athlete", json={}, headers=auth)
-    assert "FTP" not in client.get("/api/plan/log", headers=auth).json()["text"].split("ATHLETE (from Garmin)")[0]
+    assert "FTP" not in log_text(client, auth).split("ATHLETE (from Garmin)")[0]
 
 
 # --- Phase 3: recovery per day, training status, reps, swim, weather, history ------
@@ -611,7 +616,7 @@ def _seed_phase3(db):
 def test_reps_are_separated_from_warm_up_and_recoveries(client, auth):
     with SessionLocal() as db:
         _seed_phase3(db)
-    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    text = log_text(client, auth, **{"weeks": 2})
     # manual laps: the clearly faster ones are the reps, with max HR and cadence
     assert ("        reps: 1.00 km 3:40 (3:40 /km, HR 172 max 180, 184 spm) | 1.00 km 3:38 (3:38 /km, HR 175 max 183, 185 spm)"
             " | 1.00 km 3:36 (3:36 /km, HR 177 max 186)") in text
@@ -629,7 +634,7 @@ def test_reps_are_separated_from_warm_up_and_recoveries(client, auth):
 def test_swim_sets_training_effect_and_conditions(client, auth):
     with SessionLocal() as db:
         _seed_phase3(db)
-    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    text = log_text(client, auth, **{"weeks": 2})
     assert "        pool 25 m · 28 lengths · 10.8 strokes/length · SWOLF 36" in text
     assert ("        laps: 400 m 6:40 (1:40 /100 m, HR 140, swolf 34) +0:25 rest | 100 m 1:50 (1:50 /100 m, breaststroke, swolf 48)"
             " | 200 m 3:10 (1:35 /100 m)") in text  # a 3 s touch at the wall isn't a rest
@@ -641,7 +646,7 @@ def test_swim_sets_training_effect_and_conditions(client, auth):
 def test_recovery_per_day_and_week_and_garmin_training_status(client, auth):
     with SessionLocal() as db:
         monday = _seed_phase3(db)
-    full = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    full = log_text(client, auth, **{"weeks": 2})
     assert f"{label(monday)} · readiness 66 moderate · sleep 80 · RHR 50 · stress 30 · day battery 20–95\n" in full
     assert f"{label(monday + datetime.timedelta(days=1))} · readiness 40 low · stress 50\n" in full
     header = next(line for line in full.splitlines() if line.startswith(f"WEEK OF {label(monday).upper()}"))
@@ -653,7 +658,7 @@ def test_recovery_per_day_and_week_and_garmin_training_status(client, auth):
     assert ("- load by intensity over 4 weeks: low aerobic 1200 (target 500–1100) · high aerobic 300 (target 600–1200)"
             " · anaerobic 250 (target 200–600) → aerobic high shortage") in status
 
-    summary = client.get("/api/plan/log", params={"weeks": 2, "detail": "summary"}, headers=auth).json()["text"]
+    summary = log_text(client, auth, **{"weeks": 2, "detail": "summary"})
     assert f"{label(monday)} · readiness 66 · sleep 80 · RHR 50\n" in summary  # the score, nothing more
     assert "stress" not in summary[summary.index("\nWEEK OF"):] and "TRAINING STATUS (Garmin)" in summary
 
@@ -661,7 +666,7 @@ def test_recovery_per_day_and_week_and_garmin_training_status(client, auth):
 def test_earlier_weeks_give_the_long_term_picture(client, auth):
     with SessionLocal() as db:
         monday = _seed_phase3(db)
-    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    text = log_text(client, auth, **{"weeks": 2})
     earlier = text[text.index("EARLIER HISTORY"):text.index("\nWEEK OF")].splitlines()
     w20, w18, w60 = (monday - datetime.timedelta(weeks=n) for n in (20, 18, 60))
     name = lambda d: f"Week of {basics.MONTH_NAMES[d.month - 1]} {d.day}, {d.year}"  # noqa: E731
@@ -692,7 +697,7 @@ def test_history_older_than_two_years_comes_by_month(client, auth):
         db.add(models.Activity(user_id=user.id, garmin_activity_id="r", activity_type="running", duration_seconds=3600,
                                start_time=datetime.datetime.combine(recent, datetime.time(8))))
         db.commit()
-    text = client.get("/api/plan/log", params={"weeks": 2}, headers=auth).json()["text"]
+    text = log_text(client, auth, **{"weeks": 2})
     earlier = text[text.index("EARLIER HISTORY"):text.index("\nWEEK OF")].splitlines()
     month = f"Month of {basics.MONTH_NAMES[old.month - 1]} {old.year}"
     assert f"{month} · 4:00 (swim 1:00 · bike 2:00 · run 1:00) · 3 sessions · load 150" in earlier
@@ -708,7 +713,7 @@ def test_days_before_the_first_synced_data_are_not_called_rest_days(client, auth
         first = THIS_MONDAY - datetime.timedelta(days=5)  # the Wednesday of last week
         db.add(models.SleepRecord(user_id=user.id, date=first, sleep_score=75))
         db.commit()
-    text = client.get("/api/plan/log", params={"weeks": 4}, headers=auth).json()["text"]
+    text = log_text(client, auth, **{"weeks": 4})
     assert text.count(f"· not synced (this account's Garmin data starts {label(first)})") == 2  # two whole weeks before it
     assert label(first - datetime.timedelta(days=1)) + " " not in text[text.index("\nWEEK OF"):text.index("ALREADY ON")]
     assert f"{label(first)} · sleep 75 · no training" in text
@@ -725,9 +730,8 @@ def test_garmin_numbers_with_decimals_do_not_break_the_log(client, auth):
                                start_time=datetime.datetime.combine(today, datetime.time(7)),
                                raw_json={"differenceBodyBattery": -12.0}))
         db.commit()
-    res = client.get("/api/plan/log", headers=auth)
-    assert res.status_code == 200
-    assert "body battery +55 overnight" in res.json()["text"] and "body battery -12" in res.json()["text"]
+    text = log_text(client, auth)
+    assert "body battery +55 overnight" in text and "body battery -12" in text
 
 
 

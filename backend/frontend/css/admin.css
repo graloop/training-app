@@ -6,8 +6,6 @@
 
 .input-with-button { display: flex; gap: 6px; }
 .input-with-button input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.checkbox { display: flex; align-items: center; gap: 8px; color: var(--text); }
-.checkbox input { width: auto; }
 #user-status, #create-status { overflow-wrap: anywhere; }
 .row-actions .btn-link.danger.confirming { font-weight: 600; }
 .row-actions { white-space: nowrap; }

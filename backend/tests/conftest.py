@@ -12,8 +12,9 @@ Fixtures:
   sends them, so CF-Connecting-IP / X-Forwarded-Proto headers are believed.
 - auth: headers of a regular account "athlete" with Garmin connected.
 
-Helpers: login() returns auth headers, admin_auth() logs the admin in, and
-make_user() has the admin create an account, logs it in and connects Garmin.
+Helpers: login() returns auth headers, admin_auth() logs the admin in,
+make_user() has the admin create an account, logs it in and connects Garmin,
+and log_text() gives an account's training log as Claude's connector gets it.
 """
 
 import os
@@ -114,3 +115,18 @@ def make_user(client, username="athlete", password=USER_PASSWORD, garmin=True):
 @pytest.fixture
 def auth(client):
     return make_user(client)
+
+
+def log_text(client, headers, weeks=6, detail="full", today=None):
+    """The training log of the account `headers` logs in, as Claude's connector
+    gets it (planning/training_log.build_log)."""
+    import datetime
+
+    from app import models
+    from app.database import SessionLocal
+    from app.planning.training_log import build_log
+
+    user_id = client.get("/api/auth/me", headers=headers).json()["id"]
+    day = datetime.date.fromisoformat(str(today)) if today else datetime.date.today()
+    with SessionLocal() as db:
+        return build_log(db, db.get(models.User, user_id), weeks, day, detail)[0]

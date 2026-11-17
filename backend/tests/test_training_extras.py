@@ -4,7 +4,7 @@ matching, and the background sync."""
 import datetime
 import threading
 
-from conftest import admin_auth, make_user
+from conftest import admin_auth, log_text, make_user
 
 from app import models
 from app.database import SessionLocal
@@ -79,7 +79,7 @@ def test_a_race_gets_its_legs_and_counts_them_per_sport(client, auth, monkeypatc
     assert legs[0] == {"type": "open_water_swimming", "sport": "swim", "duration_seconds": 2400.0,
                        "distance_meters": 1900.0, "avg_hr": 150.0}
 
-    log = client.get("/api/plan/log", headers=auth, params={"weeks": 2, "today": TODAY}).json()["text"]
+    log = log_text(client, auth, **{"weeks": 2, "today": TODAY})
     assert "legs: swim 0:40 1.9 km avg HR 150 · T1 0:03 · bike 2:40 90.0 km avg HR 140 · T2 0:02 · run 1:45 21.1 km avg HR 155" in log
     assert "(swim 0:40 · bike 2:40 · run 1:45 · other 0:05)" in log  # the week's split, not one "other" block
 
@@ -96,7 +96,7 @@ def test_old_races_get_their_legs_too(client, auth, monkeypatch):
     with SessionLocal() as db:
         race = db.query(models.Activity).filter_by(garmin_activity_id="900").one()
         assert len(race.legs) == 5 and race.details_synced_at is None  # legs only, no other details
-    log = client.get("/api/plan/log", headers=auth, params={"weeks": 2, "today": TODAY}).json()["text"]
+    log = log_text(client, auth, **{"weeks": 2, "today": TODAY})
     assert "(swim 0:40 · bike 2:40 · run 1:45 · other 0:05)" in log  # in the earlier weeks' totals
 
 
@@ -138,7 +138,7 @@ def test_calendar_days_leave_readiness_and_hrv_to_the_history(client, auth):
     today = days[TODAY.isoformat()]
     assert today["sleep"]["sleep_score"] == 80
     assert "readiness" not in today and "hrv" not in today
-    assert "readiness 72" in client.get("/api/plan/log", headers=auth).json()["text"]
+    assert "readiness 72" in log_text(client, auth)
 
 
 # --- Planned vs done ------------------------------------------------------------------------

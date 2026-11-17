@@ -26,7 +26,9 @@ def add(db: Session, user: models.User, payload: schemas.PlannedTrainingCreate, 
 
 
 def edit(row: models.PlannedTraining, payload: schemas.PlannedTrainingUpdate, source: str) -> None:
-    """Only the fields sent change; the row now belongs to whoever edited it."""
+    """Only the fields sent change; the row now belongs to whoever edited it
+    (it no longer says which coach pushed it)."""
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(row, key, value)
     row.source = source
+    row.planned_by = None

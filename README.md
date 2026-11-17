@@ -684,12 +684,9 @@ New nullable columns are added to existing databases on startup
 | `/api/calendar`          | GET    | `?start=&end=` (default: today ±14 days; at most 366 days, more is a 422), grouped by day, with multisport legs |
 | `/api/objectives`        | GET/POST | List / add objectives (title, event date, target time)      |
 | `/api/objectives/{id}`   | PATCH/DELETE | Edit or remove an objective                             |
-| `/api/plan/sessions`     | GET    | The last 90 days' sessions, to open one in detail. |
-| `/api/plan/sessions/{id}`| GET    | One session as text: every lap and, while it is kept, its trace. Your own sessions only. |
-| `/api/plan/log`          | GET    | Training log as text (`?weeks=6&detail=full|summary`): sessions, effort/feel, laps, sleep and recovery, athlete profile, objectives, what's planned |
 | `/api/athlete`           | GET/PUT | The athlete's own numbers (FTP, zones, CSS, equipment…), plus what Garmin knows as text |
 | `/api/plan/rules`        | GET/PUT | The rule set: free text the plan follows, added to the training log |
-| `/api/plan/draft`        | GET/PUT | The draft plan (first week, number of weeks, session lines, notes), returned parsed with errors and weekly totals |
+| `/api/plan/draft`        | GET    | The draft plan (first week, number of weeks, session lines), returned parsed with errors, weekly totals and when it empties. Claude's connector writes whole drafts itself (`save_draft`) |
 | `/api/plan/draft/confirm`| POST   | Put the draft on the calendar, replacing planned sessions from today to the draft's last day |
 | `/api/plan/draft`        | DELETE | Clear: the draft is emptied, its weeks stay |
 | `/api/plan/draft/sessions` | POST | `{date, activity_type, minutes, details}`: add a session to the draft (one line; the weeks grow to take in the day) |

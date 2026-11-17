@@ -24,7 +24,7 @@ export function renderAccount() {
   document.getElementById("garmin-settings").classList.toggle("hidden", Boolean(me.is_admin));
 }
 
-export function openSettings() {
+function openSettings() {
   for (const el of dialog.querySelectorAll(".status, .error")) el.classList.add("hidden");
   document.getElementById("username-new").value = getUser().username;
   for (const id of ["username-password", "pw-current", "pw-new"]) document.getElementById(id).value = "";

@@ -1,13 +1,13 @@
-"""/api/plan: the Plan tab, and the training log as text (/log, the same text
-Claude reads through the connector), one session in detail (/sessions), the
-rule set, and the draft: saved and parsed (/draft), edited one session at a
-time from the Plan tab's calendar (/draft/sessions), cleared, then put on the
-calendar (/draft/confirm). The logic is in planning/.
+"""/api/plan: the rule set (Athlete tab), and the Plan tab's draft: read
+parsed (/draft), edited one session at a time from its calendar
+(/draft/sessions), cleared, then put on the calendar (/draft/confirm). Claude's
+connector writes whole drafts itself (mcp/server.py, drafts.save). The logic
+is in planning/.
 
-A coach plans for one of their athletes with ?athlete_id= on the /draft routes
-(except PUT): the coach's own draft for them (drafts.draft_of), pushed on the
-athlete's calendar, or sent to the athlete's own draft (/draft/send). Without
-a link to that athlete it is a 404, as for any other account (coaching.py)."""
+A coach plans for one of their athletes with ?athlete_id= on the /draft routes:
+the coach's own draft for them (drafts.draft_of), pushed on the athlete's
+calendar, or sent to the athlete's own draft (/draft/send). Without a link to
+that athlete it is a 404, as for any other account (coaching.py)."""
 
 import datetime
 
@@ -18,47 +18,9 @@ from .. import coaching, models, schemas
 from ..database import get_db
 from ..deps import get_current_member
 from ..planning import drafts
-from ..planning.session_detail import session_choices, session_text
-from ..planning.training_log import build_log, rule_set_text
+from ..planning.training_log import rule_set_text
 
 router = APIRouter(prefix="/api/plan", tags=["plan"])
-
-@router.get("/log", response_model=schemas.TrainingLog)
-def training_log(
-    weeks: int = Query(default=6, ge=1, le=26),
-    detail: str = Query(default="full", pattern="^(full|summary)$"),
-    today: datetime.date | None = Query(default=None),
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_member),
-):
-    """The last `weeks` weeks as text (sessions with pace/HR/load/effort, sleep,
-    weekly totals, objectives, the athlete's profile, what's already planned):
-    what a plan is written from. `detail=full` adds zones, laps and recovery
-    over the last 4 weeks, and the reps of older sessions."""
-    day = drafts.client_today(today)
-    text, start = build_log(db, user, weeks, day, detail)
-    return schemas.TrainingLog(text=text, start=start, end=day, weeks=weeks, detail=detail)
-
-
-@router.get("/sessions", response_model=list[schemas.SessionChoice])
-def list_sessions(
-    today: datetime.date | None = Query(default=None),
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_member),
-):
-    """The sessions that can be opened in detail, newest first."""
-    choices = session_choices(db, user, drafts.client_today(today))
-    return [schemas.SessionChoice(id=activity_id, label=label) for activity_id, label in choices]
-
-
-@router.get("/sessions/{activity_id}", response_model=schemas.SessionDetail)
-def get_session(activity_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_member)):
-    """Everything stored about one session, as text: every lap and, while it is kept, its trace."""
-    activity = db.query(models.Activity).filter_by(id=activity_id, user_id=user.id).first()
-    if activity is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    return schemas.SessionDetail(id=activity.id, text=session_text(activity, activity.trace))
-
 
 @router.get("/rules", response_model=schemas.RuleSet)
 def get_rules(user: models.User = Depends(get_current_member)):
@@ -72,11 +34,13 @@ def save_rules(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
-    """The rule set the plan must follow; shown in the history."""
+    """The rule set every plan must follow (Athlete tab); Claude reads it through the connector."""
     user.rule_set = payload.rules.strip()  # "" (not None) = cleared: the older notes don't come back
     db.commit()
     return schemas.RuleSet(rules=user.rule_set)
 
+
+# --- The draft ---------------------------------------------------------------------------
 
 ATHLETE_ID = Query(default=None, description="A coach planning for one of their athletes")
 
@@ -106,20 +70,6 @@ def get_draft(
     out = drafts.draft_out(db, athlete, drafts.draft_of(db, athlete, coach), drafts.client_today(today))
     db.commit()  # keeps the expiry, if draft_out just emptied it
     return out
-
-
-@router.put("/draft", response_model=schemas.DraftOut)
-def save_draft(
-    payload: schemas.DraftIn,
-    today: datetime.date | None = Query(default=None),
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_member),
-):
-    """Save the draft and return it parsed. Never touches the calendar."""
-    drafts.save(db, user, payload)
-    db.commit()
-    db.refresh(user)
-    return drafts.draft_out(db, user, user.plan_draft, drafts.client_today(today))
 
 
 @router.post("/draft/confirm", response_model=schemas.ConfirmResult)

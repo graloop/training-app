@@ -40,10 +40,10 @@ SQLite under `npm start`.
         │
         └──▶ planning/training_log.py (build_log) ──▶ the connector's get_training_log (mcp/), as plain text
                                                                               │
-                                    Claude reads it (GET /api/plan/log has the same text)
+                                    Claude reads it
                                                                               ▼
                                     draft lines:  Tue Oct 13 | run | 1:15 | Track: 2×6×400 m
-                                    from the connector's save_draft (or PUT /api/plan/draft)
+                                    from the connector's save_draft (drafts.save)
                                               planning/draft_parser.py: each line → a session or an error
                                               planning/drafts.py: the draft as the Plan tab's calendar;
                                               its + and dialog rewrite one line (/api/plan/draft/sessions)
@@ -331,7 +331,7 @@ time of writing:
 | `garmin/sync.py` `trim_stored_sleep` (run at startup) | Sleep rows that versions before 15 stored whole (about 100 KB a night) | Once every database you care about has started on version 15 or later |
 | `garmin/sync.py` `_needs_details`, the `extras IS NULL` part | Activities whose details were fetched before weather and sweat were kept (version 9, 2026-10-13) | Details are only fetched 90 days back: nothing left to do after about 2027-01-11 |
 | `garmin/sync.py` `backfill_ride_laps` | Rides whose details were fetched before ride laps were kept (2026-11-03) | Same 90-day window: after about 2027-02-01 |
-| `planning/training_log.py` `rule_set_text`, `User.athlete_notes`, `PlanDraft.notes` (`DraftIn.notes`) | The older "About you" box and block notes stand in for the rule set until it is first saved | When every account has saved a rule set. Removing it earlier hides text people wrote |
+| `planning/training_log.py` `rule_set_text`, `User.athlete_notes`, `PlanDraft.notes` | The older "About you" box and block notes stand in for the rule set until it is first saved | When every account has saved a rule set. Removing it earlier hides text people wrote |
 
 Permanent leftovers, harmless: the login name in the column `email`, and
 planned sessions whose `source` says `ai` (from the chatbot removed in

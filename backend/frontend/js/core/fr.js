@@ -48,8 +48,6 @@ export const FR = {
   "6 weeks": "6 semaines",
   "8 weeks": "8 semaines",
   "12 weeks": "12 semaines",
-  "16 weeks": "16 semaines",
-  "26 weeks": "26 semaines",
   "This week ({date})": "Cette semaine ({date})",
   "Next week ({date})": "La semaine prochaine ({date})",
   "Last week ({date})": "La semaine dernière ({date})",
@@ -346,7 +344,6 @@ export const FR = {
 
   "Saved.": "Enregistré.",
   // --- Import older activities (⚙️ menu) ---
-  Detail: "Détail",
   "Night mode": "Mode nuit",
   "How far back to import older activities": "Jusqu'où importer les activités plus anciennes",
   "last 6 months": "6 derniers mois",
@@ -461,7 +458,6 @@ export const FR = {
   "e.g. marie": "p. ex. marie",
   "New account's password (8+ characters)": "Mot de passe du nouveau compte (8 caractères ou plus)",
   Generate: "Générer",
-  "Admin: sees this dashboard instead of a calendar": "Admin : voit ce tableau de bord au lieu d'un calendrier",
   "Create account": "Créer le compte",
   "Just now": "À l'instant",
   "{n} min ago": "il y a {n} min",
@@ -492,12 +488,6 @@ export const FR = {
   "Not connected": "Non connecté",
   "Reset password": "Réinitialiser le mot de passe",
   "Reset password for {name}": "Réinitialiser le mot de passe de {name}",
-  "Make admin": "Rendre admin",
-  "Make user": "Rendre utilisateur",
-  "Click again: they lose the calendar view": "Cliquez encore : le compte perd la vue calendrier",
-  "Click again to remove admin rights": "Cliquez encore pour retirer les droits d'admin",
-  "{name} is now an admin.": "{name} est maintenant admin.",
-  "{name} is now a regular user.": "{name} est maintenant un utilisateur normal.",
   "Delete {name}": "Supprimer {name}",
   "Couldn't load the dashboard: {error}": "Impossible de charger le tableau de bord : {error}",
   "Usernames are 3–64 characters: letters, digits, . _ - @":
