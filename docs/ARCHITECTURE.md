@@ -117,7 +117,7 @@ Backend, under `backend/app/`:
 | `planning/session_detail.py` | What a session's 5-second trace adds, and one session in full |
 | `planning/training_log.py` | The training log Claude reads, one function per section (`build_log` puts them together) |
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
-| `planning/drafts.py` | A draft as the page sees it: saving it, editing one session (one line) at a time, clearing it, confirming it, putting sessions on the calendar, and emptying it 24 h after its last change (`expire_if_old`, called by every read and write) |
+| `planning/drafts.py` | A draft as the page sees it: saving it, editing one session (one line) at a time, clearing it, confirming it, putting sessions on the calendar, and dropping its sessions 3 weeks after their date (`drop_old_sessions`, called by every read and write; past sessions are shown, never pushed) |
 | `planning/planned_sessions.py` | One planned session: found, added, edited |
 | `planning/calendar_days.py` | The days of a calendar (done, sleep, planned), for the Calendar tab and, without sleep, for a coach |
 | `planning/objectives.py` | Target events: listed, added, edited |

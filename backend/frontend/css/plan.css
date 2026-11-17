@@ -28,7 +28,8 @@
 
 .plan-grid { margin-top: 12px; }
 #plan-range { margin: 2px 0 0; }
-.plan-expiry { margin-top: -4px; }
+/* A draft session on a day already past: greyed, not clickable, gone after 3 weeks. */
+.day-cell .entry.draft-past, .day-cell .entry.draft-past:hover { opacity: 0.55; cursor: default; border-style: dashed; }
 .draft-errors li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .draft-errors li .error-line { flex-basis: 100%; }
 

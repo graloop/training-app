@@ -416,6 +416,7 @@ class DraftSessionOut(BaseModel):
     sport: str  # swim | bike | run | strength | other
     minutes: float
     details: str | None
+    past: bool = False  # on a day already past: shown, never pushed
 
 
 class DraftErrorOut(BaseModel):
@@ -444,7 +445,7 @@ class DraftOut(BaseModel):
     replace_from: datetime.date  # confirming replaces planned sessions from this day to end_date
     existing_planned: int  # sessions currently on the calendar in that span
     confirmed_at: UtcDatetime | None
-    expires_at: UtcDatetime | None = None  # drafts.DRAFT_TTL_HOURS after the last change; None when empty
+    past_count: int = 0  # sessions on days already past: shown, never pushed (drafts.KEEP_PAST_DAYS)
 
 
 class ConfirmResult(BaseModel):

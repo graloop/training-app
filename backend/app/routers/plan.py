@@ -64,11 +64,11 @@ def get_draft(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_member),
 ):
-    """The saved draft parsed, or an empty one starting this Monday. A draft left
-    untouched for drafts.DRAFT_TTL_HOURS comes back empty."""
+    """The saved draft parsed, or an empty one starting this Monday. Its sessions
+    drafts.KEEP_PAST_DAYS old are dropped first."""
     athlete, coach = _for(db, user, athlete_id)
     out = drafts.draft_out(db, athlete, drafts.draft_of(db, athlete, coach), drafts.client_today(today))
-    db.commit()  # keeps the expiry, if draft_out just emptied it
+    db.commit()  # keeps what drop_old_sessions removed
     return out
 
 

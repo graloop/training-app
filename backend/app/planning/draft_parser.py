@@ -5,7 +5,9 @@ Plan tab and the share import both use it; nothing here touches the database.
 The lines are usually written by Claude, so the parser is forgiving about form
 (markdown tables and bullets, "Tue Oct 13" or 2026-10-13, "1:15" or "75 min",
 French sport words) and strict about meaning: a date outside the weeks being
-planned, already past, or naming the wrong weekday is an error, never a guess.
+planned or naming the wrong weekday is an error, never a guess. A session on
+a day already past isn't an error: it is kept apart (ParsedDraft.past), shown
+but never put on the calendar, and drafts.drop_old_sessions removes it later.
 Error messages are shown on the page next to the line, so they say how to fix it.
 sharing.py writes lines in this same format when importing a friend's plan."""
 
@@ -47,8 +49,9 @@ class DraftError:
 
 @dataclass
 class ParsedDraft:
-    sessions: list[DraftSession] = field(default_factory=list)
+    sessions: list[DraftSession] = field(default_factory=list)  # from today on: what a push puts on the calendar
     errors: list[DraftError] = field(default_factory=list)
+    past: list[DraftSession] = field(default_factory=list)  # on days already past: shown, never pushed
 
 
 def parse_duration(text: str) -> float | None:
@@ -182,9 +185,6 @@ def parse_draft(text: str, first: datetime.date, last: datetime.date, today: dat
         if isinstance(day, str):
             error(day)
             continue
-        if day < today:
-            error(f"{fmt_day(day)} is already past. Leave it out: the plan only adds sessions from today on.")
-            continue
         minutes = parse_duration(cells[2])
         if minutes is None:
             error(f'"{cells[2]}" isn\'t a duration I can read. Write it like 1:15 or 45 min.')
@@ -193,8 +193,8 @@ def parse_draft(text: str, first: datetime.date, last: datetime.date, today: dat
             error("The duration has to be more than 0 and at most 24 h.")
             continue
         details = cells[3] if len(cells) > 3 and cells[3] else None
-        result.sessions.append(
-            DraftSession(line=number, date=day, activity_type=activity_type, minutes=minutes, details=details)
-        )
+        session = DraftSession(line=number, date=day, activity_type=activity_type, minutes=minutes, details=details)
+        (result.past if day < today else result.sessions).append(session)
     result.sessions.sort(key=lambda s: (s.date, s.line))
+    result.past.sort(key=lambda s: (s.date, s.line))
     return result

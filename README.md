@@ -57,8 +57,8 @@ Chrome** extension also works: it edits the page like you would.
     then either **Push on {athlete}'s calendar** (those sessions say "by
     {coach}" on the athlete's calendar) or **Send to {athlete}'s Plan tab**
     (it replaces the athlete's own draft, after a second click if they had
-    one; the athlete adjusts it and pushes it). A coach's draft empties after
-    24 h like any other.
+    one; the athlete adjusts it and pushes it). A coach's draft drops its old
+    sessions like any other.
 
   An athlete sees their coaches in Settings and can remove one; a coach can
   remove an athlete. An athlete can have several coaches. Claude's connector
@@ -146,11 +146,12 @@ Chrome** extension also works: it edits the page like you would.
   a line it couldn't read is listed above the calendar with why, and a
   **Delete** button. Push waits until none is left.
 
-  A draft is **emptied 24 hours after its last change** (counted from the
-  last change, so a plan being written is never cut short; an imported plan
-  too). The page says when, under the buttons, and so does the connector's
-  `get_draft`. Nothing runs on a timer: the draft is checked each time it is
-  read or changed.
+  A draft is **kept** until you clear it or it is replaced. Its sessions on
+  days already past stay on the Plan calendar, greyed: they are never pushed
+  and can't be edited (only deleted). **Three weeks after its date, a session
+  drops out of the draft**, and so do the weeks left empty before today.
+  The connector's `get_draft` says how many past sessions there are. Nothing
+  runs on a timer: the draft is tidied each time it is read or changed.
 - **Training log (for Claude)** — not a tab: the whole training history as
   text, which Claude reads through the connector (`get_training_log`, up to
   26 weeks, the last 4 in full detail and older ones as one line per session

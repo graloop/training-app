@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from .. import schemas
 from ..planning.basics import SPORTS, fmt_day, fmt_minutes
-from ..planning.drafts import DRAFT_TTL_HOURS
+from ..planning.drafts import KEEP_PAST_DAYS
 
 
 def problems(exc: ValidationError) -> str:
@@ -28,10 +28,10 @@ def draft_text(draft: schemas.DraftOut) -> str:
         f"Confirming replaces the {draft.existing_planned} planned session{'s' if draft.existing_planned != 1 else ''} "
         f"on the calendar from {fmt_day(draft.replace_from)} to {fmt_day(draft.end_date)}.",
     ]
-    if draft.expires_at:
+    if draft.past_count:
         lines.append(
-            f"Unless it changes, this draft is emptied on {draft.expires_at.astimezone().strftime('%Y-%m-%d %H:%M')} "
-            f"(server time), {DRAFT_TTL_HOURS} h after its last change."
+            f"{draft.past_count} session{'s' if draft.past_count != 1 else ''} on days already past: kept for reference, "
+            f"never put on the calendar, removed once {KEEP_PAST_DAYS} days old."
         )
     if draft.errors:
         lines += ["", "LINES TO FIX (save the draft again with them corrected)"]

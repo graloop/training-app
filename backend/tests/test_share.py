@@ -201,26 +201,14 @@ def test_weeks_are_limited_like_the_plan(client):
     assert _ask(client, paul, "preview", code, weeks=12).status_code == 200
 
 
-def test_the_import_preview_ignores_an_expired_draft(client):
-    """An expired draft holds nothing, so the preview doesn't warn about replacing it."""
+def test_the_import_preview_counts_only_sessions_ahead_in_your_draft(client):
+    """Sessions on days already past are never pushed, so the preview doesn't count them as replaced."""
     marie, paul = make_user(client, "marie", garmin=False), make_user(client, "paul", garmin=False)
     _plan(client, marie, NEXT_MONDAY + datetime.timedelta(days=1), "running", 75)
-    assert _ask(client, paul, "plan", _code(client, marie)).status_code == 200
-    assert _ask(client, paul, "preview", _code(client, marie)).json()["draft_sessions"] == 1
+    past = TODAY - datetime.timedelta(days=3)
     with SessionLocal() as db:
-        db.query(models.PlanDraft).one().updated_at = models.utcnow() - datetime.timedelta(hours=25)
+        db.add(models.PlanDraft(user_id=db.query(models.User).filter_by(username="paul").one().id,
+                                start_date=past - datetime.timedelta(days=past.weekday()), weeks=3,
+                                text=f"{past.isoformat()} | swim | 1:00"))
         db.commit()
     assert _ask(client, paul, "preview", _code(client, marie)).json()["draft_sessions"] == 0
-
-
-def test_importing_the_same_plan_again_restarts_the_day(client):
-    marie, paul = make_user(client, "marie", garmin=False), make_user(client, "paul", garmin=False)
-    _plan(client, marie, NEXT_MONDAY + datetime.timedelta(days=1), "running", 75)
-    _ask(client, paul, "plan", _code(client, marie))
-    with SessionLocal() as db:
-        db.query(models.PlanDraft).one().updated_at = models.utcnow() - datetime.timedelta(hours=23)
-        db.commit()
-    _ask(client, paul, "plan", _code(client, marie))  # the same text again
-    with SessionLocal() as db:
-        changed = db.query(models.PlanDraft).one().updated_at
-    assert models.utcnow() - changed.replace(tzinfo=datetime.UTC) < datetime.timedelta(minutes=1)

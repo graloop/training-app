@@ -7,9 +7,10 @@ The Plan tab shows the draft as a calendar: adding, editing or deleting a
 session there rewrites one line of the text (add_session, edit_session,
 remove_line), found by its line number (DraftSession.line).
 
-A draft empties DRAFT_TTL_HOURS after its last change (expire_if_old): every
-read and write here checks first, so nothing has to run on a timer and it
-works even after the server was off.
+A draft is kept until it is cleared or replaced. Its sessions on days already
+past stay visible but are never pushed, and drop out once KEEP_PAST_DAYS old
+(drop_old_sessions): every read and write here does that first, so nothing has
+to run on a timer and it works even after the server was off.
 
 Whose draft: the editing functions take the athlete whose calendar is planned
 and, for a coach planning for them, the coach (draft_of). Without a coach it is
@@ -30,7 +31,7 @@ from .basics import SPORTS, fmt_minutes, monday_of, sport_of
 from .draft_parser import DraftSession, parse_draft
 
 DEFAULT_WEEKS = 4
-DRAFT_TTL_HOURS = 24  # counted from the last change, so a plan being written is never cut short
+KEEP_PAST_DAYS = 21  # a past session stays in the draft for 3 weeks, for reference
 
 
 class DraftProblem(ValueError):
@@ -46,18 +47,23 @@ def client_today(browser_today: datetime.date | None) -> datetime.date:
     return server
 
 
-def weeks_preview(sessions: list[DraftSession], start: datetime.date, weeks: int) -> list[schemas.DraftWeekOut]:
-    """The sessions as a table per week with minutes per sport (Plan and Import tabs)."""
+def weeks_preview(
+    sessions: list[DraftSession], start: datetime.date, weeks: int, past: list[DraftSession] = ()
+) -> list[schemas.DraftWeekOut]:
+    """The sessions as a table per week with minutes per sport (Plan and Import
+    tabs). `past` ones are marked and counted in their week's totals."""
     preview = []
+    marked = [(s, False) for s in sessions] + [(s, True) for s in past]
+    marked.sort(key=lambda pair: (pair[0].date, pair[0].line))
     for i in range(weeks):
         week_start = start + datetime.timedelta(days=i * 7)
         week_end = week_start + datetime.timedelta(days=6)
         week = [
             schemas.DraftSessionOut(
                 line=s.line, date=s.date, activity_type=s.activity_type, sport=sport_of(s.activity_type),
-                minutes=s.minutes, details=s.details,
+                minutes=s.minutes, details=s.details, past=is_past,
             )
-            for s in sessions if week_start <= s.date <= week_end
+            for s, is_past in marked if week_start <= s.date <= week_end
         ]
         by_sport = {sport: 0.0 for sport in SPORTS}
         for s in week:
@@ -79,34 +85,36 @@ def planned_between(db: Session, user: models.User, first: datetime.date, last: 
     )
 
 
-def _changed_at(draft: models.PlanDraft) -> datetime.datetime:
-    at = draft.updated_at or models.utcnow()
-    return at if at.tzinfo else at.replace(tzinfo=datetime.UTC)  # SQLite drops the offset
+def _end(draft: models.PlanDraft) -> datetime.date:
+    return draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
 
 
-def expires_at(draft: models.PlanDraft | None) -> datetime.datetime | None:
-    """When this draft will be emptied, or None when there is nothing to lose."""
-    if draft is None or not draft.text.strip():
-        return None
-    return _changed_at(draft) + datetime.timedelta(hours=DRAFT_TTL_HOURS)
-
-
-def expire_if_old(draft: models.PlanDraft | None, today: datetime.date, now: datetime.datetime | None = None) -> bool:
-    """Empty a draft left untouched for DRAFT_TTL_HOURS: no text, the default weeks.
-    True when it was emptied. The caller commits (a read that doesn't still shows it empty)."""
-    ends = expires_at(draft)
-    if ends is None or (now or models.utcnow()) < ends:
+def drop_old_sessions(draft: models.PlanDraft | None, today: datetime.date) -> bool:
+    """Remove the sessions dated KEEP_PAST_DAYS ago or more, and the weeks left
+    with nothing ahead of them (the draft then starts later; when no week is
+    left, it is DEFAULT_WEEKS from this Monday). Not a change by the athlete:
+    a pushed draft stays pushed. True when something went. The caller commits."""
+    if draft is None:
         return False
-    draft.text = ""
-    draft.start_date, draft.weeks = monday_of(today), DEFAULT_WEEKS
-    draft.confirmed_at = None
-    draft.updated_at = models.utcnow()
+    cutoff = today - datetime.timedelta(days=KEEP_PAST_DAYS)
+    old = {s.line for s in parse_draft(draft.text, draft.start_date, _end(draft), today).past if s.date <= cutoff}
+    first = monday_of(cutoff + datetime.timedelta(days=1))  # the earliest week that can still hold one
+    if not old and draft.start_date >= first:
+        return False
+    if old:
+        draft.text = "\n".join(line for n, line in enumerate(draft.text.splitlines(), start=1) if n not in old)
+    if draft.start_date < first:
+        end = _end(draft)
+        if end < first:
+            draft.start_date, draft.weeks = monday_of(today), DEFAULT_WEEKS
+        else:
+            draft.start_date, draft.weeks = first, (monday_of(end) - first).days // 7 + 1
     return True
 
 
 def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, today: datetime.date) -> schemas.DraftOut:
     """The saved draft (or an empty one, DEFAULT_WEEKS from this Monday), parsed."""
-    expire_if_old(draft, today)
+    drop_old_sessions(draft, today)
     start = draft.start_date if draft else monday_of(today)
     weeks = draft.weeks if draft else DEFAULT_WEEKS
     end = start + datetime.timedelta(days=weeks * 7 - 1)
@@ -123,11 +131,11 @@ def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, to
         text=text,
         sessions_count=len(parsed.sessions),
         errors=[schemas.DraftErrorOut(line=e.line, text=e.text, message=e.message) for e in parsed.errors],
-        weeks_preview=weeks_preview(parsed.sessions, start, weeks),
+        weeks_preview=weeks_preview(parsed.sessions, start, weeks, parsed.past),
         replace_from=replace_from,
         existing_planned=existing,
         confirmed_at=draft.confirmed_at if draft else None,
-        expires_at=expires_at(draft),
+        past_count=len(parsed.past),
     )
 
 
@@ -169,7 +177,7 @@ def confirm(
     its last day are replaced, so re-planning never duplicates. Raises
     DraftProblem when it can't. The caller commits."""
     draft = draft_of(db, user, coach)
-    expire_if_old(draft, today)
+    drop_old_sessions(draft, today)
     if draft is None:
         raise DraftProblem("Save a draft first")
     end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
@@ -227,7 +235,7 @@ def _draft_for(db: Session, user: models.User, today: datetime.date, coach: mode
         db.add(draft)
         if coach is None:
             user.plan_draft = draft
-    expire_if_old(draft, today)
+    drop_old_sessions(draft, today)
     return draft
 
 
@@ -272,7 +280,7 @@ def edit_session(
     """Rewrite the session on that line (moving it to another day widens the weeks if
     needed). Raises StaleLine when that line isn't a session any more. The caller commits."""
     draft = draft_of(db, user, coach)
-    expire_if_old(draft, today)
+    drop_old_sessions(draft, today)
     if draft is None or line not in _session_lines(draft, today):
         raise StaleLine()
     _cover(draft, session.date)
@@ -287,12 +295,12 @@ def remove_line(
     """Delete a session, or a line the parser couldn't read. Raises StaleLine when
     that line holds neither any more. The caller commits."""
     draft = draft_of(db, user, coach)
-    expire_if_old(draft, today)
+    drop_old_sessions(draft, today)
     if draft is None:
         raise StaleLine()
     end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)
     parsed = parse_draft(draft.text, draft.start_date, end, today)
-    if line not in {s.line for s in parsed.sessions} | {e.line for e in parsed.errors}:
+    if line not in {s.line for s in parsed.sessions + parsed.past} | {e.line for e in parsed.errors}:
         raise StaleLine()
     lines = draft.text.splitlines()
     del lines[line - 1]
@@ -316,7 +324,7 @@ def send_to_athlete(db: Session, coach: models.User, athlete: models.User, today
     otherwise AthleteHasADraft when it holds anything. Returns the sessions sent.
     The caller commits."""
     mine = draft_of(db, athlete, coach)
-    expire_if_old(mine, today)
+    drop_old_sessions(mine, today)
     if mine is None or not mine.text.strip():
         raise DraftProblem("Your draft for them is empty.")
     if sessions_in(athlete.plan_draft, today) and not replace:
@@ -337,7 +345,7 @@ def replace_own(
 
 def sessions_in(draft: models.PlanDraft | None, today: datetime.date) -> int:
     """How many sessions a draft holds now (0 once it has expired)."""
-    expire_if_old(draft, today)
+    drop_old_sessions(draft, today)
     if draft is None:
         return 0
     end = draft.start_date + datetime.timedelta(days=draft.weeks * 7 - 1)

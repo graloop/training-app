@@ -244,7 +244,7 @@ def test_a_coach_sends_the_draft_to_the_athletes_plan_tab(client, auth):
     client.post(f"/api/plan/draft/sessions?athlete_id={athlete}", json=_session(day(3), sport="cycling"), headers=coach)
     assert client.post(send, headers=coach).json() == {"sessions": 2}
     mine = client.get("/api/plan/draft", headers=auth).json()
-    assert mine["sessions_count"] == 2 and mine["expires_at"]  # theirs to adjust and push, within the day
+    assert mine["sessions_count"] == 2  # theirs to adjust and push
 
     client.post(f"/api/plan/draft/sessions?athlete_id={athlete}", json=_session(day(4)), headers=coach)
     again = client.post(send, headers=coach)
@@ -254,16 +254,17 @@ def test_a_coach_sends_the_draft_to_the_athletes_plan_tab(client, auth):
     assert client.post("/api/plan/draft/confirm", headers=auth).json()["added"] == 3  # the athlete pushes it
 
 
-def test_a_coachs_draft_expires_like_any_other(client, auth):
+def test_a_coachs_draft_drops_old_sessions_like_any_other(client, auth):
     coach = _coach(client)
     _link(client, coach)
     athlete = _id("athlete")
-    client.post(f"/api/plan/draft/sessions?athlete_id={athlete}", json=_session(day(1)), headers=coach)
+    old = TODAY - datetime.timedelta(days=30)
     with SessionLocal() as db:
-        draft = db.query(models.PlanDraft).filter(models.PlanDraft.coach_id.is_not(None)).one()
-        draft.updated_at = models.utcnow() - datetime.timedelta(hours=25)
+        db.add(models.PlanDraft(user_id=athlete, coach_id=_id("coach"), start_date=old - datetime.timedelta(days=old.weekday()),
+                                weeks=8, text=f"{old.isoformat()} | run | 0:30\n{day(1).isoformat()} | run | 0:40"))
         db.commit()
-    assert client.get(f"/api/plan/draft?athlete_id={athlete}", headers=coach).json()["sessions_count"] == 0
+    draft = client.get(f"/api/plan/draft?athlete_id={athlete}", headers=coach).json()
+    assert draft["text"] == f"{day(1).isoformat()} | run | 0:40" and draft["sessions_count"] == 1
 
 
 def test_the_athletes_own_draft_and_the_connector_are_unaffected(client, auth):

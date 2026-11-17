@@ -11,6 +11,7 @@ from conftest import admin_auth, log_text, make_user
 from app import models, schemas
 from app.database import SessionLocal
 from app.planning import basics, draft_parser
+from app.planning.basics import monday_of
 
 D = datetime.date
 TODAY = D.today()
@@ -121,14 +122,14 @@ def test_unreadable_dates_and_lines():
     assert parsed.errors[0].text == "tomorrow | run | 0:30"
 
 
-def test_past_days_are_refused():
+def test_past_days_are_kept_apart_not_refused():
     monday = THIS_MONDAY
     parsed = draft_parser.parse_draft(
         f"{monday.isoformat()} | run | 0:30\n{(monday + datetime.timedelta(days=3)).isoformat()} | run | 0:30",
         monday, monday + datetime.timedelta(days=6), today=monday + datetime.timedelta(days=2),
     )
     assert [s.date for s in parsed.sessions] == [monday + datetime.timedelta(days=3)]
-    assert "already past" in parsed.errors[0].message
+    assert [s.date for s in parsed.past] == [monday] and parsed.errors == []
 
 
 def test_comments_rest_days_bullets_and_markdown_tables_are_tolerated():
@@ -825,68 +826,68 @@ def test_draft_sessions_are_your_own(client, auth):
     assert client.post("/api/plan/draft/sessions", json=_session(day(1)), headers=admin_auth(client)).status_code == 403
 
 
-# --- The draft empties 24 h after its last change (drafts.expire_if_old) ----------------
+# --- Past sessions stay 3 weeks, then drop out of the draft (drafts.drop_old_sessions) ----
 
 
-def _age_draft(hours):
-    """Make the athlete's draft look last changed `hours` ago."""
+def _draft_spanning_the_past(client, auth):
+    """A draft from 4 weeks ago to 2 weeks ahead: one session 25 days ago, one 10 days ago, one ahead."""
+    start = THIS_MONDAY - datetime.timedelta(weeks=4)
+    lines = [f"{(TODAY + datetime.timedelta(days=n)).isoformat()} | run | 0:{30 + i}" for i, n in enumerate((-25, -10, 2))]
     with SessionLocal() as db:
-        draft = db.query(models.PlanDraft).one()
-        draft.updated_at = models.utcnow() - datetime.timedelta(hours=hours)
+        user = db.query(models.User).filter_by(username="athlete").one()
+        db.add(models.PlanDraft(user_id=user.id, start_date=start, weeks=7, text="\n".join(lines)))
         db.commit()
+    return lines
 
 
-def test_a_draft_is_kept_for_a_day_then_emptied(client, auth):
-    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=3)
-    _age_draft(23)
-    kept = client.get("/api/plan/draft", headers=auth).json()
-    assert kept["sessions_count"] == 1 and kept["weeks"] == 3
-    _age_draft(25)
-    gone = client.get("/api/plan/draft", headers=auth).json()
-    assert gone["text"] == "" and gone["sessions_count"] == 0 and gone["expires_at"] is None
-    assert gone["weeks"] == 4 and gone["start_date"] == THIS_MONDAY.isoformat()  # the default weeks again
-    with SessionLocal() as db:  # stored empty, not only shown empty
-        assert db.query(models.PlanDraft).one().text == ""
+def test_past_sessions_are_shown_but_dropped_after_three_weeks(client, auth):
+    lines = _draft_spanning_the_past(client, auth)
+    draft = client.get("/api/plan/draft", headers=auth).json()
+    assert draft["text"].splitlines() == lines[1:]  # 25 days ago: gone
+    assert draft["sessions_count"] == 1 and draft["past_count"] == 1 and draft["errors"] == []
+    shown = [(s["date"], s["past"]) for week in draft["weeks_preview"] for s in week["sessions"]]
+    assert shown == [((TODAY - datetime.timedelta(days=10)).isoformat(), True), ((TODAY + datetime.timedelta(days=2)).isoformat(), False)]
+    # the weeks with nothing left before them go: the draft now starts within the last 3 weeks
+    first = monday_of(TODAY - datetime.timedelta(days=20))
+    assert draft["start_date"] == first.isoformat() and draft["end_date"] == (THIS_MONDAY + datetime.timedelta(days=20)).isoformat()
+    with SessionLocal() as db:  # stored that way, not only shown
+        assert db.query(models.PlanDraft).one().text.splitlines() == lines[1:]
 
 
-def test_the_day_counts_from_the_last_change(client, auth):
-    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
-    expires = datetime.datetime.fromisoformat(client.get("/api/plan/draft", headers=auth).json()["expires_at"])
-    assert datetime.timedelta(hours=23, minutes=59) < expires - datetime.datetime.now(datetime.UTC) <= datetime.timedelta(hours=24)
-    _age_draft(23)
-    _add(client, auth, date=day(1))  # a change restarts the count
-    _age_draft(0)  # (as the change just did)
-    assert client.get("/api/plan/draft", headers=auth).json()["sessions_count"] == 2
-
-
-def test_an_expired_draft_cannot_be_edited_or_pushed(client, auth):
-    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
-    _age_draft(25)
-    assert client.patch("/api/plan/draft/sessions/1", json=_session(day(1)), headers=auth).status_code == 409
+def test_past_sessions_are_never_pushed_nor_edited(client, auth):
+    _draft_spanning_the_past(client, auth)
     res = client.post("/api/plan/draft/confirm", headers=auth)
-    assert res.status_code == 400 and res.json()["detail"] == "The draft has no sessions"
-    assert client.get("/api/calendar", params={"start": day(0).isoformat(), "end": day(0).isoformat()},
-                      headers=auth).json()["days"][0]["planned"] == []
+    assert res.status_code == 200 and res.json()["added"] == 1  # only the one ahead
+    past = (TODAY - datetime.timedelta(days=10)).isoformat()
+    assert client.get("/api/calendar", params={"start": past, "end": past}, headers=auth).json()["days"][0]["planned"] == []
+    assert client.patch("/api/plan/draft/sessions/1", json=_session(day(1)), headers=auth).status_code == 409
+    assert client.delete("/api/plan/draft/sessions/1", headers=auth).status_code == 200  # but it can be deleted
 
 
-def test_an_empty_draft_never_expires_and_push_works_within_the_day(client, auth):
-    _save(client, auth, text="", weeks=2)
-    assert client.get("/api/plan/draft", headers=auth).json()["expires_at"] is None
+def test_a_draft_with_only_old_sessions_starts_over(client, auth):
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        old = THIS_MONDAY - datetime.timedelta(weeks=8)
+        db.add(models.PlanDraft(user_id=user.id, start_date=old, weeks=2, text=f"{old.isoformat()} | run | 0:30"))
+        db.commit()
+    draft = client.get("/api/plan/draft", headers=auth).json()
+    assert draft["text"] == "" and draft["start_date"] == THIS_MONDAY.isoformat() and draft["weeks"] == 4
+
+
+def test_a_draft_is_kept_however_long_it_is_untouched(client, auth):
     _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
-    _age_draft(20)
-    assert client.post("/api/plan/draft/confirm", headers=auth).status_code == 200
+    with SessionLocal() as db:
+        db.query(models.PlanDraft).one().updated_at = models.utcnow() - datetime.timedelta(days=10)
+        db.commit()
+    assert client.get("/api/plan/draft", headers=auth).json()["sessions_count"] == 1
 
 
-def test_the_connector_sees_the_expiry_too(client, auth):
+def test_the_connector_says_what_is_past(client, auth):
     from app.mcp import text as mcp_text
     from app.planning import drafts
 
-    _save(client, auth, text=f"{day(0).isoformat()} | swim | 1:00", weeks=2)
+    _draft_spanning_the_past(client, auth)
     with SessionLocal() as db:
         user = db.query(models.User).filter_by(username="athlete").one()
         shown = mcp_text.draft_text(drafts.draft_out(db, user, user.plan_draft, TODAY))
-    assert "Unless it changes, this draft is emptied on" in shown and "24 h after its last change" in shown
-    _age_draft(25)
-    with SessionLocal() as db:
-        user = db.query(models.User).filter_by(username="athlete").one()
-        assert "0 sessions read" in mcp_text.draft_text(drafts.draft_out(db, user, user.plan_draft, TODAY))
+    assert "1 session read" in shown and "1 session on days already past" in shown and "21 days old" in shown

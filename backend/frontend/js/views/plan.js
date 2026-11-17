@@ -1,8 +1,9 @@
 // Plan tab: the draft as a calendar, with the same look as the Calendar tab
 // (grid pieces in core/week-grid.js). The + of a day adds a session, clicking
 // a session edits, moves or deletes it (the session dialog, saving to the
-// draft); Clear empties the draft; Push puts it on the main calendar. The
-// draft empties on its own 24 h after its last change: the page says when.
+// draft); Clear empties the draft; Push puts it on the main calendar. A
+// session on a day already past stays greyed (never pushed, not editable)
+// until it is 3 weeks old, then the server drops it (drafts.drop_old_sessions).
 // The draft stays text on the server (one line per session, which Claude's
 // connector writes too): each change rewrites one line, found by its number,
 // and the answer is the whole draft parsed again, which this file redraws.
@@ -20,7 +21,7 @@
 
 import { api } from "../core/api.js";
 import { addDays, fmtDate, fmtHours, fmtSpan, isoDate, plural } from "../core/format.js";
-import { locale, t } from "../core/i18n.js";
+import { isSingular, locale, t } from "../core/i18n.js";
 import { getUser } from "../core/session.js";
 import { sportLabel } from "../core/sports.js";
 import { showTab } from "../core/tabs.js";
@@ -114,6 +115,16 @@ function renderGrid(draft) {
       }
       for (const s of week.sessions.filter((x) => x.date === date)) {
         const time = fmtHours(s.minutes);
+        if (s.past) {
+          const entry = makeEntry("planned draft-past", s.activity_type, time);
+          entry.title = t("Past {sport}, {time}: kept for 3 weeks, not put on the calendar", {
+            sport: sportLabel(s.activity_type),
+            time,
+          });
+          addNotes(entry, s.details);
+          cell.appendChild(entry);
+          continue;
+        }
         const entry = makeEntry("planned", s.activity_type, time);
         entry.title =
           t("Draft {sport}, {time}", { sport: sportLabel(s.activity_type), time }) +
@@ -217,26 +228,19 @@ function renderSummary(draft) {
       `${plural(draft.sessions_count, "session")}, ${fmtSpan(draft.start_date, draft.end_date)}. ${replaced} ` +
       t("Activities you already did are never touched.");
   }
-}
-
-// A draft empties 24 h after its last change (backend/app/planning/drafts.py, expire_if_old).
-function renderExpiry(draft) {
-  const el = document.getElementById("plan-expiry");
-  el.classList.toggle("hidden", !draft.expires_at);
-  if (!draft.expires_at) return;
-  const when = new Date(draft.expires_at).toLocaleString(locale(), {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  el.textContent = t("This draft will be cleared on {date}, unless it changes before.", { date: when });
+  if (draft.past_count)
+    summary.textContent +=
+      " " +
+      t(
+        isSingular(draft.past_count)
+          ? "{sessions} on a day already past stays greyed for 3 weeks and is never pushed."
+          : "{sessions} on days already past stay greyed for 3 weeks and are never pushed.",
+        { sessions: plural(draft.past_count, "session") },
+      );
 }
 
 function applyDraft(draft) {
   planDraft = draft;
-  renderExpiry(draft);
   document.getElementById("plan-range").textContent = fmtSpan(draft.start_date, draft.end_date);
   renderDraftErrors(draft.errors);
   renderGrid(draft);
