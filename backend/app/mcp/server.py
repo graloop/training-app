@@ -35,7 +35,14 @@ from ..planning import drafts, objectives, planned_sessions
 from ..planning.basics import fmt_day
 from ..planning.draft_parser import FORMAT_HINT
 from ..planning.session_detail import SESSIONS_LISTED_DAYS, session_choices, session_text
-from ..planning.training_log import build_log, build_overview, fmt_planned, planned_lines, rule_set_text
+from ..planning.training_log import (
+    build_log,
+    build_overview,
+    fmt_planned,
+    objective_lines,
+    planned_lines,
+    rule_set_text,
+)
 from . import text as wording
 from .auth import current_user_id
 
@@ -200,16 +207,9 @@ def build_server() -> FastMCP:
     async def get_objectives() -> str:
         """The target events: title, date, target time and notes, each with the id upsert_objective takes."""
 
-        def work(db: Session, user: models.User) -> str:
-            lines = []
-            for o in objectives.listed(db, user):
-                when = f"{o.event_date.isoformat()} ({(o.event_date - _today()).days} days away)" if o.event_date else "no date"
-                lines.append(f"- id {o.id} · {o.title} · {when} · target {o.target_time or 'not set'}")
-                if o.notes:
-                    lines.append(f"  {' '.join(o.notes.split())}")
-            return "\n".join(lines) or "No objectives yet."
-
-        return await _run(work)
+        return await _run(
+            lambda db, user: "\n".join(objective_lines(db, user, _today(), ids=True)) or "No objectives yet."
+        )
 
     @server.tool(annotations=READ)
     async def get_rules() -> str:

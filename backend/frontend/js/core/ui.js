@@ -9,7 +9,7 @@ export function showView(id) {
   closeMenus();
   for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close(); // Settings, a session
   for (const view of VIEWS) document.getElementById(view).classList.toggle("hidden", view !== id);
-  // The top bar: the tabs for a member, the account and settings menus once
+  // The top bar: the tabs for a member, the name badge and ⚙️ (Settings) once
   // logged in, Log in on the landing page.
   document.getElementById("tabs").classList.toggle("hidden", id !== "app-view");
   document.getElementById("user-actions").classList.toggle("hidden", id === "auth-view");

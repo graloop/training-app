@@ -421,18 +421,20 @@ def _intro_lines(user: models.User, today: datetime.date, start: datetime.date, 
     return lines
 
 
-def _objective_lines(db: Session, user: models.User, today: datetime.date, ids: bool = False) -> list[str]:
-    """`ids` puts each objective's id first, for Claude's connector to edit it."""
-    rows = objectives.listed(db, user)
-    lines = ["", "OBJECTIVES"]
-    if not rows:
-        return lines + ["- none yet (add them on the Athlete tab)"]
-    for o in rows:
+def objective_lines(db: Session, user: models.User, today: datetime.date, ids: bool = False) -> list[str]:
+    """One line per objective (and its notes under it); none when there are none.
+    `ids` puts each objective's id first, for Claude's connector to edit it."""
+    lines = []
+    for o in objectives.listed(db, user):
         when = f"{o.event_date.isoformat()} ({(o.event_date - today).days} days away)" if o.event_date else "no date"
         lines.append(f"- {f'id {o.id} · ' if ids else ''}{o.title} · {when} · target {o.target_time or 'not set'}")
         if o.notes:
             lines.append(f"  {' '.join(o.notes.split())}")
     return lines
+
+
+def _objective_lines(db: Session, user: models.User, today: datetime.date, ids: bool = False) -> list[str]:
+    return ["", "OBJECTIVES"] + (objective_lines(db, user, today, ids) or ["- none yet (add them on the Athlete tab)"])
 
 
 def _athlete_section(db: Session, user: models.User, today: datetime.date) -> list[str]:

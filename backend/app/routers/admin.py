@@ -1,5 +1,6 @@
 """/api/admin: the admin dashboard. The connection log of the last days, and
-creating, resetting, promoting and deleting accounts. Admins only."""
+creating, resetting, renaming, setting the role of (coaching.py) and deleting
+accounts. Admins only."""
 
 import datetime
 

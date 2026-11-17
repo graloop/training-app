@@ -28,7 +28,7 @@ import "./views/night-mode.js";
 translatePage();
 
 registerTab("calendar", loadCalendar);
-registerTab("athlete", () => Promise.all([loadAthletePage(), loadMyAthletes()])); // objectives load with the calendar
+registerTab("athlete", () => Promise.all([loadAthletePage(), loadObjectives(), loadMyAthletes()]));
 registerTab("plan", loadPlanPage);
 registerTab("import", loadImportPage);
 
@@ -60,7 +60,7 @@ async function showAppView({ sync = false } = {}) {
   renderGarminState();
   // Old #history and #logs bookmarks (the History tab, removed) open the calendar.
   showTab(TABS.find((tab) => `#${tab}` === location.hash) || "calendar", { load: false });
-  await Promise.all([loadCalendar(), loadObjectives()]);
+  await loadCalendar();
   if (getCurrentTab() !== "calendar") await loadTab(getCurrentTab());
   if (sync && me.garmin_connected) runSync();
 }

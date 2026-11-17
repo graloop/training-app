@@ -401,7 +401,7 @@ class DraftSessionIn(BaseModel):
     date: datetime.date
     activity_type: str = Field(min_length=1, max_length=64)
     minutes: float = Field(gt=0, le=24 * 60)
-    details: str | None = Field(default=None, max_length=2000)
+    details: str | None = Field(default=None, max_length=PLANNED_NOTES_MAX)
 
     @field_validator("activity_type")
     @classmethod
