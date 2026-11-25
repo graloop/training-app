@@ -148,6 +148,7 @@ def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, to
         summary=draft.summary if draft else None,
         updated_at=draft.updated_at if draft else None,
         sent_at=draft.sent_at if draft else None,
+        sent_by=draft.sent_by if draft else None,
     )
 
 
@@ -212,6 +213,8 @@ def confirm(
         source="coach" if coach else "plan", planned_by=coach.username if coach else None,
     )
     draft.confirmed_at = models.utcnow()
+    if coach is None:
+        _received(draft)
     return schemas.ConfirmResult(added=len(parsed.sessions), replaced=replaced, start_date=replace_from, end_date=end)
 
 
@@ -273,8 +276,15 @@ def _changed(draft: models.PlanDraft, lines: list[str], by: str | None = None) -
     draft.text = "\n".join(lines)
     draft.written_by = by or ("coach" if draft.coach_id else "self")
     draft.confirmed_at = None
-    draft.sent_at = None
+    if draft.coach_id:
+        draft.sent_at = None  # an athlete's own draft keeps saying who sent it until pushed or cleared
     draft.updated_at = models.utcnow()
+
+
+def _received(draft: models.PlanDraft, coach: models.User | None = None) -> None:
+    """The athlete's own draft now comes from `coach`, or (None) from nobody any more."""
+    draft.sent_by = coach.username if coach else None
+    draft.sent_at = models.utcnow() if coach else None
 
 
 def _session_lines(draft: models.PlanDraft, today: datetime.date) -> set[int]:
@@ -334,6 +344,8 @@ def clear(db: Session, user: models.User, coach: models.User | None = None) -> N
     draft = draft_of(db, user, coach)
     if draft is not None:
         _changed(draft, [])
+        if coach is None:
+            _received(draft)
 
 
 class AthleteHasADraft(DraftProblem):
@@ -352,6 +364,7 @@ def send_to_athlete(db: Session, coach: models.User, athlete: models.User, today
     if sessions_in(athlete.plan_draft, today) and not replace:
         raise AthleteHasADraft(f"{athlete.username} already has a draft on their Plan tab.")
     replace_own(db, athlete, mine.start_date, mine.weeks, mine.text, today, by="coach")
+    _received(athlete.plan_draft, coach)
     mine.sent_at = models.utcnow()
     return sessions_in(mine, today)
 
@@ -367,6 +380,7 @@ def replace_own(
     draft.start_date, draft.weeks = monday_of(start), weeks
     draft.summary = None
     _changed(draft, text.splitlines(), by)
+    _received(draft)
 
 
 def sessions_in(draft: models.PlanDraft | None, today: datetime.date) -> int:

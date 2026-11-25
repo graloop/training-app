@@ -15,7 +15,11 @@
 // A coach plans for one of their athletes (picked in "Plan for", shared with
 // the Calendar tab by core/coached.js): the coach's own draft for them, every
 // route with ?athlete_id=; the athlete's planned and done sessions show greyed
-// behind it, and Send copies it to the athlete's own Plan tab.
+// behind it, and Send (the main button) copies it to the athlete's own Plan
+// tab. A draft Claude wrote through the coach's connector says so above the
+// grid, with Claude's summary folded; "Sent ..." shows until the next change.
+// An athlete whose draft came from a coach sees "From {coach}" until they push
+// or clear it.
 // API: GET/DELETE /api/plan/draft, POST /api/plan/draft/sessions, PATCH/DELETE
 // /api/plan/draft/sessions/{line}, POST /api/plan/draft/confirm, POST
 // /api/plan/draft/send, GET /api/coach/athletes(/{id}/calendar).
@@ -23,7 +27,17 @@
 
 import { api } from "../core/api.js";
 import { coachedAthlete, fillAthleteSelect, setCoachedAthlete } from "../core/coached.js";
-import { addDays, fmtDate, fmtHours, fmtLongDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";
+import {
+  addDays,
+  fmtDate,
+  fmtHours,
+  fmtLongDate,
+  fmtMoment,
+  fmtSpan,
+  isoDate,
+  plural,
+  thisMonday,
+} from "../core/format.js";
 import { isSingular, locale, t } from "../core/i18n.js";
 import { getUser } from "../core/session.js";
 import { sportLabel } from "../core/sports.js";
@@ -234,6 +248,7 @@ function renderSummary(draft) {
   clearBtn.disabled = !draft.text.trim();
   sendBtn.classList.toggle("hidden", !athlete);
   sendBtn.disabled = !draft.sessions_count;
+  confirmBtn.classList.toggle("btn-ghost", Boolean(athlete)); // for a coach, Send is the usual way
   if (draft.errors.length) {
     summary.textContent = t("Fix or delete the {lines} listed below first.", {
       lines: plural(draft.errors.length, "line"),
@@ -263,6 +278,37 @@ function renderSummary(draft) {
       );
 }
 
+// Who the draft comes from: Claude (for a coach, with its summary), a coach (for an athlete), and whether it was sent.
+function renderBanners(draft) {
+  const claude = document.getElementById("plan-claude");
+  const fromClaude = Boolean(athlete && draft.text.trim() && (draft.written_by === "claude" || draft.summary));
+  claude.classList.toggle("hidden", !fromClaude);
+  if (fromClaude) {
+    const when = fmtMoment(draft.updated_at);
+    document.getElementById("plan-claude-title").textContent =
+      draft.written_by === "claude"
+        ? t("Proposed by Claude · {when}", { when })
+        : t("Proposed by Claude, edited by you · {when}", { when });
+    document.getElementById("plan-claude-summary").textContent = draft.summary || t("Claude left no summary.");
+  }
+  const from = document.getElementById("plan-from");
+  const fromCoach = Boolean(!athlete && draft.sent_by && draft.text.trim());
+  from.classList.toggle("hidden", !fromCoach);
+  if (fromCoach)
+    from.textContent = t("From {coach}, {date}. Adjust it, then Push on main calendar.", {
+      coach: draft.sent_by,
+      date: fmtMoment(draft.sent_at),
+    });
+  const sent = document.getElementById("plan-sent");
+  const wasSent = Boolean(athlete && draft.sent_at);
+  sent.classList.toggle("hidden", !wasSent);
+  if (wasSent)
+    sent.textContent = t("Sent {when} · {sessions}", {
+      when: fmtMoment(draft.sent_at),
+      sessions: plural(draft.sessions_count, "session"),
+    });
+}
+
 function applyDraft(draft) {
   planDraft = draft;
   document.getElementById("plan-range").textContent = draft.text.trim()
@@ -273,6 +319,7 @@ function applyDraft(draft) {
     end: fmtLongDate(isoDate(viewEnd())),
   });
   renderDraftErrors(draft.errors);
+  renderBanners(draft);
   renderGrid(draft);
   renderSummary(draft);
 }
@@ -421,7 +468,7 @@ sendBtn.addEventListener("click", async () => {
       `/api/plan/draft/send?athlete_id=${athlete.id}&today=${today()}${replace ? "&replace=true" : ""}`,
       { method: "POST" },
     );
-    resetButtons();
+    applyDraft(await api(draftUrl()));
     showStatus(
       confirmStatus,
       t("Sent: {sessions} on {name}'s Plan tab, for them to adjust and push.", {

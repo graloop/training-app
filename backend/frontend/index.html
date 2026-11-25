@@ -370,13 +370,21 @@
             <button id="plan-prev" type="button" class="btn-ghost" aria-label="Show 2 weeks earlier">← Earlier</button>
             <button id="plan-this-week" type="button" class="btn-ghost">This week</button>
             <button id="plan-next" type="button" class="btn-ghost" aria-label="Show 2 weeks later">Later →</button>
-            <button id="plan-clear" type="button" class="btn-ghost">Clear</button>
-            <button id="plan-send" type="button" class="btn-ghost hidden">Send to their Plan tab</button>
+            <button id="plan-send" type="button" class="hidden">Send to their Plan tab</button>
             <button id="draft-confirm" type="button">Push on main calendar</button>
+            <button id="plan-clear" type="button" class="btn-ghost">Clear</button>
             <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
           </div>
         </div>
         <p id="plan-view-range" class="subtle"></p>
+        <div id="plan-claude" class="plan-banner hidden">
+          <details>
+            <summary id="plan-claude-title"></summary>
+            <p id="plan-claude-summary"></p>
+          </details>
+        </div>
+        <p id="plan-from" class="plan-banner hidden"></p>
+        <p id="plan-sent" class="status ok hidden"></p>
         <p id="confirm-summary" class="hint"></p>
         <p id="confirm-status" class="status hidden" role="status"></p>
         <div id="draft-errors" class="draft-errors hidden" role="alert"></div>

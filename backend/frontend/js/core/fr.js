@@ -433,6 +433,22 @@ export const FR = {
   "Sent: {sessions} on {name}'s Plan tab, for them to adjust and push.":
     "Envoyé : {sessions} dans l'onglet Plan de {name}, pour qu'il l'ajuste et le pousse.",
   "Click again: replaces the draft {name} has": "Cliquez encore : remplace le brouillon de {name}",
+  "Garmin not connected": "Garmin non connecté",
+  "{synced}: stale data": "{synced} : données anciennes",
+  "No sync for 3 days: their Garmin may need reconnecting, in their Settings.":
+    "Aucune synchro depuis 3 jours : son Garmin doit peut-être être reconnecté, dans ses Paramètres.",
+  "No draft": "Aucun brouillon",
+  "Sent {when} · {sessions}": "Envoyé {when} · {sessions}",
+  "Proposed by Claude · {when} · {sessions}": "Proposé par Claude · {when} · {sessions}",
+  "Edited by you · {when} · {sessions}": "Modifié par vous · {when} · {sessions}",
+  "recovery shared": "récupération partagée",
+  "{name} shares their sleep and recovery with you.": "{name} partage son sommeil et sa récupération avec vous.",
+  "Open {name}'s draft on the Plan tab": "Ouvrir le brouillon de {name} dans l'onglet Plan",
+  "Proposed by Claude · {when}": "Proposé par Claude · {when}",
+  "Proposed by Claude, edited by you · {when}": "Proposé par Claude, modifié par vous · {when}",
+  "Claude left no summary.": "Claude n'a laissé aucun résumé.",
+  "From {coach}, {date}. Adjust it, then Push on main calendar.":
+    "De {coach}, {date}. Ajustez-le, puis appuyez sur Pousser au calendrier.",
 
   // --- Admin dashboard ---
   Rename: "Renommer",

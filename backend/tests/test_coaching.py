@@ -347,3 +347,53 @@ def test_a_session_the_athlete_edits_is_no_longer_the_coachs(client, auth):
     client.patch(f"/api/planned/{planned['id']}", json={"planned_duration_minutes": 30}, headers=auth)
     edited = client.get("/api/calendar", params=span, headers=auth).json()["days"][0]["planned"][0]
     assert (edited["source"], edited["planned_by"]) == ("manual", None)
+
+
+# --- Sent drafts: "Sent ..." for the coach, "From {coach}" for the athlete -------------------
+
+
+def test_sending_marks_both_drafts_until_the_next_change(client, auth):
+    coach = _coach(client)
+    _link(client, coach)
+    athlete = _id("athlete")
+    mine = f"/api/plan/draft?athlete_id={athlete}"
+    client.post(f"/api/plan/draft/sessions?athlete_id={athlete}", json=_session(day(1)), headers=coach)
+    assert client.get("/api/coach/athletes", headers=coach).json()["athletes"][0]["draft"]["written_by"] == "coach"
+    assert client.post(f"/api/plan/draft/send?athlete_id={athlete}", headers=coach).status_code == 200
+
+    sent = client.get(mine, headers=coach).json()
+    assert sent["sent_at"] is not None
+    listed = client.get("/api/coach/athletes", headers=coach).json()["athletes"][0]["draft"]
+    assert listed["sent_at"] is not None and listed["sessions"] == 1
+    own = client.get("/api/plan/draft", headers=auth).json()
+    assert own["sent_by"] == "coach" and own["sent_at"] is not None
+
+    # The athlete adjusting it keeps "From coach"; the coach changing theirs clears "Sent".
+    client.post("/api/plan/draft/sessions", json=_session(day(2), "cycling"), headers=auth)
+    assert client.get("/api/plan/draft", headers=auth).json()["sent_by"] == "coach"
+    client.post(f"/api/plan/draft/sessions?athlete_id={athlete}", json=_session(day(3)), headers=coach)
+    assert client.get(mine, headers=coach).json()["sent_at"] is None
+
+    # Pushing (or clearing) it is the athlete's: "From coach" goes.
+    assert client.post("/api/plan/draft/confirm", headers=auth).status_code == 200
+    own = client.get("/api/plan/draft", headers=auth).json()
+    assert (own["sent_by"], own["sent_at"]) == (None, None)
+
+
+def test_clearing_a_received_draft_forgets_who_sent_it(client, auth):
+    coach = _coach(client)
+    _link(client, coach)
+    athlete = _id("athlete")
+    client.post(f"/api/plan/draft/sessions?athlete_id={athlete}", json=_session(day(1)), headers=coach)
+    client.post(f"/api/plan/draft/send?athlete_id={athlete}", headers=coach)
+    assert client.delete("/api/plan/draft", headers=auth).json()["sent_by"] is None
+
+
+def test_the_coach_list_has_no_draft_until_one_holds_something(client, auth):
+    coach = _coach(client)
+    _link(client, coach)
+    assert client.get("/api/coach/athletes", headers=coach).json()["athletes"][0]["draft"] is None
+
+
+def test_sent_by_column_can_be_added_to_an_existing_database():
+    assert models.PlanDraft.__table__.c.sent_by.nullable

@@ -50,7 +50,10 @@ Chrome** extension also works: it edits the page like you would.
   - **Athletes**: adds an athlete by username (it works straight away, no
     approval; unknown names are limited like logins, so names can't be
     guessed), sees each one's next objective, this week's planned and done
-    hours and last Garmin sync, and opens their profile: objectives,
+    hours, last Garmin sync (flagged "stale" after 3 days, or "not
+    connected"), whether they share recovery, and where the coach's draft for
+    them stands ("Proposed by Claude", "Edited by you" or "Sent", with when;
+    a click opens it on the Plan tab), and opens their profile: objectives,
     benchmarks and zones, Garmin's zones and records, rule set. Their sleep,
     recovery, resting HR and health notes only if the athlete shares them
     with that coach (off by default).
@@ -59,10 +62,13 @@ Chrome** extension also works: it edits the page like you would.
     coach adds, edits, moves or deletes their planned sessions there; those
     say "by {coach}" on the athlete's calendar.
   - **Plan**: the coach's own draft for the athlete (the athlete doesn't see
-    it), with the athlete's planned and done sessions greyed behind it, then
-    either **Push on {athlete}'s calendar** (also "by {coach}") or **Send to
-    {athlete}'s Plan tab** (it replaces the athlete's own draft, after a
-    second click if they had one; the athlete adjusts it and pushes it).
+    it), with the athlete's planned and done sessions greyed behind it. A
+    draft Claude wrote says "Proposed by Claude" above the grid, with
+    Claude's summary folded under it. Then **Send to {athlete}'s Plan tab**,
+    the main button (it replaces the athlete's own draft, after a second
+    click if they had one; "Sent {when}" shows until the next change), or
+    **Push on {athlete}'s calendar** (also "by {coach}"). The athlete sees
+    "From {coach}" on their Plan tab until they push or clear it.
 
   An athlete sees their coaches in Settings and can remove one; a coach can
   remove an athlete. An athlete can have several coaches; a coach or an

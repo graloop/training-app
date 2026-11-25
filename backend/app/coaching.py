@@ -30,7 +30,7 @@ import datetime
 from sqlalchemy.orm import Session
 
 from . import accounts, avatars, models, schemas
-from .planning import objectives
+from .planning import drafts, objectives
 from .planning.basics import monday_of
 from .planning.training_log import garmin_profile_lines, rule_set_text
 
@@ -203,7 +203,8 @@ def athlete_summary(
     db: Session, athlete: models.User, today: datetime.date, coach: models.User | None = None
 ) -> schemas.CoachAthleteOut:
     """One line of the coach's list: the next dated objective, this week's hours, the
-    last sync and whether it's stale, and whether recovery is shared with `coach`."""
+    last sync and whether it's stale, and, for `coach`, whether recovery is shared
+    and where their draft for this athlete stands."""
     upcoming = [o for o in objectives.listed(db, athlete) if o.event_date and o.event_date >= today]
     main = f"{upcoming[0].title} · {upcoming[0].event_date.isoformat()}" if upcoming else None
     planned, done = _week_minutes(db, athlete, today)
@@ -217,6 +218,19 @@ def athlete_summary(
         garmin_synced_at=athlete.garmin_synced_at,
         garmin_state=garmin_state(athlete),
         share_health=bool(coach and can_see_health(db, coach, athlete)),
+        draft=_draft_state(db, athlete, coach, today) if coach else None,
+    )
+
+
+def _draft_state(
+    db: Session, athlete: models.User, coach: models.User, today: datetime.date
+) -> schemas.CoachDraftState | None:
+    draft = drafts.draft_of(db, athlete, coach)
+    if draft is None or not draft.text.strip():
+        return None
+    return schemas.CoachDraftState(
+        written_by=draft.written_by, updated_at=draft.updated_at, sent_at=draft.sent_at,
+        sessions=drafts.sessions_in(draft, today),
     )
 
 

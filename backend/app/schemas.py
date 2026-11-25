@@ -449,7 +449,8 @@ class DraftOut(BaseModel):
     written_by: str | None = None  # the last change: "claude", "coach" or "self"
     summary: str | None = None  # Claude's note for the reviewer (PlanDraft.summary)
     updated_at: UtcDatetime | None = None
-    sent_at: UtcDatetime | None = None  # a coach's draft: last sent to the athlete's Plan tab
+    sent_at: UtcDatetime | None = None  # a coach's draft: last sent; your own: when a coach's arrived
+    sent_by: str | None = None  # your own draft: the coach who sent it, until you push or clear it
 
 
 class ConfirmResult(BaseModel):
@@ -499,6 +500,15 @@ class CoachAthleteAdd(BaseModel):
     username: str = Field(min_length=1, max_length=255)
 
 
+class CoachDraftState(BaseModel):
+    """Where the coach's draft for one athlete stands, for the coach's list."""
+
+    written_by: str | None  # the last change: "claude" or "coach"
+    updated_at: UtcDatetime | None
+    sent_at: UtcDatetime | None
+    sessions: int
+
+
 class CoachAthleteOut(BaseModel):
     """One of a coach's athletes, in the list on the coach's Athlete tab."""
 
@@ -511,6 +521,7 @@ class CoachAthleteOut(BaseModel):
     garmin_synced_at: UtcDatetime | None
     garmin_state: str = "ok"  # "ok", "stale" (no sync for 3 days) or "not connected" (coaching.garmin_state)
     share_health: bool = False  # the athlete shares sleep and recovery with this coach
+    draft: CoachDraftState | None = None  # the coach's draft for them, if any
 
 
 class CoachAthletesResponse(BaseModel):

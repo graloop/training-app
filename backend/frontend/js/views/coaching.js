@@ -1,6 +1,8 @@
 // A coach's Athletes tab: the list (photo, next objective, this week's hours,
-// last Garmin sync), adding one by username, and one athlete's profile as a
-// coach sees it (objectives, zones, rule set: never sleep or health notes),
+// last Garmin sync with a warning when stale or not connected, whether they
+// share recovery, and where the coach's draft for them stands, which opens the
+// Plan tab on them), adding one by username, and one athlete's profile as a
+// coach sees it (objectives, zones, rule set; health notes only if shared),
 // with Calendar and Plan, which open those tabs on that athlete (core/coached.js).
 // Only shown to coaches. An athlete's own coaches are in Settings (views/settings.js).
 // API: GET/POST /api/coach/athletes, GET/DELETE /api/coach/athletes/{id}.
@@ -9,7 +11,7 @@
 import { api } from "../core/api.js";
 import { loadCoachedAthletes, setCoachedAthlete } from "../core/coached.js";
 import { showAvatar } from "../core/avatars.js";
-import { fmtHours, isoDate } from "../core/format.js";
+import { fmtHours, fmtMoment, isoDate, plural } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
 import { showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
@@ -25,6 +27,32 @@ function syncedText(when) {
   if (!when) return t("never synced with Garmin");
   const date = new Date(when).toLocaleDateString(locale(), { month: "short", day: "numeric" });
   return t("synced {date}", { date });
+}
+
+// The Garmin part of an athlete's line, with a warning when a plan would be built on old data.
+function garminNote(a) {
+  const note = document.createElement("span");
+  if (a.garmin_state === "not connected") {
+    note.className = "warn";
+    note.textContent = t("Garmin not connected");
+  } else if (a.garmin_state === "stale") {
+    note.className = "warn";
+    note.textContent = t("{synced}: stale data", { synced: syncedText(a.garmin_synced_at) });
+    note.title = t("No sync for 3 days: their Garmin may need reconnecting, in their Settings.");
+  } else {
+    note.textContent = syncedText(a.garmin_synced_at);
+  }
+  return note;
+}
+
+// Where the coach's draft for this athlete stands: who changed it last, and whether it was sent.
+export function draftStateText(draft) {
+  if (!draft) return t("No draft");
+  const sessions = plural(draft.sessions, "session");
+  if (draft.sent_at) return t("Sent {when} · {sessions}", { when: fmtMoment(draft.sent_at), sessions });
+  if (draft.written_by === "claude")
+    return t("Proposed by Claude · {when} · {sessions}", { when: fmtMoment(draft.updated_at), sessions });
+  return t("Edited by you · {when} · {sessions}", { when: fmtMoment(draft.updated_at), sessions });
 }
 
 function renderList(athletes) {
@@ -53,12 +81,27 @@ function renderList(athletes) {
     detail.textContent = [
       a.main_objective || t("no objective"),
       t("this week {done} of {planned}", { done: fmtHours(a.done_minutes), planned: fmtHours(a.planned_minutes) }),
-      syncedText(a.garmin_synced_at),
+      "",
     ].join(" · ");
+    detail.appendChild(garminNote(a));
+    if (a.share_health) {
+      const shared = document.createElement("span");
+      shared.className = "shared-badge";
+      shared.textContent = t("recovery shared");
+      shared.title = t("{name} shares their sleep and recovery with you.", { name: a.username });
+      detail.append(" · ", shared);
+    }
     text.append(name, detail);
     open.append(face, text);
     open.addEventListener("click", () => openAthlete(a.id));
-    item.appendChild(open);
+    const draft = document.createElement("button");
+    draft.type = "button";
+    draft.className = `btn-link draft-state${a.draft && a.draft.written_by === "claude" && !a.draft.sent_at ? " new" : ""}`;
+    draft.textContent = draftStateText(a.draft);
+    draft.setAttribute("aria-label", t("Open {name}'s draft on the Plan tab", { name: a.username }));
+    draft.addEventListener("click", () => planFor(a.id));
+    item.className = "athlete-row";
+    item.append(open, draft);
     list.appendChild(item);
   }
 }

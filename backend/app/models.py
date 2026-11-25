@@ -299,7 +299,10 @@ class PlanDraft(Base):
     # Never sent to the athlete with the draft, never put in session notes.
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     # A coach's draft: when it was last sent to the athlete's Plan tab; cleared by any later change.
+    # The athlete's own draft: when a coach's draft arrived, and from whom (sent_by), until the
+    # athlete pushes or clears it (the "From {coach}" banner).
     sent_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sent_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     user: Mapped["User"] = relationship(foreign_keys=[user_id], overlaps="plan_draft,drafts_as_athlete")
 

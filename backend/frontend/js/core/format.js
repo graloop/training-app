@@ -49,6 +49,17 @@ export function fmtSpan(startIso, endIso) {
   });
 }
 
+// "Tue, Nov 24, 14:02": a moment from the server (an ISO date and time, UTC), in local time.
+export function fmtMoment(isoDateTime) {
+  return new Date(isoDateTime).toLocaleString(locale(), {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 // "45 min", "1 h", "1 h 05"
 export function fmtHours(minutes) {
   const total = Math.round(minutes || 0);
