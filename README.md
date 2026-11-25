@@ -70,8 +70,10 @@ Chrome** extension also works: it edits the page like you would.
     **Push on {athlete}'s calendar** (also "by {coach}"). The athlete sees
     "From {coach}" on their Plan tab until they push or clear it.
 
-  An athlete sees their coaches in Settings and can remove one; a coach can
-  remove an athlete. An athlete can have several coaches; a coach or an
+  An athlete sees their coaches in Settings: what each one sees, a **Share
+  sleep and recovery with {coach}** switch (off by default; it covers that
+  coach's Claude too, and the line under it says so), and Remove. A coach
+  can remove an athlete. An athlete can have several coaches; a coach or an
   admin can't be coached. Turning an athlete into a coach keeps their
   training data, out of sight, should they go back to being an athlete (the
   background sync skips them meanwhile). A coach account can connect Claude
@@ -760,8 +762,8 @@ New nullable columns are added to existing databases on startup
 | `/api/coach/athletes/{id}/calendar` | GET | Coach: their planned and done sessions `?start=&end=`, with sleep only if they share it |
 | `/api/coach/athletes/{id}/planned` | POST | Coach: plan a session on their calendar (saved with `planned_by` = you) |
 | `/api/coach/athletes/{id}/planned/{plan_id}` | PATCH/DELETE | Coach: change (a new `date` moves it) or remove one of their planned sessions |
-| `/api/coaches`           | GET    | Your coaches                                                   |
-| `/api/coaches/{link_id}` | DELETE | Remove one of your coaches                                     |
+| `/api/coaches`           | GET    | Your coaches, each with `share_health`                         |
+| `/api/coaches/{link_id}` | PATCH/DELETE | `{share_health}`: share your sleep and recovery with that coach, or stop (athlete only) / remove one of your coaches |
 | `/api/plan/draft…?athlete_id=` | | A coach planning for one of their athletes: the same draft routes (GET, DELETE, `/sessions`, `/confirm`) on the coach's draft for them; 404 without a link |
 | `/api/plan/draft/send`   | POST   | Coach: `?athlete_id=` copies your draft for them into their own draft; 409 when they have one, `&replace=true` replaces it |
 

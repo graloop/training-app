@@ -545,6 +545,11 @@ class CoachOut(BaseModel):
     id: int
     username: str
     avatar_url: str | None
+    share_health: bool = False  # you share your sleep and recovery with this coach
+
+
+class CoachShare(BaseModel):
+    share_health: bool
 
 
 class CoachesResponse(BaseModel):

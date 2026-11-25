@@ -397,3 +397,24 @@ def test_the_coach_list_has_no_draft_until_one_holds_something(client, auth):
 
 def test_sent_by_column_can_be_added_to_an_existing_database():
     assert models.PlanDraft.__table__.c.sent_by.nullable
+
+
+# --- The athlete's sharing switch --------------------------------------------------------
+
+
+def test_only_the_athlete_turns_sharing_on_and_off(client, auth):
+    coach = _coach(client)
+    _link(client, coach)
+    link_id = client.get("/api/coaches", headers=auth).json()["coaches"][0]["link_id"]
+    assert client.get("/api/coaches", headers=auth).json()["coaches"][0]["share_health"] is False
+    # The coach can't flip it, nor can another athlete.
+    assert client.patch(f"/api/coaches/{link_id}", json={"share_health": True}, headers=coach).status_code == 403
+    other = make_user(client, "friend", garmin=False)
+    assert client.patch(f"/api/coaches/{link_id}", json={"share_health": True}, headers=other).status_code == 404
+    assert client.get("/api/coach/athletes", headers=coach).json()["athletes"][0]["share_health"] is False
+
+    res = client.patch(f"/api/coaches/{link_id}", json={"share_health": True}, headers=auth)
+    assert res.status_code == 200 and res.json()["share_health"] is True
+    assert client.get("/api/coach/athletes", headers=coach).json()["athletes"][0]["share_health"] is True
+    assert client.patch(f"/api/coaches/{link_id}", json={"share_health": False}, headers=auth).json()["share_health"] is False
+    assert client.get("/api/coach/athletes", headers=coach).json()["athletes"][0]["share_health"] is False

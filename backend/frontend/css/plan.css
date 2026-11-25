@@ -40,7 +40,7 @@
 #plan-send:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Where the draft comes from: Claude (a coach's draft, summary folded) or a coach (an athlete's own). */
-.plan-banner { margin: 10px 0 0; padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--bg); font-size: 0.9rem; }
+.plan-banner { margin: 10px 0 8px; padding: 8px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--bg); font-size: 0.9rem; }
 .plan-banner summary { cursor: pointer; font-weight: 600; }
 .plan-banner details p { margin: 8px 0 0; white-space: pre-wrap; }
 #plan-sent { margin: 8px 0 0; }

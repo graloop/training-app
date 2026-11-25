@@ -415,8 +415,16 @@ export const FR = {
   "Run zones": "Zones de course",
   "CSS (min/100 m)": "CSS (min/100 m)",
   "My coaches": "Mes coachs",
-  "They see your calendar, objectives, zones and rule set (never your sleep or health notes), and can plan for you.":
-    "Ils voient votre calendrier, vos objectifs, vos zones et vos règles (jamais votre sommeil ni vos notes de santé), et peuvent planifier pour vous.",
+  "They see your calendar, objectives, zones and rule set, and can plan for you. Your sleep, recovery and health notes only if you share them.":
+    "Ils voient votre calendrier, vos objectifs, vos zones et vos règles, et peuvent planifier pour vous. Votre sommeil, votre récupération et vos notes de santé seulement si vous les partagez.",
+  "Can see: sessions, objectives, zones, rule set.": "Voit : séances, objectifs, zones, règles.",
+  "Can see: sessions, objectives, zones, rule set, sleep and recovery, health notes.":
+    "Voit : séances, objectifs, zones, règles, sommeil et récupération, notes de santé.",
+  "Share sleep and recovery with {name}": "Partager mon sommeil et ma récupération avec {name}",
+  "Claude may read this data to prepare {name}'s plans for you.":
+    "Claude peut lire ces données pour préparer les plans de {name} pour vous.",
+  "{name} now sees your sleep and recovery.": "{name} voit maintenant votre sommeil et votre récupération.",
+  "{name} no longer sees your sleep and recovery.": "{name} ne voit plus votre sommeil ni votre récupération.",
   "Remove {name} as your coach": "Retirer {name} de vos coachs",
   "Click again to remove": "Cliquez encore pour retirer",
   "{name} is no longer your coach.": "{name} n'est plus votre coach.",

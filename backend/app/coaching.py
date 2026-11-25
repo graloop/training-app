@@ -149,6 +149,15 @@ def remove_athlete(db: Session, coach: models.User, athlete_id: int) -> bool:
     return bool(removed)
 
 
+def set_sharing(db: Session, athlete: models.User, link_id: int, share: bool) -> models.CoachLink | None:
+    """The athlete's switch: share sleep and recovery with that coach, or stop.
+    None when the link isn't theirs. The caller commits."""
+    link = db.query(models.CoachLink).filter_by(id=link_id, athlete_id=athlete.id).first()
+    if link is not None:
+        link.share_health = share
+    return link
+
+
 def remove_coach(db: Session, athlete: models.User, link_id: int) -> bool:
     """The athlete removes one of their coaches (and that coach's draft for them). The caller commits."""
     link = db.query(models.CoachLink).filter_by(id=link_id, athlete_id=athlete.id).first()

@@ -196,7 +196,9 @@ an admin); the page's own session tokens don't open `/mcp`.
   it (`PlanDraft.written_by`) and clears `confirmed_at` and `sent_at`, so
   `get_draft` sees the coach's page edits and the page sees Claude's.
 - **The privacy filter.** `coaching.can_see_health` (the link's
-  `share_health`, off by default) is the one place that decides. Off, the
+  `share_health`, off by default, which only the athlete flips: Settings,
+  `PATCH /api/coaches/{link_id}`, `coaching.set_sharing`) is the one place
+  that decides. Off, the
   connector gets `build_overview(link=...)`, `build_log(private=True)` and
   `session_text(private=True)`, which load no `SleepRecord`, strip the
   recovery numbers off `DailyMetrics` (`_training_only`), leave out the

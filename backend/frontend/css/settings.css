@@ -40,6 +40,11 @@ dialog.settings-dialog::backdrop { background: rgba(15, 23, 42, 0.35); }
 .settings-section .hint { margin: 0; font-size: 0.8rem; color: var(--muted); }
 .settings-section form button { align-self: flex-start; margin-top: 4px; }
 .settings-section .status, .settings-section .error { margin: 0; }
+/* My coaches: each coach, what they see, the sharing switch. */
+.coach-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
+.coach-item + .coach-item { border-top: 1px solid var(--border); }
+.share-toggle { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 0.85rem; color: var(--text); }
+.share-toggle input { width: auto; margin: 0; }
 
 .avatar-row { display: flex; align-items: center; gap: 12px; }
 .file-button { margin: 0; color: var(--text); cursor: pointer; }
