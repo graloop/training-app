@@ -3,11 +3,18 @@
 // API: GET /api/calendar?start=&end= (backend/app/routers/calendar.py); planned
 // sessions are added and edited in session-dialog.js. Markup: #tab-calendar.
 // Styles: css/calendar.css. loadCalendar() is also called after every sync.
+//
+// A coach sees one of their athletes' calendars instead (picked in #cal-for,
+// shared with the Plan tab by core/coached.js): GET /api/coach/athletes/{id}/
+// calendar, without sleep, and the sessions they add or change go to
+// /api/coach/athletes/{id}/planned (shown "by <coach>" to the athlete).
 
 import { api } from "../core/api.js";
+import { coachedAthlete, fillAthleteSelect, setCoachedAthlete } from "../core/coached.js";
 import { addDays, fmtHM, fmtHours, fmtLongDate, isoDate, plural, thisMonday } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
 import { activityIcon, sportLabel } from "../core/sports.js";
+import { getUser } from "../core/session.js";
 import { showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
 import { addButton, addNotes, dayCell, gridHead, makeEditable, makeEntry } from "../core/week-grid.js";
@@ -316,7 +323,9 @@ function renderCalendar(data) {
   grid.innerHTML = "";
   const today = isoDate(new Date());
   gridHead(grid);
-  const edit = (date, planned) => () => openSessionDialog(date, planned, loadCalendar);
+  const store = coachStore();
+  const edit = (date, planned) => () =>
+    store ? openSessionDialog(date, planned, loadCalendar, store) : openSessionDialog(date, planned, loadCalendar);
 
   for (let i = 0; i < data.days.length; i += 7) {
     const week = data.days.slice(i, i + 7);
@@ -369,15 +378,42 @@ function renderCalendar(data) {
   }
 }
 
+// A coach's changes go to the athlete's calendar (null for an athlete: their own).
+function coachStore() {
+  const athlete = isCoach() && coachedAthlete();
+  if (!athlete) return null;
+  const base = `/api/coach/athletes/${athlete.id}/planned`;
+  return {
+    add: (body) => api(base, { method: "POST", body: JSON.stringify(body) }),
+    update: (existing, body) => api(`${base}/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    remove: (existing) => api(`${base}/${existing.id}`, { method: "DELETE" }),
+  };
+}
+
+const isCoach = () => Boolean(getUser() && getUser().is_coach);
+
 export async function loadCalendar() {
   const { start, end } = calendarRange();
+  const coach = isCoach();
+  if (coach) {
+    fillAthleteSelect(document.getElementById("cal-for"));
+    const none = !coachedAthlete();
+    document.getElementById("cal-empty").classList.toggle("hidden", !none);
+    if (none) {
+      document.getElementById("calendar-grid").innerHTML = "";
+      return;
+    }
+  }
+  const url = coach
+    ? `/api/coach/athletes/${coachedAthlete().id}/calendar?start=${start}&end=${end}`
+    : `/api/calendar?start=${start}&end=${end}`;
   let data;
   try {
-    data = await api(`/api/calendar?start=${start}&end=${end}`);
+    data = await api(url);
   } catch (err) {
     if (err.status !== 401)
       showStatus(
-        document.getElementById("sync-status"),
+        document.getElementById(coach ? "cal-empty" : "sync-status"), // a coach has no sync line
         t("Couldn't load the calendar: {error}", { error: err.message }),
         true,
       );
@@ -401,3 +437,8 @@ for (const [id, change] of [
     loadCalendar();
   });
 }
+
+document.getElementById("cal-for").addEventListener("change", (e) => {
+  setCoachedAthlete(Number(e.target.value));
+  loadCalendar();
+});

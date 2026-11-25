@@ -53,6 +53,7 @@ def connected_accounts() -> list[int]:
             user_id for (user_id,) in db.query(models.User.id).filter(
                 models.User.garmin_session_encrypted.is_not(None),
                 (models.User.is_admin.is_(False)) | (models.User.is_admin.is_(None)),
+                (models.User.is_coach.is_(False)) | (models.User.is_coach.is_(None)),  # an old Garmin link stays unused
             )
         ]
 
@@ -82,7 +83,7 @@ def sync_account(user_id: int, today: datetime.date | None = None) -> bool:
     try:
         with SessionLocal() as db:
             user = db.get(models.User, user_id)
-            if user is None or not user.garmin_session_encrypted or user.is_admin:
+            if user is None or not user.garmin_session_encrypted or user.is_admin or user.is_coach:
                 return False
             try:
                 api = garmin_client.get_authenticated_client(decrypt_text(user.garmin_session_encrypted))

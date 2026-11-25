@@ -27,7 +27,7 @@
       <button id="tab-btn-calendar" type="button" class="tab active" aria-current="page">Calendar</button>
       <button id="tab-btn-athlete" type="button" class="tab">Athlete</button>
       <button id="tab-btn-plan" type="button" class="tab">Plan</button>
-      <button id="tab-btn-import" type="button" class="tab">Import</button>
+      <button id="tab-btn-import" type="button" class="tab athlete-only">Import</button>
     </nav>
     <!-- Logged in: night mode, then the badge with your name and the gear, which both open Settings. -->
     <div id="user-actions" class="topbar-actions hidden">
@@ -194,7 +194,7 @@
     <!-- Calendar tab: views/calendar.js (grid), views/garmin.js (Connect panel,
          Sync), views/session-dialog.js (the dialog at the bottom). css/calendar.css -->
     <div id="tab-calendar">
-    <section id="garmin-panel" class="panel hidden" aria-labelledby="garmin-title">
+    <section id="garmin-panel" class="panel hidden athlete-only" aria-labelledby="garmin-title">
       <h2 id="garmin-title">Connect your Garmin account</h2>
       <p id="garmin-reason" class="hint"></p>
       <p class="hint">Your Garmin password is sent once to Garmin to log in and is never stored; only an encrypted session is kept on this server. Accounts with two-step verification (MFA) can't connect yet.</p>
@@ -212,14 +212,17 @@
       <div class="panel-header">
         <h2 id="calendar-title">Calendar</h2>
         <div class="calendar-nav">
+          <!-- A coach looks at one of their athletes' calendars (views/calendar.js). -->
+          <label id="cal-for-field" class="plan-for coach-only">Athlete <select id="cal-for"></select></label>
           <button id="cal-prev" type="button" class="btn-ghost" aria-label="Show 2 weeks earlier">← Earlier</button>
           <button id="cal-today" type="button" class="btn-ghost">Today</button>
           <button id="cal-next" type="button" class="btn-ghost" aria-label="Show 2 weeks later">Later →</button>
-          <button id="sync-btn" type="button">Sync with Garmin</button>
+          <button id="sync-btn" type="button" class="athlete-only">Sync with Garmin</button>
         </div>
       </div>
       <p id="cal-range" class="subtle"></p>
-      <p id="sync-status" class="status hidden" role="status"></p>
+      <p id="sync-status" class="status hidden athlete-only" role="status"></p>
+      <p id="cal-empty" class="hint coach-only hidden">Add an athlete on the Athletes tab to see their calendar.</p>
       <div class="calendar-scroll">
         <div id="calendar-grid" class="calendar-grid"></div>
       </div>
@@ -236,10 +239,10 @@
     <!-- Athlete tab: views/objectives.js (objectives), views/athlete.js (numbers,
          Garmin's view). css/athlete.css -->
     <div id="tab-athlete" class="hidden">
-      <p class="hint plan-intro">Who you are as an athlete: your objectives, your tested numbers and zones, and what Garmin knows. Everything here is read with your history when a plan is written. Leave a box empty if you don't know it yet.</p>
+      <p class="hint plan-intro athlete-only">Who you are as an athlete: your objectives, your tested numbers and zones, and what Garmin knows. Everything here is read with your history when a plan is written. Leave a box empty if you don't know it yet.</p>
 
-      <!-- A coach's athletes: views/coaching.js. Hidden for everyone else. -->
-      <section id="athletes-panel" class="panel hidden" aria-labelledby="athletes-title">
+      <!-- A coach's athletes: views/coaching.js. Only for coaches (body[data-role]). -->
+      <section id="athletes-panel" class="panel coach-only" aria-labelledby="athletes-title">
         <div class="panel-header">
           <h2 id="athletes-title">My athletes</h2>
           <form id="athlete-add-form" class="inline-form" novalidate>
@@ -254,6 +257,7 @@
           <div class="panel-header">
             <h3 id="athlete-view-name"></h3>
             <div class="calendar-nav">
+              <button id="athlete-view-calendar" type="button" class="btn-ghost">Calendar</button>
               <button id="athlete-view-plan" type="button">Plan</button>
               <button id="athlete-view-remove" type="button" class="btn-link danger">Remove</button>
               <button id="athlete-view-close" type="button" class="btn-ghost">Close</button>
@@ -270,7 +274,7 @@
         </div>
       </section>
 
-      <section id="objectives-panel" class="panel" aria-labelledby="objectives-title">
+      <section id="objectives-panel" class="panel athlete-only" aria-labelledby="objectives-title">
         <div class="panel-header">
           <h2 id="objectives-title">Objectives</h2>
           <button id="objective-add" type="button" class="btn-ghost">+ Add objective</button>
@@ -278,7 +282,7 @@
         <div id="objectives-list" class="objectives-list"></div>
       </section>
 
-      <section class="panel" aria-labelledby="profile-title">
+      <section class="panel athlete-only" aria-labelledby="profile-title">
         <h2 id="profile-title">Benchmarks and zones</h2>
         <p class="hint">Your own tested numbers. They override Garmin's estimates when a plan is written.</p>
         <form id="profile-form" novalidate>
@@ -333,13 +337,13 @@
         </form>
       </section>
 
-      <section class="panel" aria-labelledby="garmin-profile-title">
+      <section class="panel athlete-only" aria-labelledby="garmin-profile-title">
         <h2 id="garmin-profile-title">From Garmin</h2>
         <p class="hint">Zones, thresholds, records and training status as Garmin has them, refreshed on each sync. You can't edit them here: enter your own numbers above instead.</p>
         <pre id="athlete-garmin" class="log-text" tabindex="0" aria-labelledby="garmin-profile-title"></pre>
       </section>
 
-      <section class="panel" aria-labelledby="rules-title">
+      <section class="panel athlete-only" aria-labelledby="rules-title">
         <h2 id="rules-title">Rule set</h2>
         <p class="hint">The rules every plan follows: when you can train, school and work schedule, exam periods, holidays and travel, the weekly rhythm, rules of thumb (rest when resting HR is up, long run on Sunday…). Claude reads it before writing a plan.</p>
         <textarea id="rules-text" aria-labelledby="rules-title" rows="10" maxlength="20000" placeholder="e.g. Free on weekday mornings and Sunday. Pool closed on Saturdays. Exams the first two weeks of December: deload. One rest day a week. Easy runs stay conversational. If resting HR is 5+ bpm above normal, swap the session for rest."></textarea>
@@ -362,13 +366,17 @@
             <p id="plan-range" class="subtle"></p>
           </div>
           <div class="calendar-nav">
-            <label id="plan-for-field" class="plan-for hidden">Plan for <select id="plan-for"></select></label>
+            <label id="plan-for-field" class="plan-for coach-only">Plan for <select id="plan-for"></select></label>
+            <button id="plan-prev" type="button" class="btn-ghost" aria-label="Show 2 weeks earlier">← Earlier</button>
+            <button id="plan-this-week" type="button" class="btn-ghost">This week</button>
+            <button id="plan-next" type="button" class="btn-ghost" aria-label="Show 2 weeks later">Later →</button>
             <button id="plan-clear" type="button" class="btn-ghost">Clear</button>
             <button id="plan-send" type="button" class="btn-ghost hidden">Send to their Plan tab</button>
             <button id="draft-confirm" type="button">Push on main calendar</button>
             <button id="confirm-view" type="button" class="btn-ghost hidden">View on the calendar</button>
           </div>
         </div>
+        <p id="plan-view-range" class="subtle"></p>
         <p id="confirm-summary" class="hint"></p>
         <p id="confirm-status" class="status hidden" role="status"></p>
         <div id="draft-errors" class="draft-errors hidden" role="alert"></div>

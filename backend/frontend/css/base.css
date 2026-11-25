@@ -320,6 +320,9 @@ button:hover { background: var(--accent-hover); }
 .panel h2 { margin: 0 0 12px; font-size: 1.05rem; }
 .panel-header h2 { margin: 0; }
 
+/* What only an athlete or only a coach has (main.js sets body[data-role]). */
+body[data-role="coach"] .athlete-only, body:not([data-role="coach"]) .coach-only { display: none !important; }
+
 .visually-hidden {
   position: absolute !important;
   width: 1px;

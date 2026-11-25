@@ -9,18 +9,21 @@
 // and the answer is the whole draft parsed again, which this file redraws.
 // It never parses a line itself (backend/app/planning/draft_parser.py, drafts.py).
 //
-// A coach also picks who to plan for ("Plan for": Me or one of their
-// athletes, or planFor() from the Athlete tab). For an athlete it is the
-// coach's own draft for them, every route with ?athlete_id=; the athlete's
-// planned and done sessions show greyed behind it, and Send copies it to the
-// athlete's own Plan tab.
+// Earlier / This week / Later move the 4 weeks shown, whatever weeks the
+// draft covers: adding a session in a week outside it makes the draft longer.
+//
+// A coach plans for one of their athletes (picked in "Plan for", shared with
+// the Calendar tab by core/coached.js): the coach's own draft for them, every
+// route with ?athlete_id=; the athlete's planned and done sessions show greyed
+// behind it, and Send copies it to the athlete's own Plan tab.
 // API: GET/DELETE /api/plan/draft, POST /api/plan/draft/sessions, PATCH/DELETE
 // /api/plan/draft/sessions/{line}, POST /api/plan/draft/confirm, POST
 // /api/plan/draft/send, GET /api/coach/athletes(/{id}/calendar).
 // Markup: #tab-plan. Styles: css/plan.css (and css/calendar.css for the grid).
 
 import { api } from "../core/api.js";
-import { addDays, fmtDate, fmtHours, fmtSpan, isoDate, plural } from "../core/format.js";
+import { coachedAthlete, fillAthleteSelect, setCoachedAthlete } from "../core/coached.js";
+import { addDays, fmtDate, fmtHours, fmtLongDate, fmtSpan, isoDate, plural, thisMonday } from "../core/format.js";
 import { isSingular, locale, t } from "../core/i18n.js";
 import { getUser } from "../core/session.js";
 import { sportLabel } from "../core/sports.js";
@@ -42,6 +45,8 @@ const planForSelect = document.getElementById("plan-for");
 let planDraft = null; // the server's last answer: parsed sessions, errors, weekly totals
 let athlete = null; // { id, username } when a coach plans for one of their athletes, else null
 let behind = {}; // date -> that athlete's planned and done sessions, shown greyed
+const VIEW_WEEKS = 4;
+let viewStart = null; // the Monday the grid starts on (Date); null: the draft's first week, set on load
 
 const today = () => isoDate(new Date());
 const draftUrl = (path = "") => `/api/plan/draft${path}?today=${today()}${athlete ? `&athlete_id=${athlete.id}` : ""}`;
@@ -64,11 +69,10 @@ const DRAFT_STORE = {
 
 // A 409 means the draft changed elsewhere (another tab, Claude): show the new one.
 async function afterSave(draft) {
-  if (!draft) return;
-  const grew = planDraft && (draft.start_date !== planDraft.start_date || draft.end_date !== planDraft.end_date);
-  if (athlete && grew) await loadBehind(draft);
-  applyDraft(draft);
+  if (draft) applyDraft(draft);
 }
+
+const viewEnd = () => addDays(viewStart, VIEW_WEEKS * 7 - 1);
 
 // --- The grid ---
 
@@ -100,11 +104,31 @@ function weekSummary(week) {
   return cell;
 }
 
+// The weeks shown (VIEW_WEEKS from viewStart), each with its sessions and totals.
+function viewWeeks(draft) {
+  const sessions = draft.weeks_preview.flatMap((week) => week.sessions);
+  const weeks = [];
+  for (let i = 0; i < VIEW_WEEKS; i++) {
+    const start = isoDate(addDays(viewStart, i * 7));
+    const end = isoDate(addDays(viewStart, i * 7 + 6));
+    const inWeek = sessions.filter((s) => s.date >= start && s.date <= end);
+    const minutesBySport = {};
+    for (const s of inWeek) minutesBySport[s.sport] = (minutesBySport[s.sport] || 0) + s.minutes;
+    weeks.push({
+      start,
+      sessions: inWeek,
+      minutes_by_sport: minutesBySport,
+      total_minutes: inWeek.reduce((sum, s) => sum + s.minutes, 0),
+    });
+  }
+  return weeks;
+}
+
 function renderGrid(draft) {
   grid.innerHTML = "";
   gridHead(grid);
   const now = today();
-  for (const week of draft.weeks_preview) {
+  for (const week of viewWeeks(draft)) {
     for (let i = 0; i < 7; i++) {
       const date = isoDate(addDays(new Date(week.start + "T00:00:00"), i));
       const { cell } = dayCell(date, now);
@@ -241,7 +265,13 @@ function renderSummary(draft) {
 
 function applyDraft(draft) {
   planDraft = draft;
-  document.getElementById("plan-range").textContent = fmtSpan(draft.start_date, draft.end_date);
+  document.getElementById("plan-range").textContent = draft.text.trim()
+    ? t("Draft: {span}", { span: fmtSpan(draft.start_date, draft.end_date) })
+    : t("Empty draft");
+  document.getElementById("plan-view-range").textContent = t("Showing {start} to {end}", {
+    start: fmtLongDate(isoDate(viewStart)),
+    end: fmtLongDate(isoDate(viewEnd())),
+  });
   renderDraftErrors(draft.errors);
   renderGrid(draft);
   renderSummary(draft);
@@ -249,10 +279,12 @@ function applyDraft(draft) {
 
 // For a coach planning for an athlete: what is already on the athlete's calendar
 // over the draft's weeks (planned, and done from Garmin), to plan around it.
-async function loadBehind(draft) {
+async function loadBehind() {
   behind = {};
   if (!athlete) return;
-  const data = await api(`/api/coach/athletes/${athlete.id}/calendar?start=${draft.start_date}&end=${draft.end_date}`);
+  const data = await api(
+    `/api/coach/athletes/${athlete.id}/calendar?start=${isoDate(viewStart)}&end=${isoDate(viewEnd())}`,
+  );
   for (const day of data.days) {
     const items = [];
     for (const p of day.planned) {
@@ -267,49 +299,67 @@ async function loadBehind(draft) {
   }
 }
 
-// "Plan for": Me, or one of the coach's athletes. Hidden for anyone else.
-async function fillPlanFor() {
-  const me = getUser();
-  const field = document.getElementById("plan-for-field");
-  field.classList.toggle("hidden", !(me && me.is_coach));
-  if (!me || !me.is_coach) {
-    athlete = null;
-    return;
-  }
-  const { athletes } = await api(`/api/coach/athletes?today=${today()}`);
-  planForSelect.innerHTML = "";
-  planForSelect.appendChild(new Option(t("Me"), ""));
-  for (const a of athletes) planForSelect.appendChild(new Option(a.username, String(a.id)));
-  const known = athlete && athletes.find((a) => a.id === athlete.id);
-  athlete = known ? { id: known.id, username: known.username } : null;
-  planForSelect.value = athlete ? String(athlete.id) : "";
+// "Plan for": one of the coach's athletes (shared with the Calendar tab).
+// An athlete plans for themselves: athlete stays null.
+function fillPlanFor() {
+  const coach = Boolean(getUser() && getUser().is_coach);
+  athlete = null;
+  if (!coach) return true;
+  fillAthleteSelect(planForSelect);
+  const picked = coachedAthlete();
+  athlete = picked ? { id: picked.id, username: picked.username } : null;
+  return Boolean(athlete);
 }
 
 export async function loadPlanPage() {
   confirmStatus.classList.add("hidden");
   confirmView.classList.add("hidden");
+  if (!fillPlanFor()) {
+    grid.innerHTML = "";
+    for (const btn of [clearBtn, confirmBtn, sendBtn]) btn.disabled = true;
+    showStatus(confirmStatus, t("Add an athlete on the Athletes tab to plan for them."));
+    return;
+  }
   try {
-    await fillPlanFor();
     const draft = await api(draftUrl());
-    await loadBehind(draft);
+    if (!viewStart) viewStart = new Date(draft.start_date + "T00:00:00");
+    await loadBehind();
     applyDraft(draft);
   } catch (err) {
     if (err.status !== 401) showStatus(confirmStatus, err.message, true);
   }
 }
 
-// Opens the Plan tab on one of the coach's athletes (the Athlete tab's Plan
-// button), or on your own draft without an id (after Import to plan).
+// Opens the Plan tab on one of the coach's athletes (the Athletes tab's Plan
+// button), or on your own draft without an id (an athlete, after Import to plan).
 export function planFor(athleteId = null) {
-  athlete = athleteId ? { id: athleteId, username: "" } : null;
+  if (athleteId) setCoachedAthlete(athleteId);
+  viewStart = null; // the draft's first week
   showTab("plan");
 }
 
 planForSelect.addEventListener("change", () => {
-  const option = planForSelect.selectedOptions[0];
-  athlete = planForSelect.value ? { id: Number(planForSelect.value), username: option.textContent } : null;
+  setCoachedAthlete(Number(planForSelect.value));
+  viewStart = null;
   loadPlanPage();
 });
+
+// --- Moving through the weeks: 2 at a time, like the Calendar tab ---
+
+async function showWeeksFrom(monday) {
+  viewStart = monday;
+  if (!planDraft) return;
+  try {
+    await loadBehind();
+  } catch (err) {
+    if (err.status !== 401) showStatus(confirmStatus, err.message, true);
+  }
+  applyDraft(planDraft);
+}
+
+document.getElementById("plan-prev").addEventListener("click", () => showWeeksFrom(addDays(viewStart, -14)));
+document.getElementById("plan-next").addEventListener("click", () => showWeeksFrom(addDays(viewStart, 14)));
+document.getElementById("plan-this-week").addEventListener("click", () => showWeeksFrom(thisMonday()));
 
 clearBtn.addEventListener("click", async () => {
   if (!armed(clearBtn, t("Click again to clear the draft"))) return;
@@ -339,7 +389,7 @@ confirmBtn.addEventListener("click", async () => {
       ? t(", replacing {sessions}", { sessions: plural(result.replaced, "planned session") })
       : "";
     const draft = await api(draftUrl());
-    await loadBehind(draft);
+    await loadBehind();
     applyDraft(draft);
     showStatus(
       confirmStatus,

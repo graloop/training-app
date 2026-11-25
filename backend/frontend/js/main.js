@@ -8,6 +8,7 @@
 // imported only for that effect are the bare `import "./views/..."` lines.
 
 import { api } from "./core/api.js";
+import { loadCoachedAthletes } from "./core/coached.js";
 import { t, translatePage } from "./core/i18n.js";
 import { closeMenus } from "./core/menus.js";
 import { getToken, getUser, setSession, setUser } from "./core/session.js";
@@ -28,13 +29,18 @@ import "./views/night-mode.js";
 translatePage();
 
 registerTab("calendar", loadCalendar);
-registerTab("athlete", () => Promise.all([loadAthletePage(), loadObjectives(), loadMyAthletes()]));
+// For a coach, the same tab is their Athletes tab (views/coaching.js).
+registerTab("athlete", () =>
+  getUser().is_coach ? loadMyAthletes() : Promise.all([loadAthletePage(), loadObjectives()]),
+);
 registerTab("plan", loadPlanPage);
 registerTab("import", loadImportPage);
 
 // After login (or on load with a saved token): ask the server who this is,
 // clear what a previous session left on the page, then open the dashboard
-// (admin) or the tabs (member). `sync` starts a Garmin sync right after login.
+// (admin) or the tabs: an athlete's, or a coach's (Athletes, Calendar and Plan
+// for one of their athletes: body[data-role="coach"] hides the rest).
+// `sync` starts a Garmin sync right after login.
 async function showAppView({ sync = false } = {}) {
   try {
     setUser(await api("/api/auth/me"));
@@ -55,14 +61,19 @@ async function showAppView({ sync = false } = {}) {
     await showDashboard();
     return;
   }
+  const coach = Boolean(me.is_coach);
+  document.body.dataset.role = coach ? "coach" : "athlete";
+  document.getElementById("tab-btn-athlete").textContent = coach ? t("Athletes") : t("Athlete");
   resetCalendar();
   showView("app-view");
-  renderGarminState();
+  if (coach) await loadCoachedAthletes();
+  else renderGarminState();
   // Old #history and #logs bookmarks (the History tab, removed) open the calendar.
-  showTab(TABS.find((tab) => `#${tab}` === location.hash) || "calendar", { load: false });
-  await loadCalendar();
-  if (getCurrentTab() !== "calendar") await loadTab(getCurrentTab());
-  if (sync && me.garmin_connected) runSync();
+  const tabs = coach ? ["athlete", "calendar", "plan"] : TABS;
+  showTab(tabs.find((tab) => `#${tab}` === location.hash) || (coach ? "athlete" : "calendar"), { load: false });
+  await loadTab(getCurrentTab());
+  if (getCurrentTab() !== "calendar") await loadCalendar();
+  if (sync && me.garmin_connected && !coach) runSync();
 }
 
 document.getElementById("auth-form").addEventListener("submit", async (e) => {

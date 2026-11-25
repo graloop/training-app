@@ -372,6 +372,14 @@ export const FR = {
   "This file isn't an image the browser can read.": "Ce fichier n'est pas une image que le navigateur peut lire.",
 
   // --- Coaches ---
+  Athletes: "Athlètes",
+  "Add an athlete on the Athletes tab to plan for them.":
+    "Ajoutez un athlète dans l'onglet Athlètes pour planifier pour lui.",
+  "Add an athlete on the Athletes tab to see their calendar.":
+    "Ajoutez un athlète dans l'onglet Athlètes pour voir son calendrier.",
+  "Draft: {span}": "Brouillon : {span}",
+  "Empty draft": "Brouillon vide",
+  "This week": "Cette semaine",
   Coach: "Coach",
   "Role of {name}": "Rôle de {name}",
   "{name} is now an athlete.": "{name} est maintenant athlète.",

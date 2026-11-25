@@ -72,9 +72,10 @@ planned sessions into draft lines, which go through the same parser.
    it reads the request through a model in `schemas.py`, checks that the row
    belongs to the caller, and answers with another model from `schemas.py`.
 4. **Who may call it** comes from `deps.py`: `get_current_user` (a valid token
-   whose version matches, see below), `get_current_member` (regular accounts
-   only: admins get a 403), `get_current_coach` (a member with the coach
-   role) or `get_current_admin`.
+   whose version matches, see below), `get_current_member` (athlete accounts
+   only: admins and coaches get a 403), `get_current_coach` or
+   `get_current_admin`. The Plan tab's draft routes take either an athlete
+   or, with `?athlete_id=`, a coach (`routers/plan.py`, `_for`).
 5. **The work** is done outside the routers: `planning/`, `garmin/`,
    `accounts.py`, `sharing.py`, `coaching.py`.
 6. **The database session** comes from `database.get_db`, one per request.
@@ -107,7 +108,7 @@ Backend, under `backend/app/`:
 | `accounts.py` | The first admin, renaming an account, the local test accounts, the login log, the login lockout |
 | `avatars.py` | Profile photos: what is accepted, their URL, who may see one |
 | `sharing.py` | Share codes, and a friend's planned sessions as draft lines |
-| `coaching.py` | Roles (athlete, coach, admin), coach ↔ athlete links, and what a coach may see of an athlete (`athlete_for` guards every route about one athlete) |
+| `coaching.py` | Roles (athlete, coach, admin: only athletes train, only athletes are coached), coach ↔ athlete links, and what a coach may see of an athlete (`athlete_for` guards every route about one athlete) |
 | `logs.py` | Log format and level |
 | `cli.py` | Account rescue: `python -m app.cli list-users` / `reset-password` |
 | `version.py` | The version in the footer and on the first log line |
@@ -276,7 +277,10 @@ The scripts:
   (profile photos, fetched with the token), `ui.js` (which screen, status
   lines), `format.js` (dates, durations, plurals), `sports.js` (names, icons),
   `i18n.js` and `fr.js` (English / French), `week-grid.js` (the pieces of a
-  Monday–Sunday grid, shared by the Calendar and Plan tabs).
+  Monday–Sunday grid, shared by the Calendar and Plan tabs), `coached.js` (a
+  coach's athletes and the one being looked at, shared by their tabs).
+  For a coach, `body[data-role="coach"]` hides everything marked
+  `athlete-only` (and the reverse for `coach-only`).
 - `js/views/`: one file per part of the page, and `css/` one stylesheet per
   screen on top of `base.css` (colours, night mode, shared parts).
 

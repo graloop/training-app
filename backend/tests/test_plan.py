@@ -891,3 +891,21 @@ def test_the_connector_says_what_is_past(client, auth):
         user = db.query(models.User).filter_by(username="athlete").one()
         shown = mcp_text.draft_text(drafts.draft_out(db, user, user.plan_draft, TODAY))
     assert "1 session read" in shown and "1 session on days already past" in shown and "21 days old" in shown
+
+
+def test_push_only_replaces_today_and_later(client, auth):
+    """A draft whose weeks began days ago: planned sessions before today stay, from today on they are replaced."""
+    yesterday, later = TODAY - datetime.timedelta(days=1), TODAY + datetime.timedelta(days=1)
+    with SessionLocal() as db:
+        user = db.query(models.User).filter_by(username="athlete").one()
+        for date in (yesterday, TODAY, later):
+            db.add(models.PlannedTraining(user_id=user.id, date=date, activity_type="swimming", planned_duration_minutes=30))
+        db.add(models.PlanDraft(user_id=user.id, start_date=monday_of(yesterday), weeks=2,
+                                text=f"{later.isoformat()} | run | 0:45"))
+        db.commit()
+    draft = client.get("/api/plan/draft", headers=auth).json()
+    assert draft["replace_from"] == TODAY.isoformat() and draft["existing_planned"] == 2  # today and tomorrow
+    assert client.post("/api/plan/draft/confirm", headers=auth).json()["replaced"] == 2
+    days = client.get("/api/calendar", params={"start": yesterday.isoformat(), "end": later.isoformat()},
+                      headers=auth).json()["days"]
+    assert [[p["activity_type"] for p in d["planned"]] for d in days] == [["swimming"], [], ["running"]]

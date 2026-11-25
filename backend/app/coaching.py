@@ -1,8 +1,10 @@
 """Coaches and their athletes: roles, links, and what a coach may see of an athlete.
 
 Roles (set by the admin, set_role): athlete (every new account), coach, admin.
-A coach is an athlete too: own calendar, Garmin and plan. An admin has none of
-those, so admin and coach never go together, and an admin can't be coached.
+Only athletes train: own calendar, Garmin, objectives and plan. A coach plans
+for their athletes and has none of that (deps.get_current_member refuses them);
+an admin manages accounts. So only an athlete can be coached. Changing an
+athlete's role keeps their training data, out of sight, should they come back.
 
 A link (models.CoachLink) is made by the coach with the athlete's username,
 with no approval (add_athlete); the athlete sees their coaches in Settings and
@@ -50,15 +52,18 @@ def role_of(user: models.User) -> str:
 
 def set_role(db: Session, user: models.User, role: str) -> None:
     """Make the account an athlete, a coach or an admin. Links that no longer make
-    sense go: a coach who stops coaching loses their athletes, and an admin (no
-    calendar) loses both their athletes and their coaches. The caller commits."""
+    sense go: a coach who stops coaching loses their athletes, and anyone who
+    stops being an athlete loses their coaches. The caller commits."""
     user.is_admin = role == "admin"
     user.is_coach = role == "coach"
     if role != "coach":
         db.query(models.CoachLink).filter(models.CoachLink.coach_id == user.id).delete()
         db.query(models.PlanDraft).filter(models.PlanDraft.coach_id == user.id).delete()
-    if role == "admin":
+    if role != "athlete":  # only athletes are coached
         db.query(models.CoachLink).filter(models.CoachLink.athlete_id == user.id).delete()
+        db.query(models.PlanDraft).filter(
+            models.PlanDraft.user_id == user.id, models.PlanDraft.coach_id.is_not(None)
+        ).delete()
 
 
 # --- Links --------------------------------------------------------------------------
@@ -93,20 +98,21 @@ def is_coach_of(db: Session, coach: models.User, athlete: models.User) -> bool:
 def athlete_for(db: Session, coach: models.User, athlete_id: int) -> models.User | None:
     """The athlete with that id, if `coach` coaches them (and they aren't an admin)."""
     athlete = db.get(models.User, athlete_id)
-    if athlete is None or athlete.is_admin or not coach.is_coach or not is_coach_of(db, coach, athlete):
+    if athlete is None or athlete.is_admin or athlete.is_coach or not coach.is_coach or not is_coach_of(db, coach, athlete):
         return None
     return athlete
 
 
 def add_athlete(db: Session, coach: models.User, username: str) -> models.User:
     """Link the athlete with that username to `coach`, straight away. Unknown names,
-    admins and yourself are refused the same way, and counted. The caller commits."""
+    admins and coaches (yourself included) are refused the same way, and counted.
+    The caller commits."""
     wait = accounts.seconds_coach_blocked(coach.id)
     if wait:
         raise CoachingProblem(f"Too many names that aren't athletes. Try again in {max(1, wait // 60)} min.", 429)
     name = accounts.normalize_username(username)
     athlete = db.query(models.User).filter(models.User.username == name).first()
-    if athlete is None or athlete.is_admin or athlete.id == coach.id:
+    if athlete is None or athlete.is_admin or athlete.is_coach:
         accounts.record_coach_failure(coach.id)
         raise CoachingProblem(f'No athlete is called "{name}".', 404)
     if is_coach_of(db, coach, athlete):

@@ -43,26 +43,31 @@ Chrome** extension also works: it edits the page like you would.
   own) and delete an account (the dashboard lists what the account holds and asks
   for its username to be typed first; deleting can't be undone). Admins have no calendar, plan, objectives or Garmin
   connection, so keep a separate regular account for your own training.
-- **Coaches** — the admin makes an account a **coach**. A coach is still an
-  athlete (own calendar, Garmin and plan) and also:
-  - **My athletes**, at the top of their Athlete tab: adds an athlete by
-    username (it works straight away, no approval; unknown names are
-    limited like logins, so names can't be guessed), sees each one's next
-    objective, this week's planned and done hours and last Garmin sync, and
-    opens their profile: objectives, benchmarks and zones, Garmin's zones and
-    records, rule set. Never their sleep, recovery or health notes.
-  - **Plan for**, on the Plan tab: Me, or one of their athletes. For an
-    athlete the coach works in their own draft for them (the athlete doesn't
-    see it), with the athlete's planned and done sessions greyed behind it,
-    then either **Push on {athlete}'s calendar** (those sessions say "by
-    {coach}" on the athlete's calendar) or **Send to {athlete}'s Plan tab**
-    (it replaces the athlete's own draft, after a second click if they had
-    one; the athlete adjusts it and pushes it). A coach's draft drops its old
-    sessions like any other.
+- **Coaches** — the admin makes an account a **coach**. A coach account
+  doesn't train: no Garmin, calendar, objectives, plan or Import of its own.
+  It has three tabs, all about one of its athletes at a time (picked in each
+  tab, and kept when switching tabs):
+  - **Athletes**: adds an athlete by username (it works straight away, no
+    approval; unknown names are limited like logins, so names can't be
+    guessed), sees each one's next objective, this week's planned and done
+    hours and last Garmin sync, and opens their profile: objectives,
+    benchmarks and zones, Garmin's zones and records, rule set. Never their
+    sleep, recovery or health notes.
+  - **Calendar**: the athlete's calendar (planned and done, no sleep). The
+    coach adds, edits, moves or deletes their planned sessions there; those
+    say "by {coach}" on the athlete's calendar.
+  - **Plan**: the coach's own draft for the athlete (the athlete doesn't see
+    it), with the athlete's planned and done sessions greyed behind it, then
+    either **Push on {athlete}'s calendar** (also "by {coach}") or **Send to
+    {athlete}'s Plan tab** (it replaces the athlete's own draft, after a
+    second click if they had one; the athlete adjusts it and pushes it).
 
   An athlete sees their coaches in Settings and can remove one; a coach can
-  remove an athlete. An athlete can have several coaches. Claude's connector
-  stays on your own account.
+  remove an athlete. An athlete can have several coaches; a coach or an
+  admin can't be coached. Turning an athlete into a coach keeps their
+  training data, out of sight, should they go back to being an athlete (the
+  background sync skips them meanwhile). Claude's connector stays on your
+  own athlete account.
 - **Connect Garmin** — after logging in, each person links their own Garmin
   Connect account (once; reconnect if Garmin expires the session). Garmin
   problems never log you out of the app — the page just asks to reconnect.
@@ -131,8 +136,10 @@ Chrome** extension also works: it edits the page like you would.
   Calendar tab (Monday–Sunday weeks, each week's hours by sport on the
   right). Claude writes it through the connector (`save_draft`), and you
   add a session with the **+** of a day, or click one to change its sport,
-  duration, details or day, or delete it. Nothing reaches the calendar
-  until you press:
+  duration, details or day, or delete it. **Earlier**, **This week** and
+  **Later** move the four weeks shown; adding a session in a week outside
+  the draft makes the draft longer (12 weeks at most). Nothing reaches the
+  calendar until you press:
   - **Push on main calendar** — adds the draft's sessions and replaces
     whatever was planned from today to the end of the draft's weeks, so
     re-planning never duplicates (two clicks when sessions would be
@@ -702,13 +709,15 @@ New nullable columns are added to existing databases on startup
 | `/api/coach/athletes`    | GET/POST | Coach: your athletes with this week's hours / add one by `username` (404 for a name that isn't an athlete, 429 after too many) |
 | `/api/coach/athletes/{id}` | GET/DELETE | Coach: an athlete's profile as a coach sees it / stop coaching them |
 | `/api/coach/athletes/{id}/calendar` | GET | Coach: their planned and done sessions `?start=&end=`, without sleep |
+| `/api/coach/athletes/{id}/planned` | POST | Coach: plan a session on their calendar (saved with `planned_by` = you) |
+| `/api/coach/athletes/{id}/planned/{plan_id}` | PATCH/DELETE | Coach: change (a new `date` moves it) or remove one of their planned sessions |
 | `/api/coaches`           | GET    | Your coaches                                                   |
 | `/api/coaches/{link_id}` | DELETE | Remove one of your coaches                                     |
 | `/api/plan/draft…?athlete_id=` | | A coach planning for one of their athletes: the same draft routes (GET, DELETE, `/sessions`, `/confirm`) on the coach's draft for them; 404 without a link |
 | `/api/plan/draft/send`   | POST   | Coach: `?athlete_id=` copies your draft for them into their own draft; 409 when they have one, `&replace=true` replaces it |
 
 Every endpoint except `/api/health`, `/api/auth/*` and `/api/admin/*` is for
-regular accounts; an admin account gets a 403 there. The `/api/admin/*`
+athlete accounts; an admin or coach account gets a 403 there. The `/api/admin/*`
 endpoints are admin-only, the `/api/coach/*` ones coach-only.
 
 Interactive API docs are at `/docs` (Swagger UI) when `ENABLE_API_DOCS=true`.

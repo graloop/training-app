@@ -15,6 +15,7 @@ export function showView(id) {
   document.getElementById("user-actions").classList.toggle("hidden", id === "auth-view");
   document.getElementById("guest-actions").classList.toggle("hidden", id !== "auth-view");
   document.body.dataset.view = id;
+  if (id !== "app-view") delete document.body.dataset.role; // set again by main.js for the next account
 }
 
 // The landing page with the Log in window open, and why (session expired...).

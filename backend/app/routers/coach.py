@@ -1,6 +1,7 @@
 """/api/coach: a coach's athletes (coaching.py). The list with this week's hours,
-adding one by username (no approval), letting one go, and one athlete's
-profile and calendar: what a coach may see, never sleep or health details.
+adding one by username (no approval), letting one go, one athlete's profile
+and calendar (what a coach may see, never sleep or health details), and their
+planned sessions, added, edited or deleted on that calendar ("by <coach>").
 Drafts for an athlete go through /api/plan/draft?athlete_id= (routers/plan.py)."""
 
 import datetime
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from .. import coaching, models, schemas
 from ..database import get_db
 from ..deps import get_current_coach
+from ..planning import planned_sessions
 from ..planning.calendar_days import calendar_days
 from ..planning.drafts import client_today
 
@@ -84,3 +86,49 @@ def athlete_calendar(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Ask for 1 to {MAX_SPAN_DAYS} days at a time."
         )
     return schemas.CalendarResponse(start=start, end=end, days=calendar_days(db, athlete, start, end, with_sleep=False))
+
+
+def _their_session(db: Session, athlete: models.User, plan_id: int) -> models.PlannedTraining:
+    row = planned_sessions.own(db, athlete, plan_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Planned session not found")
+    return row
+
+
+@router.post("/athletes/{athlete_id}/planned", response_model=schemas.PlannedTrainingOut,
+             status_code=status.HTTP_201_CREATED)
+def add_planned(
+    athlete_id: int,
+    payload: schemas.PlannedTrainingCreate,
+    db: Session = Depends(get_db),
+    coach: models.User = Depends(get_current_coach),
+):
+    """Plan a session on the athlete's calendar; it says "by <coach>"."""
+    row = planned_sessions.add(db, _athlete(db, coach, athlete_id), payload, source="coach", planned_by=coach.username)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/athletes/{athlete_id}/planned/{plan_id}", response_model=schemas.PlannedTrainingOut)
+def edit_planned(
+    athlete_id: int,
+    plan_id: int,
+    payload: schemas.PlannedTrainingUpdate,
+    db: Session = Depends(get_db),
+    coach: models.User = Depends(get_current_coach),
+):
+    """Change one of the athlete's planned sessions (a new `date` moves it); it then says "by <coach>"."""
+    row = _their_session(db, _athlete(db, coach, athlete_id), plan_id)
+    planned_sessions.edit(row, payload, source="coach", planned_by=coach.username)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/athletes/{athlete_id}/planned/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_planned(
+    athlete_id: int, plan_id: int, db: Session = Depends(get_db), coach: models.User = Depends(get_current_coach)
+):
+    db.delete(_their_session(db, _athlete(db, coach, athlete_id), plan_id))
+    db.commit()

@@ -1,9 +1,13 @@
 """Who is calling: the FastAPI dependencies every protected endpoint declares.
 
     user = Depends(get_current_user)    any logged-in account
-    user = Depends(get_current_member)  a regular account (calendar, plan, Garmin...)
+    user = Depends(get_current_member)  an athlete account (calendar, plan, Garmin...)
     user = Depends(get_current_admin)   an admin account (/api/admin/*)
-    user = Depends(get_current_coach)   a coach (/api/coach/*), who is a member too
+    user = Depends(get_current_coach)   a coach account (/api/coach/*)
+
+Three kinds of accounts (coaching.py): athletes train (their own calendar,
+Garmin, objectives, plan); coaches plan for their athletes and have none of
+that; admins manage accounts.
 
 401 = not logged in or the session is over (the page shows the login);
 403 = logged in, but the wrong kind of account.
@@ -49,18 +53,23 @@ def get_current_admin(user: models.User = Depends(get_current_user)) -> models.U
 
 
 def get_current_member(user: models.User = Depends(get_current_user)) -> models.User:
-    """A regular account. Admin accounts only monitor and manage accounts: they
-    have no calendar, plan, objectives or Garmin connection of their own."""
+    """An athlete account. Admins and coaches have no calendar, plan, objectives
+    or Garmin connection of their own."""
     if user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin accounts manage users and don't have a training calendar",
         )
+    if user.is_coach:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Coach accounts plan for their athletes and don't have a training calendar",
+        )
     return user
 
 
-def get_current_coach(user: models.User = Depends(get_current_member)) -> models.User:
-    """A coach: a regular account the admin gave the coach role. It keeps its own calendar."""
-    if not user.is_coach:
+def get_current_coach(user: models.User = Depends(get_current_user)) -> models.User:
+    """A coach account (the admin gives the role): plans for its athletes, nothing of its own."""
+    if not user.is_coach or user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Coaches only")
     return user

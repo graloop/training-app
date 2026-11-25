@@ -21,7 +21,7 @@ export function renderAccount() {
   showAvatar(document.getElementById("user-avatar"), me.avatar_url);
   showAvatar(document.getElementById("avatar-preview"), me.avatar_url);
   document.getElementById("avatar-remove").classList.toggle("hidden", !me.avatar_url);
-  document.getElementById("garmin-settings").classList.toggle("hidden", Boolean(me.is_admin));
+  document.getElementById("garmin-settings").classList.toggle("hidden", Boolean(me.is_admin || me.is_coach));
 }
 
 function openSettings() {
@@ -40,7 +40,7 @@ const coachesStatus = document.getElementById("coaches-status");
 
 async function loadCoaches() {
   coachesSection.classList.add("hidden");
-  if (getUser().is_admin) return;
+  if (getUser().is_admin || getUser().is_coach) return; // only athletes have coaches
   let coaches;
   try {
     ({ coaches } = await api("/api/coaches"));

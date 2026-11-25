@@ -36,8 +36,8 @@ def is_configured() -> bool:
 
 
 def may_connect(user: models.User | None) -> bool:
-    """Only MCP_USERNAME, and only while it is a regular account (admins have no calendar)."""
-    return user is not None and user.username == settings.mcp_username and not user.is_admin
+    """Only MCP_USERNAME, and only while it is an athlete account (admins and coaches have no calendar)."""
+    return user is not None and user.username == settings.mcp_username and not user.is_admin and not user.is_coach
 
 
 def log_setup_problems() -> None:

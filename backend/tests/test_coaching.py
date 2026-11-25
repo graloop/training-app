@@ -64,11 +64,75 @@ def test_new_accounts_are_athletes_and_the_admin_sets_roles(client):
     assert bad.status_code == 422
 
 
-def test_a_coach_keeps_their_own_calendar_and_athletes_reach_no_coach_route(client, auth):
+def test_a_coach_has_no_training_of_their_own(client, auth):
+    """No calendar, Garmin, objectives, profile, plan or Import: a coach plans for athletes only."""
     coach = _coach(client)
-    assert client.get("/api/calendar", headers=coach).status_code == 200
+    for method, path in (("get", "/api/calendar"), ("post", "/api/garmin/sync/start"), ("get", "/api/objectives"),
+                         ("get", "/api/athlete"), ("get", "/api/plan/draft"), ("get", "/api/plan/rules"),
+                         ("get", "/api/share"), ("get", "/api/coaches")):
+        res = getattr(client, method)(path, headers=coach)
+        assert res.status_code == 403 and "Coach accounts" in res.json()["detail"], path
+    assert client.post("/api/planned", json={"date": day(1).isoformat(), "activity_type": "running",
+                                             "planned_duration_minutes": 30}, headers=coach).status_code == 403
+    assert client.get("/api/auth/me", headers=coach).status_code == 200  # Settings still work
+
+
+def test_athletes_and_admins_reach_no_coach_route(client, auth):
     assert client.get("/api/coach/athletes", headers=auth).status_code == 403
     assert client.get("/api/coach/athletes", headers=admin_auth(client)).status_code == 403
+
+
+def test_a_coach_cannot_be_coached(client, auth):
+    coach = _coach(client)
+    _coach(client, "other-coach")
+    res = client.post("/api/coach/athletes", json={"username": "other-coach"}, headers=coach)
+    assert res.status_code == 404
+    _link(client, coach)
+    _role(client, "athlete", "coach")  # an athlete who becomes a coach loses their coaches
+    assert client.get("/api/coach/athletes", headers=coach).json()["athletes"] == []
+
+
+def test_the_background_sync_and_the_connector_skip_coaches(client, auth):
+    from app.garmin import autosync
+    from app.mcp import auth as mcp_auth
+
+    athlete = _id("athlete")
+    assert athlete in autosync.connected_accounts()
+    _role(client, "athlete", "coach")  # the Garmin link stays stored, unused
+    assert athlete not in autosync.connected_accounts()
+    with SessionLocal() as db:
+        assert not mcp_auth.may_connect(db.get(models.User, athlete))  # MCP_USERNAME is "athlete" in conftest
+
+
+def test_a_coach_plans_edits_and_deletes_on_the_athletes_calendar(client, auth):
+    coach = _coach(client)
+    _link(client, coach)
+    athlete = _id("athlete")
+    base = f"/api/coach/athletes/{athlete}/planned"
+    res = client.post(base, json={"date": day(1).isoformat(), "activity_type": "running",
+                                  "planned_duration_minutes": 45, "notes": "Easy"}, headers=coach)
+    assert res.status_code == 201 and (res.json()["source"], res.json()["planned_by"]) == ("coach", "coach")
+    plan_id = res.json()["id"]
+    edited = client.patch(f"{base}/{plan_id}", json={"date": day(2).isoformat(), "planned_duration_minutes": 60},
+                          headers=coach).json()
+    assert (edited["date"], edited["planned_duration_minutes"], edited["planned_by"]) == (day(2).isoformat(), 60, "coach")
+    days = client.get("/api/calendar", params={"start": day(2).isoformat(), "end": day(2).isoformat()},
+                      headers=auth).json()["days"]
+    assert days[0]["planned"][0]["planned_by"] == "coach"  # the athlete sees who planned it
+
+    # the athlete's own sessions can be changed too; someone else's can't
+    mine = client.post("/api/planned", json={"date": day(3).isoformat(), "activity_type": "swimming",
+                                             "planned_duration_minutes": 30}, headers=auth).json()
+    assert client.patch(f"{base}/{mine['id']}", json={"planned_duration_minutes": 40}, headers=coach).json()["planned_by"] == "coach"
+    friend = make_user(client, "friend", garmin=False)
+    theirs = client.post("/api/planned", json={"date": day(3).isoformat(), "activity_type": "swimming",
+                                               "planned_duration_minutes": 30}, headers=friend).json()
+    assert client.patch(f"{base}/{theirs['id']}", json={"planned_duration_minutes": 5}, headers=coach).status_code == 404
+    assert client.post(f"/api/coach/athletes/{_id('friend')}/planned", json={"date": day(1).isoformat(),
+                       "activity_type": "running", "planned_duration_minutes": 30}, headers=coach).status_code == 404
+
+    assert client.delete(f"{base}/{plan_id}", headers=coach).status_code == 204
+    assert client.delete(f"{base}/{plan_id}", headers=coach).status_code == 404
 
 
 # --- Links ---------------------------------------------------------------------------
@@ -206,7 +270,6 @@ def test_the_coachs_draft_stays_theirs_until_sent(client, auth):
                         headers=coach).json()
     assert draft["sessions_count"] == 1
     assert client.get("/api/plan/draft", headers=auth).json()["sessions_count"] == 0  # not on the athlete's Plan tab
-    assert client.get("/api/plan/draft", headers=coach).json()["sessions_count"] == 0  # nor the coach's own
 
     edited = client.patch(f"/api/plan/draft/sessions/1?athlete_id={athlete}", json=_session(day(2), minutes=50),
                           headers=coach).json()
@@ -230,8 +293,6 @@ def test_a_coach_pushes_on_the_athletes_calendar(client, auth):
                          headers=auth).json()["days"][0]["planned"]
     assert [(p["activity_type"], p["notes"], p["source"], p["planned_by"]) for p in planned] == [
         ("running", "Track", "coach", "coach")]
-    assert client.get("/api/calendar", params={"start": day(1).isoformat(), "end": day(1).isoformat()},
-                      headers=coach).json()["days"][0]["planned"] == []  # the coach's own calendar is untouched
 
 
 def test_a_coach_sends_the_draft_to_the_athletes_plan_tab(client, auth):

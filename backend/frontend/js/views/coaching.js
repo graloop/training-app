@@ -1,21 +1,20 @@
-// A coach's athletes, at the top of their Athlete tab: the list (photo, next
-// objective, this week's hours, last Garmin sync), adding one by username,
-// and one athlete's profile as a coach sees it (objectives, zones, rule set:
-// never sleep or health notes) with Plan, which opens the Plan tab for them.
-// Hidden for anyone who isn't a coach. An athlete's own coaches are in
-// Settings (views/settings.js).
+// A coach's Athletes tab: the list (photo, next objective, this week's hours,
+// last Garmin sync), adding one by username, and one athlete's profile as a
+// coach sees it (objectives, zones, rule set: never sleep or health notes),
+// with Calendar and Plan, which open those tabs on that athlete (core/coached.js).
+// Only shown to coaches. An athlete's own coaches are in Settings (views/settings.js).
 // API: GET/POST /api/coach/athletes, GET/DELETE /api/coach/athletes/{id}.
 // Markup: #athletes-panel. Styles: css/athlete.css.
 
 import { api } from "../core/api.js";
+import { loadCoachedAthletes, setCoachedAthlete } from "../core/coached.js";
 import { showAvatar } from "../core/avatars.js";
 import { fmtHours, isoDate } from "../core/format.js";
 import { locale, t } from "../core/i18n.js";
-import { getUser } from "../core/session.js";
+import { showTab } from "../core/tabs.js";
 import { showStatus } from "../core/ui.js";
 import { planFor } from "./plan.js";
 
-const panel = document.getElementById("athletes-panel");
 const list = document.getElementById("athletes-list");
 const status = document.getElementById("athletes-status");
 const view = document.getElementById("athlete-view");
@@ -120,12 +119,9 @@ async function openAthlete(id) {
 }
 
 export async function loadMyAthletes() {
-  const me = getUser();
-  panel.classList.toggle("hidden", !(me && me.is_coach));
-  if (!me || !me.is_coach) return;
   status.classList.add("hidden");
   try {
-    renderList((await api(`/api/coach/athletes?today=${isoDate(new Date())}`)).athletes);
+    renderList(await loadCoachedAthletes());
   } catch (err) {
     if (err.status !== 401) showStatus(status, err.message, true);
   }
@@ -152,6 +148,10 @@ document.getElementById("athlete-add-form").addEventListener("submit", async (e)
 
 document.getElementById("athlete-view-close").addEventListener("click", () => view.classList.add("hidden"));
 document.getElementById("athlete-view-plan").addEventListener("click", () => planFor(shown.id));
+document.getElementById("athlete-view-calendar").addEventListener("click", () => {
+  setCoachedAthlete(shown.id);
+  showTab("calendar");
+});
 
 // Two clicks: removing an athlete also drops your draft for them.
 function resetRemove() {
