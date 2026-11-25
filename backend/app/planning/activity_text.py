@@ -275,8 +275,9 @@ def rep_summary(a: models.Activity) -> str | None:
 # --- Detail lines (full log only) ----------------------------------------------
 
 
-def detail_lines(a: models.Activity) -> list[str]:
-    """Extra lines for the full log, all from what Garmin already sent."""
+def detail_lines(a: models.Activity, private: bool = False) -> list[str]:
+    """Extra lines for the full log, all from what Garmin already sent.
+    `private` leaves out the body battery (recovery data, for a coach not shared with)."""
     raw = a.raw_json or {}
     sport = sport_of(a.activity_type)
     lines = []
@@ -294,7 +295,7 @@ def detail_lines(a: models.Activity) -> list[str]:
             effect += f" (training effect {a.aerobic_training_effect:.1f} aerobic"
             effect += f", {a.anaerobic_training_effect:.1f} anaerobic)" if a.anaerobic_training_effect is not None else ")"
         body.append(effect)
-    if raw.get("differenceBodyBattery"):
+    if raw.get("differenceBodyBattery") and not private:
         body.append(f"body battery {round(raw['differenceBodyBattery']):+d}")
     if body:
         lines.append(" · ".join(body))

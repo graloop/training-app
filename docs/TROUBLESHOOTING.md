@@ -188,6 +188,22 @@ Only with `MCP_ENABLED=true` (README, "Connect Claude (MCP)"). Look at
   (that disconnects Claude on purpose), or the connector wasn't used for
   `MCP_TOKEN_DAYS` days.
 
+### Claude says "No athlete called X among yours"
+
+On a coach's connector, the name must be one of that coach's athletes, as
+`list_athletes` spells it. The same sentence covers a typo, an account that
+doesn't exist, an athlete linked to another coach, a coach or an admin, and a
+link either side removed: add the athlete again on the Athletes tab. On an
+athlete's own connector, leave `athlete` empty.
+
+### Claude says an athlete's "Garmin needs connecting or reconnecting"
+
+The athlete's stored Garmin session is missing or expired. Only they can fix
+it: Settings → Garmin, connect again. The coach's Athletes list says
+"stale" once an athlete hasn't synced for 3 days, which is usually this.
+A coach's `sync_garmin` for one athlete is also limited to once every 30
+minutes; Claude says so and reads the data as it is.
+
 ### The Plan tab or the training log shows something wrong
 
 - A session is missing from the draft: sessions drop out of a draft 3 weeks

@@ -505,6 +505,8 @@ class CoachAthleteOut(BaseModel):
     planned_minutes: float  # this week, Monday to Sunday
     done_minutes: float
     garmin_synced_at: UtcDatetime | None
+    garmin_state: str = "ok"  # "ok", "stale" (no sync for 3 days) or "not connected" (coaching.garmin_state)
+    share_health: bool = False  # the athlete shares sleep and recovery with this coach
 
 
 class CoachAthletesResponse(BaseModel):
@@ -512,8 +514,8 @@ class CoachAthletesResponse(BaseModel):
 
 
 class CoachAthleteProfile(BaseModel):
-    """What a coach sees of an athlete: objectives, benchmarks and zones (not their
-    health notes), Garmin's zones and records, and the rule set. No sleep or recovery."""
+    """What a coach sees of an athlete: objectives, benchmarks and zones (health
+    notes and resting HR only if shared), Garmin's zones and records, the rule set."""
 
     id: int
     username: str

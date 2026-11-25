@@ -115,7 +115,8 @@ def test_tools_are_listed_and_run_as_the_connected_account(client, auth):
     assert set(tools) == {
         "connection_check", "get_overview", "get_training_log", "list_sessions", "get_session", "get_planned",
         "get_objectives", "get_rules", "get_draft", "add_planned", "update_planned", "delete_planned", "save_draft",
-        "confirm_draft", "set_rules", "upsert_objective", "set_coach_notes", "sync_garmin",
+        "confirm_draft", "set_rules", "upsert_objective", "set_coach_notes", "sync_garmin", "list_athletes",
+        "set_athlete_notes",
     }
     for name in ("add_planned", "update_planned", "save_draft"):
         assert "No explanations" in tools[name]["description"], name  # the workout text format
@@ -128,7 +129,7 @@ def test_tools_are_listed_and_run_as_the_connected_account(client, auth):
 def test_every_tool_says_what_it_does_and_whether_it_changes_data():
     """Claude picks tools from their descriptions, and asks before running one that isn't read-only."""
     tools = mcp_server.build_server()._tool_manager.list_tools()
-    assert len(tools) == 18
+    assert len(tools) == 20
     for tool in tools:
         assert tool.description and len(tool.description) > 40, tool.name
         hints = json.loads(tool.annotations.model_dump_json()) if tool.annotations else {}

@@ -7,6 +7,9 @@
 - The Sync button starts a job here and the page asks how it is going. A long
   catch-up then never hits the proxy's time limit (Cloudflare gives up after
   100 s), and the page stays usable meanwhile.
+- A coach's Claude can start the same job for an athlete, at most once per
+  COACH_SYNC_MINUTES per athlete (coach_sync_wait), with the athlete's own
+  stored Garmin session.
 
 Both kinds run sync.sync_user in a thread and share one lock per account
 (user_lock), so the same account is never synced twice at once. Jobs and locks
@@ -39,6 +42,8 @@ _locks: dict[int, threading.Lock] = {}
 _locks_guard = threading.Lock()
 _started = False
 _jobs: dict[int, dict] = {}  # user id -> the latest job started from the page
+COACH_SYNC_MINUTES = 30
+_coach_syncs: dict[int, float] = {}  # athlete id -> time.monotonic() of the last sync a coach started
 
 
 def user_lock(user_id: int) -> threading.Lock:
@@ -174,9 +179,23 @@ def _run_job(user_id: int, api, job: dict) -> None:
         lock.release()
 
 
+def coach_sync_wait(athlete_id: int) -> int:
+    """Seconds before a coach may start another sync of this athlete (0 = now)."""
+    with _locks_guard:
+        last = _coach_syncs.get(athlete_id)
+    left = COACH_SYNC_MINUTES * 60 - (time.monotonic() - last) if last is not None else 0
+    return int(left) + 1 if left > 0 else 0
+
+
+def coach_sync_started(athlete_id: int) -> None:
+    with _locks_guard:
+        _coach_syncs[athlete_id] = time.monotonic()
+
+
 def reset_jobs() -> None:  # tests
     with _locks_guard:
         _jobs.clear()
+        _coach_syncs.clear()
 
 
 # --- Every few hours ---------------------------------------------------------------

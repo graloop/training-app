@@ -51,9 +51,11 @@ Chrome** extension also works: it edits the page like you would.
     approval; unknown names are limited like logins, so names can't be
     guessed), sees each one's next objective, this week's planned and done
     hours and last Garmin sync, and opens their profile: objectives,
-    benchmarks and zones, Garmin's zones and records, rule set. Never their
-    sleep, recovery or health notes.
-  - **Calendar**: the athlete's calendar (planned and done, no sleep). The
+    benchmarks and zones, Garmin's zones and records, rule set. Their sleep,
+    recovery, resting HR and health notes only if the athlete shares them
+    with that coach (off by default).
+  - **Calendar**: the athlete's calendar (planned and done; sleep only if
+    shared). The
     coach adds, edits, moves or deletes their planned sessions there; those
     say "by {coach}" on the athlete's calendar.
   - **Plan**: the coach's own draft for the athlete (the athlete doesn't see
@@ -66,8 +68,9 @@ Chrome** extension also works: it edits the page like you would.
   remove an athlete. An athlete can have several coaches; a coach or an
   admin can't be coached. Turning an athlete into a coach keeps their
   training data, out of sight, should they go back to being an athlete (the
-  background sync skips them meanwhile). Claude's connector stays on your
-  own athlete account.
+  background sync skips them meanwhile). A coach account can connect Claude
+  too, to read its athletes and write its drafts for them (see "Coach mode"
+  under [Connect Claude (MCP)](#connect-claude-mcp)).
 - **Connect Garmin** — after logging in, each person links their own Garmin
   Connect account (once; reconnect if Garmin expires the session). Garmin
   problems never log you out of the app — the page just asks to reconnect.
@@ -594,6 +597,31 @@ The tools in the first four rows only read. Claude asks before running any of th
 unless you allow them in the connector's settings in claude.ai. Sessions
 Claude adds are stored with the source `mcp`.
 
+#### Coach mode
+
+A coach account named in `MCP_USERNAMES` connects the same way. Claude then
+works on the coach's athletes, never on anyone else:
+
+- `list_athletes` lists them (next objective, this week's hours, last Garmin
+  sync, whether they share sleep and recovery, the coach's draft for them).
+  The read tools and `sync_garmin` take `athlete=<username>`.
+- `set_athlete_notes(athlete, notes)` is Claude's memory about one athlete,
+  kept on the coach's side (the athlete's own Claude notes are never touched).
+- Without the athlete's sharing switch, nothing about sleep, readiness, HRV,
+  resting HR, stress or body battery reaches Claude (or the coach's page).
+  Training load, training status and VO2max always do.
+- `sync_garmin(athlete=...)` uses the athlete's own Garmin connection (they
+  connect it in their Settings), at most once every 30 minutes per athlete.
+- The tools that change an athlete's calendar, rule set or objectives answer
+  that, for an athlete, the plan goes through `save_draft`. Removing the link
+  (either side) cuts Claude off at its next call.
+- Any name that isn't one of the coach's athletes, whatever the reason, gets
+  the same answer: "No athlete called {name} among yours."
+
+To plan your own training from the coach connector, add your athlete account
+as one of the coach's athletes (with sharing on) and tell Claude to pass
+`athlete=<your athlete username>`.
+
 The connection lasts as long as it is used at least every `MCP_TOKEN_DAYS`
 days. Changing that account's password disconnects Claude, like it logs out
 every browser. If Cloudflare's Bot Fight Mode or a WAF rule is on, it must let
@@ -649,7 +677,9 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   block notes. Not on the calendar until pushed. One per user of their own
   (`coach_id` empty) and one per coach and athlete (`coach_id` = the coach).
 - **CoachLink** — a coach and one of their athletes (`User.is_coach` marks
-  coaches). `User.garmin_synced_at` is when Garmin's activity list last came in.
+  coaches), whether the athlete shares sleep and recovery with that coach
+  (`share_health`), and the notes the coach's Claude keeps about the athlete
+  (`claude_notes`). `User.garmin_synced_at` is when Garmin's activity list last came in.
 - **Activity** — one row per completed Garmin activity: type, start time,
   duration, distance, avg HR, aerobic/anaerobic training effect, training load, calories,
   perceived effort (1-10) and feel, the laps of runs, rides and swims, weather and sweat
@@ -667,8 +697,8 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
   duration and workout details, where it came from (`source`: manual, plan,
   import, mcp, coach) and, for a coach's, who (`planned_by`).
 - **McpClient / McpAuthCode / McpToken** — Claude's connector: the Claude
-  apps that registered, and the hashed login codes and tokens of the one
-  account that may connect. `User.coach_notes` holds Claude's notes between chats.
+  apps that registered, and the hashed login codes and tokens of the
+  accounts that may connect. `User.coach_notes` holds Claude's notes between chats.
 
 New nullable columns are added to existing databases on startup
 (`add_missing_columns` in `database.py`).
@@ -709,9 +739,9 @@ New nullable columns are added to existing databases on startup
 | `/api/share/import/calendar` | POST | Same body: put them on your calendar, replacing your planned sessions from today to the last imported day |
 | `/api/planned`           | POST   | Plan a session (date, sport, duration in minutes)              |
 | `/api/planned/{id}`      | PATCH/DELETE | Edit (a new `date` moves it), or remove a planned session |
-| `/api/coach/athletes`    | GET/POST | Coach: your athletes with this week's hours / add one by `username` (404 for a name that isn't an athlete, 429 after too many) |
+| `/api/coach/athletes`    | GET/POST | Coach: your athletes with this week's hours, `garmin_state` (`ok`, `stale` after 3 days without a sync, `not connected`) and `share_health` / add one by `username` (404 for a name that isn't an athlete, 429 after too many) |
 | `/api/coach/athletes/{id}` | GET/DELETE | Coach: an athlete's profile as a coach sees it / stop coaching them |
-| `/api/coach/athletes/{id}/calendar` | GET | Coach: their planned and done sessions `?start=&end=`, without sleep |
+| `/api/coach/athletes/{id}/calendar` | GET | Coach: their planned and done sessions `?start=&end=`, with sleep only if they share it |
 | `/api/coach/athletes/{id}/planned` | POST | Coach: plan a session on their calendar (saved with `planned_by` = you) |
 | `/api/coach/athletes/{id}/planned/{plan_id}` | PATCH/DELETE | Coach: change (a new `date` moves it) or remove one of their planned sessions |
 | `/api/coaches`           | GET    | Your coaches                                                   |

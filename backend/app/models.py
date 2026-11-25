@@ -299,7 +299,12 @@ class PlanDraft(Base):
 
 class CoachLink(Base):
     """A coach and one of their athletes (coaching.py). Made by the coach with the
-    athlete's username, no approval; either of them can remove it."""
+    athlete's username, no approval; either of them can remove it.
+
+    share_health is the athlete's switch (Settings): sleep and recovery shown to
+    this coach, on the page and through Claude. claude_notes is the memory the
+    coach's Claude keeps about this athlete (mcp/server.py, set_athlete_notes),
+    never the athlete's own User.coach_notes. Both go with the link."""
 
     __tablename__ = "coach_links"
     __table_args__ = (UniqueConstraint("coach_id", "athlete_id", name="uq_coach_links"),)
@@ -308,6 +313,8 @@ class CoachLink(Base):
     coach_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     athlete_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    share_health: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # NULL = off
+    claude_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     coach: Mapped["User"] = relationship(foreign_keys=[coach_id], overlaps="links_as_coach")
     athlete: Mapped["User"] = relationship(foreign_keys=[athlete_id], overlaps="links_as_athlete")

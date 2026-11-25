@@ -5,10 +5,16 @@ athlete and write the plan. build_log() puts it together, top to bottom:
     RULE SET, EARLIER HISTORY, one block per week (each day: sleep, sessions
     done, sessions planned), ALREADY ON THE CALENDAR AFTER TODAY
 
-One activity's text (pace, laps, weather...) is in activity_text.py."""
+One activity's text (pace, laps, weather...) is in activity_text.py.
+
+`private=True` is the log a coach's Claude gets of an athlete who doesn't share
+their sleep and recovery (coaching.can_see_health): no sleep, readiness, HRV,
+resting HR, stress or body battery, and none of the profile keys in
+coaching.HIDDEN_FROM_COACH. Garmin's training status, load and VO2max stay."""
 
 import datetime
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from sqlalchemy.orm import Session, defer
 
@@ -30,6 +36,10 @@ from .basics import (
 from .session_detail import trace_lines
 
 FULL_DETAIL_WEEKS = 4  # this week and the 3 before: older weeks keep one line per session and their reps
+
+# What a private log hides of the athlete's own profile (kept in step with coaching.HIDDEN_FROM_COACH,
+# which can't be imported here: coaching.py imports this module).
+PRIVATE_PROFILE_KEYS = ("health", "resting_hr")
 
 # --- Day labels and Garmin's training status ------------------------------------
 
@@ -348,9 +358,19 @@ class _Stored:
     daily: dict[datetime.date, models.DailyMetrics]
     data_start: datetime.date | None  # where this account's Garmin data begins
     traces: dict[int, models.ActivityTrace]  # activity id ->, full detail only
+    private: bool = False  # no recovery data (module docstring)
 
 
-def _load(db: Session, user: models.User, start: datetime.date, today: datetime.date, full: bool) -> _Stored:
+def _training_only(m: models.DailyMetrics) -> SimpleNamespace:
+    """A day's metrics without the recovery numbers: what a private log may show."""
+    return SimpleNamespace(
+        date=m.date, training_status=m.training_status, acute_load=m.acute_load, chronic_load=m.chronic_load,
+        load_ratio=m.load_ratio, load_ratio_status=m.load_ratio_status, vo2max=m.vo2max, load_focus=m.load_focus,
+        readiness=None, readiness_level=None, stress_avg=None, body_battery_low=None, body_battery_high=None,
+    )
+
+
+def _load(db: Session, user: models.User, start: datetime.date, today: datetime.date, full: bool, private: bool = False) -> _Stored:
     activities = (
         db.query(models.Activity)
         .filter(
@@ -361,7 +381,7 @@ def _load(db: Session, user: models.User, start: datetime.date, today: datetime.
         .order_by(models.Activity.start_time)
         .all()
     )
-    sleep = {
+    sleep = {} if private else {
         s.date: s
         for s in db.query(models.SleepRecord).filter(
             models.SleepRecord.user_id == user.id, models.SleepRecord.date >= start, models.SleepRecord.date <= today
@@ -374,14 +394,14 @@ def _load(db: Session, user: models.User, start: datetime.date, today: datetime.
         .all()
     )
     daily = {
-        m.date: m
+        m.date: _training_only(m) if private else m
         for m in db.query(models.DailyMetrics).filter(
             models.DailyMetrics.user_id == user.id, models.DailyMetrics.date >= start, models.DailyMetrics.date <= today
         )
     }
     # Where this account's Garmin data begins: earlier days are "not synced", not "no training".
     first_activity = db.query(models.Activity.start_time).filter(models.Activity.user_id == user.id).order_by(models.Activity.start_time).first()
-    first_night = db.query(models.SleepRecord.date).filter(models.SleepRecord.user_id == user.id).order_by(models.SleepRecord.date).first()
+    first_night = None if private else db.query(models.SleepRecord.date).filter(models.SleepRecord.user_id == user.id).order_by(models.SleepRecord.date).first()
     starts = [d for d in (first_activity[0].date() if first_activity else None, first_night[0] if first_night else None) if d]
 
     acts_by_day: dict[datetime.date, list[models.Activity]] = {}
@@ -399,7 +419,7 @@ def _load(db: Session, user: models.User, start: datetime.date, today: datetime.
                 models.Activity.user_id == user.id, models.ActivityTrace.fetched_at.is_not(None),
                 models.Activity.start_time >= datetime.datetime.combine(detailed_from, datetime.time.min))
         }
-    return _Stored(activities, acts_by_day, planned, plans_by_day, sleep, daily, min(starts) if starts else None, traces)
+    return _Stored(activities, acts_by_day, planned, plans_by_day, sleep, daily, min(starts) if starts else None, traces, private)
 
 
 def _intro_lines(user: models.User, today: datetime.date, start: datetime.date, weeks: int, stored: _Stored, full: bool) -> list[str]:
@@ -437,10 +457,13 @@ def _objective_lines(db: Session, user: models.User, today: datetime.date, ids: 
     return ["", "OBJECTIVES"] + (objective_lines(db, user, today, ids) or ["- none yet (add them on the Athlete tab)"])
 
 
-def _athlete_section(db: Session, user: models.User, today: datetime.date) -> list[str]:
+def _athlete_section(db: Session, user: models.User, today: datetime.date, private: bool = False) -> list[str]:
     """The athlete's numbers, Garmin's, Garmin's training status and the rule set."""
+    profile = user.athlete_profile or {}
+    if private:
+        profile = {k: v for k, v in profile.items() if k not in PRIVATE_PROFILE_KEYS}
     lines = ["", "ATHLETE (entered by the athlete: these override Garmin's estimates)"]
-    lines += profile_lines(user.athlete_profile) or ["- nothing entered yet (Athlete tab)"]
+    lines += profile_lines(profile) or ["- nothing entered yet (Athlete tab)"]
     lines += ["", "ATHLETE (from Garmin)"] + _athlete_lines(user)
     lines += ["", "TRAINING STATUS (Garmin)"] + _status_lines(latest_status(db, user, today))
     rules = rule_set_text(user).strip()
@@ -522,7 +545,7 @@ def _week_lines(
         for a in day_acts:
             lines.append(f"  done  {fmt_activity(a)}")
             if full:
-                lines += [f"        {extra}" for extra in detail_lines(a) + trace_lines(a, stored.traces.get(a.id))]
+                lines += [f"        {extra}" for extra in detail_lines(a, stored.private) + trace_lines(a, stored.traces.get(a.id))]
             elif reps and rep_summary(a):
                 lines.append(f"        {rep_summary(a)}")
         lines += [f"  plan  {fmt_planned(p, matched.get(p.id), notes=plan_notes)}" for p in day_plans]
@@ -549,20 +572,24 @@ def _ahead_lines(planned: list[models.PlannedTraining], today: datetime.date) ->
     return lines
 
 
-def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, detail: str = "full") -> tuple[str, datetime.date]:
+def build_log(
+    db: Session, user: models.User, weeks: int, today: datetime.date, detail: str = "full", private: bool = False
+) -> tuple[str, datetime.date]:
     """Plain-text log of the last `weeks` weeks (this week included) plus what
     is already planned ahead. `detail` "full" adds zones, laps and recovery
     numbers over the last FULL_DETAIL_WEEKS weeks, and the reps of older
-    sessions; "summary" keeps one line per session.
+    sessions; "summary" keeps one line per session. `private`: module docstring.
     Returns (text, first day covered)."""
     full = detail == "full"
     start = monday_of(today) - datetime.timedelta(weeks=weeks - 1)
     detailed_from = monday_of(today) - datetime.timedelta(weeks=FULL_DETAIL_WEEKS - 1)
-    stored = _load(db, user, start, today, full)
+    stored = _load(db, user, start, today, full, private)
 
     lines = _intro_lines(user, today, start, weeks, stored, full)
+    if private:
+        lines.append(PRIVATE_NOTE)
     lines += _objective_lines(db, user, today)
-    lines += _athlete_section(db, user, today)
+    lines += _athlete_section(db, user, today, private)
     lines += ["", "EARLIER HISTORY (from Garmin's activity list: duration, distance, pace, avg HR and load; "
               "no effort, laps or recovery)"] + _earlier_weeks(db, user, start, today)
     week_start = start
@@ -577,6 +604,7 @@ def build_log(db: Session, user: models.User, weeks: int, today: datetime.date, 
 
 OVERVIEW_DAYS = 14  # sessions this far back, planned sessions this far ahead
 OVERVIEW_NIGHTS = 3
+PRIVATE_NOTE = "NOTE: this athlete doesn't share their recovery data with you, so it is left out."
 
 
 def planned_lines(planned: list[models.PlannedTraining]) -> list[str]:
@@ -584,20 +612,30 @@ def planned_lines(planned: list[models.PlannedTraining]) -> list[str]:
     return [f"- id {p.id} · {fmt_day(p.date)} ({p.date.isoformat()}) · {fmt_planned(p)}" for p in planned]
 
 
-def build_overview(db: Session, user: models.User, today: datetime.date) -> str:
+def build_overview(db: Session, user: models.User, today: datetime.date, link: models.CoachLink | None = None) -> str:
     """What Claude needs at the start of a chat, kept short: the coach notes it
     left itself, objectives, the rule set, Garmin's status, the last nights in
-    full, the last two weeks one line per session, and what is planned next."""
+    full, the last two weeks one line per session, and what is planned next.
+
+    With `link`, a coach's Claude reads its athlete `user`: its notes are the
+    link's claude_notes, and the log is private unless the athlete shares."""
+    private = link is not None and not link.share_health
     start = monday_of(today - datetime.timedelta(days=OVERVIEW_DAYS - 1))
-    stored = _load(db, user, start, today, full=False)
+    stored = _load(db, user, start, today, full=False, private=private)
     lines = [
         f"TRAINING OVERVIEW · {user.username}",
         f"Today is {DAY_NAMES[today.weekday()]} {MONTH_NAMES[today.month - 1]} {today.day}, {today.year} "
         f"({today.isoformat()}). Times are h:mm.",
-        "",
-        "COACH NOTES (what you, Claude, wrote in earlier chats; replace them with set_coach_notes)",
     ]
-    notes = (user.coach_notes or "").strip()
+    if private:
+        lines.append(PRIVATE_NOTE)
+    if link is None:
+        lines += ["", "COACH NOTES (what you, Claude, wrote in earlier chats; replace them with set_coach_notes)"]
+        notes = (user.coach_notes or "").strip()
+    else:
+        lines += ["", f"COACH NOTES (what you, Claude, wrote about {user.username} in earlier chats; "
+                  f'replace them with set_athlete_notes(athlete="{user.username}", ...))']
+        notes = (link.claude_notes or "").strip()
     lines += [line.rstrip() for line in notes.splitlines()] if notes else ["- none yet"]
     lines += _objective_lines(db, user, today, ids=True)
     rules = rule_set_text(user).strip()
@@ -605,14 +643,15 @@ def build_overview(db: Session, user: models.User, today: datetime.date) -> str:
     lines += [line.rstrip() for line in rules.splitlines()] if rules else ["- nothing written yet"]
     lines += ["", "TRAINING STATUS (Garmin)"] + _status_lines(latest_status(db, user, today))
 
-    lines += ["", f"LAST {OVERVIEW_NIGHTS} NIGHTS"]
-    nights = [today - datetime.timedelta(days=i) for i in range(OVERVIEW_NIGHTS)]
-    recovery = [
-        f"- {_fmt_day_label(day, stored.sleep.get(day), stored.daily.get(day), full=True)}"
-        for day in nights
-        if day in stored.sleep or day in stored.daily
-    ]
-    lines += recovery or ["- nothing from Garmin for these nights: sync_garmin, then ask again in a minute"]
+    if not private:
+        lines += ["", f"LAST {OVERVIEW_NIGHTS} NIGHTS"]
+        nights = [today - datetime.timedelta(days=i) for i in range(OVERVIEW_NIGHTS)]
+        recovery = [
+            f"- {_fmt_day_label(day, stored.sleep.get(day), stored.daily.get(day), full=True)}"
+            for day in nights
+            if day in stored.sleep or day in stored.daily
+        ]
+        lines += recovery or ["- nothing from Garmin for these nights: sync_garmin, then ask again in a minute"]
 
     week_start = start
     while week_start <= today:

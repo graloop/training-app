@@ -11,14 +11,18 @@ with no approval (add_athlete); the athlete sees their coaches in Settings and
 either side can remove it. Names that aren't athletes are counted
 (accounts.record_coach_failure), so usernames can't be guessed this way.
 
-What a coach sees of an athlete (athlete_profile, and calendar_days without
-sleep in routers/coach.py): planned and done sessions, objectives, the
-benchmarks and zones they entered (not their health notes), Garmin's zones and
-records, the rule set. Never sleep, recovery or health details.
+What a coach sees of an athlete (athlete_profile, calendar_days in
+routers/coach.py, and the training log mcp/server.py gives the coach's
+Claude): planned and done sessions, objectives, the benchmarks and zones they
+entered, Garmin's zones, records, training status and load, the rule set.
+Sleep, recovery (readiness, HRV, resting HR, stress, body battery) and the
+profile keys in HIDDEN_FROM_COACH only when the athlete turns on sharing for
+that coach (CoachLink.share_health, can_see_health): off by default.
 
-Every route about one athlete goes through athlete_for: no link, no athlete (404).
-Used by routers/admin.py (roles), routers/coach.py, routers/coaches.py,
-routers/plan.py (planning for an athlete) and avatars.py.
+Every route or tool about one athlete goes through athlete_for: no link, no
+athlete (404, or one sentence for Claude). Used by routers/admin.py (roles),
+routers/coach.py, routers/coaches.py, routers/plan.py (planning for an
+athlete), mcp/server.py (a coach's connector) and avatars.py.
 """
 
 import datetime
@@ -30,7 +34,8 @@ from .planning import objectives
 from .planning.basics import monday_of
 from .planning.training_log import garmin_profile_lines, rule_set_text
 
-HIDDEN_FROM_COACH = ("health",)  # the athlete's own profile keys a coach doesn't see
+# The athlete's own profile keys a coach sees only with sharing on (training_log.PRIVATE_PROFILE_KEYS).
+HIDDEN_FROM_COACH = ("health", "resting_hr")
 
 
 class CoachingProblem(ValueError):
@@ -93,6 +98,22 @@ def is_coach_of(db: Session, coach: models.User, athlete: models.User) -> bool:
     return (
         db.query(models.CoachLink).filter_by(coach_id=coach.id, athlete_id=athlete.id).first() is not None
     )
+
+
+def link_of(db: Session, coach: models.User, athlete: models.User) -> models.CoachLink | None:
+    return db.query(models.CoachLink).filter_by(coach_id=coach.id, athlete_id=athlete.id).first()
+
+
+def can_see_health(db: Session, coach: models.User, athlete: models.User) -> bool:
+    """Whether the athlete shares sleep and recovery with this coach: the one place that decides."""
+    link = link_of(db, coach, athlete)
+    return bool(link and link.share_health)
+
+
+def athlete_named(db: Session, coach: models.User, username: str) -> models.User | None:
+    """athlete_for, by username (what Claude passes): None for every kind of miss."""
+    found = db.query(models.User).filter(models.User.username == accounts.normalize_username(username)).first()
+    return athlete_for(db, coach, found.id) if found else None
 
 
 def athlete_for(db: Session, coach: models.User, athlete_id: int) -> models.User | None:
@@ -162,8 +183,27 @@ def _week_minutes(db: Session, athlete: models.User, today: datetime.date) -> tu
     return sum(m or 0 for (m,) in planned), sum(s or 0 for (s,) in done) / 60
 
 
-def athlete_summary(db: Session, athlete: models.User, today: datetime.date) -> schemas.CoachAthleteOut:
-    """One line of the coach's list: the next dated objective, this week's hours, the last sync."""
+STALE_SYNC_DAYS = 3  # older than this, a plan would be built on stale data
+
+
+def garmin_state(athlete: models.User, now: datetime.datetime | None = None) -> str:
+    """"ok", "stale" (no sync for STALE_SYNC_DAYS days, often an expired Garmin
+    session) or "not connected"."""
+    if not athlete.garmin_session_encrypted:
+        return "not connected"
+    synced = athlete.garmin_synced_at
+    if synced is None:
+        return "stale"
+    if synced.tzinfo is None:
+        synced = synced.replace(tzinfo=datetime.UTC)
+    return "stale" if (now or models.utcnow()) - synced > datetime.timedelta(days=STALE_SYNC_DAYS) else "ok"
+
+
+def athlete_summary(
+    db: Session, athlete: models.User, today: datetime.date, coach: models.User | None = None
+) -> schemas.CoachAthleteOut:
+    """One line of the coach's list: the next dated objective, this week's hours, the
+    last sync and whether it's stale, and whether recovery is shared with `coach`."""
     upcoming = [o for o in objectives.listed(db, athlete) if o.event_date and o.event_date >= today]
     main = f"{upcoming[0].title} · {upcoming[0].event_date.isoformat()}" if upcoming else None
     planned, done = _week_minutes(db, athlete, today)
@@ -175,11 +215,14 @@ def athlete_summary(db: Session, athlete: models.User, today: datetime.date) -> 
         planned_minutes=planned,
         done_minutes=done,
         garmin_synced_at=athlete.garmin_synced_at,
+        garmin_state=garmin_state(athlete),
+        share_health=bool(coach and can_see_health(db, coach, athlete)),
     )
 
 
-def athlete_profile(db: Session, athlete: models.User) -> schemas.CoachAthleteProfile:
-    profile = {k: v for k, v in (athlete.athlete_profile or {}).items() if k not in HIDDEN_FROM_COACH}
+def athlete_profile(db: Session, athlete: models.User, shared: bool = False) -> schemas.CoachAthleteProfile:
+    """What the coach's Athlete tab shows; `shared` (can_see_health) adds the hidden profile keys."""
+    profile = {k: v for k, v in (athlete.athlete_profile or {}).items() if shared or k not in HIDDEN_FROM_COACH}
     return schemas.CoachAthleteProfile(
         id=athlete.id,
         username=athlete.username,

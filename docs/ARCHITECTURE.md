@@ -120,7 +120,7 @@ Backend, under `backend/app/`:
 | `planning/draft_parser.py` | Draft lines → sessions or errors. Never touches the database |
 | `planning/drafts.py` | A draft as the page sees it: saving it, editing one session (one line) at a time, clearing it, confirming it, putting sessions on the calendar, and dropping its sessions 3 weeks after their date (`drop_old_sessions`, called by every read and write; past sessions are shown, never pushed) |
 | `planning/planned_sessions.py` | One planned session: found, added, edited |
-| `planning/calendar_days.py` | The days of a calendar (done, sleep, planned), for the Calendar tab and, without sleep, for a coach |
+| `planning/calendar_days.py` | The days of a calendar (done, sleep, planned), for the Calendar tab and for a coach (sleep only if shared) |
 | `planning/objectives.py` | Target events: listed, added, edited |
 | `mcp/` | Claude as a custom connector, only with `MCP_ENABLED`: see [Claude's connector](#claudes-connector-mcp) |
 | `garmin/client.py` | Every call to Garmin, through the `garth` / `garminconnect` libraries |
@@ -183,6 +183,23 @@ an admin); the page's own session tokens don't open `/mcp`.
 - `get_overview` is `training_log.build_overview`: the log's own sections,
   cut down to what a chat starts from. `User.coach_notes` is Claude's memory
   between chats, written only by `set_coach_notes`.
+- **A coach's connector.** Tools that work on an athlete take
+  `athlete=<username>` and resolve it in one place, `server._target`, through
+  `coaching.athlete_named` → `athlete_for`: no link, no athlete, and every
+  kind of miss gives the same sentence (`NOT_YOURS`). The link is checked at
+  each call, so removing it cuts Claude off. The tools that write an
+  athlete's own calendar, rule set, objectives or notes go through
+  `_own_account`, which refuses any `athlete` and any coach. Claude's notes
+  about an athlete are `CoachLink.claude_notes`.
+- **The privacy filter.** `coaching.can_see_health` (the link's
+  `share_health`, off by default) is the one place that decides. Off, the
+  connector gets `build_overview(link=...)`, `build_log(private=True)` and
+  `session_text(private=True)`, which load no `SleepRecord`, strip the
+  recovery numbers off `DailyMetrics` (`_training_only`), leave out the
+  activities' body battery and the profile keys of `HIDDEN_FROM_COACH`; the
+  coach's page gets the calendar without sleep and the profile without those
+  keys. Training status, load and VO2max stay. `tests/test_mcp_coach.py`
+  checks the words never appear.
 - Read tools carry `readOnlyHint`; every other tool carries
   `destructiveHint`, so Claude asks first. `tests/test_mcp_tools.py` fails if
   a new tool has neither.
@@ -318,7 +335,7 @@ them together.
 | Add a sentence to the page | Write it in English, through `t()` in a script; add its French to `js/core/fr.js` (the key is the exact English text) |
 | Change login, lockout or password rules | `routers/auth.py`, `accounts.py` (the lockout numbers head its lockout section), `security.py`, `schemas.py` (`PASSWORD_MIN`, `USERNAME_PATTERN`) |
 | Change who may call an endpoint | `deps.py`, and the `Depends(...)` of that endpoint |
-| Change what a coach sees of an athlete | `coaching.py` (`athlete_profile`, `HIDDEN_FROM_COACH`), `routers/coach.py` (the calendar without sleep), `avatars.may_see`. Tests: `tests/test_coaching.py` |
+| Change what a coach sees of an athlete | `coaching.py` (`athlete_profile`, `HIDDEN_FROM_COACH`, `can_see_health`), `routers/coach.py` (the calendar), `training_log.py` (`private`, `PRIVATE_PROFILE_KEYS`), `mcp/server.py` (`_target`), `avatars.may_see`. Tests: `tests/test_coaching.py`, `tests/test_mcp_coach.py` |
 | Add an endpoint | The router of its URL prefix (or a new file in `routers/` and an `include_router` in `main.py`); its models in `schemas.py`; its logic outside `routers/` |
 | Add a setting | `config.py`, then `.env.example`, `docker-compose.yml` and the README's table |
 | Change security headers, the content policy or the https redirect | `main.py` (`security_headers`, `CONTENT_SECURITY_POLICY`), `visitor.py` |

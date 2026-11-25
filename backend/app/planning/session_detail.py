@@ -118,11 +118,11 @@ def _sample_lines(samples: dict, sport: str) -> list[str]:
     return lines
 
 
-def session_text(a: models.Activity, trace: "models.ActivityTrace | None") -> str:
-    """Everything stored about one session, as text."""
+def session_text(a: models.Activity, trace: "models.ActivityTrace | None", private: bool = False) -> str:
+    """Everything stored about one session, as text (`private`: see training_log.build_log)."""
     sport = sport_of(a.activity_type)
     lines = [f"SESSION · {fmt_day(a.start_time.date())} {a.start_time.year} · {fmt_activity(a)}"]
-    lines += detail_lines(a) + trace_lines(a, trace)
+    lines += detail_lines(a, private) + trace_lines(a, trace)
     laps = all_lap_lines(a)
     if laps:
         lines += ["", "ALL LAPS"] + laps

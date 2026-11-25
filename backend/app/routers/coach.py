@@ -1,6 +1,7 @@
 """/api/coach: a coach's athletes (coaching.py). The list with this week's hours,
 adding one by username (no approval), letting one go, one athlete's profile
-and calendar (what a coach may see, never sleep or health details), and their
+and calendar (what a coach may see: sleep and health details only if the
+athlete shares them, coaching.can_see_health), and their
 planned sessions, added, edited or deleted on that calendar ("by <coach>").
 Drafts for an athlete go through /api/plan/draft?athlete_id= (routers/plan.py)."""
 
@@ -37,7 +38,7 @@ def list_athletes(
     """Your athletes: next objective, this week's planned and done hours, last Garmin sync."""
     day = client_today(today)
     return schemas.CoachAthletesResponse(
-        athletes=[coaching.athlete_summary(db, a, day) for a in coaching.athletes_of(db, coach)]
+        athletes=[coaching.athlete_summary(db, a, day, coach) for a in coaching.athletes_of(db, coach)]
     )
 
 
@@ -54,7 +55,7 @@ def add_athlete(
     except coaching.CoachingProblem as problem:
         raise HTTPException(status_code=problem.status, detail=str(problem)) from problem
     db.commit()
-    return coaching.athlete_summary(db, athlete, client_today(today))
+    return coaching.athlete_summary(db, athlete, client_today(today), coach)
 
 
 @router.delete("/athletes/{athlete_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -68,7 +69,8 @@ def remove_athlete(athlete_id: int, db: Session = Depends(get_db), coach: models
 @router.get("/athletes/{athlete_id}", response_model=schemas.CoachAthleteProfile)
 def athlete_profile(athlete_id: int, db: Session = Depends(get_db), coach: models.User = Depends(get_current_coach)):
     """Their objectives, benchmarks and zones, Garmin's zones and records, and their rule set."""
-    return coaching.athlete_profile(db, _athlete(db, coach, athlete_id))
+    athlete = _athlete(db, coach, athlete_id)
+    return coaching.athlete_profile(db, athlete, shared=coaching.can_see_health(db, coach, athlete))
 
 
 @router.get("/athletes/{athlete_id}/calendar", response_model=schemas.CalendarResponse)
@@ -79,13 +81,16 @@ def athlete_calendar(
     db: Session = Depends(get_db),
     coach: models.User = Depends(get_current_coach),
 ):
-    """Their planned and done sessions from `start` to `end`, as the Calendar tab has them, without sleep."""
+    """Their planned and done sessions from `start` to `end`, as the Calendar tab has them,
+    with sleep only if they share it with you."""
     athlete = _athlete(db, coach, athlete_id)
     if not 0 <= (end - start).days < MAX_SPAN_DAYS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"Ask for 1 to {MAX_SPAN_DAYS} days at a time."
         )
-    return schemas.CalendarResponse(start=start, end=end, days=calendar_days(db, athlete, start, end, with_sleep=False))
+    return schemas.CalendarResponse(start=start, end=end, days=calendar_days(
+        db, athlete, start, end, with_sleep=coaching.can_see_health(db, coach, athlete)
+    ))
 
 
 def _their_session(db: Session, athlete: models.User, plan_id: int) -> models.PlannedTraining:
