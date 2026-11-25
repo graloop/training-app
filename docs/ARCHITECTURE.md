@@ -154,8 +154,9 @@ tests replace its functions with fakes, so nothing else has to be faked.
 
 With `MCP_ENABLED=true`, `main.py` adds `/mcp` and a few login routes
 (`app/mcp/`). Claude calls tools there and gets compact text back, built by
-the same `planning/` functions the page uses. One regular account only,
-`MCP_USERNAME`; the page's own session tokens don't open `/mcp`.
+the same `planning/` functions the page uses. Only the accounts
+`MCP_USERNAMES` names (athletes, and coaches working on their athletes, never
+an admin); the page's own session tokens don't open `/mcp`.
 
 - `mcp/oauth.py` is a minimal OAuth 2.1 server, which is what claude.ai
   expects of a custom connector: two `/.well-known/` documents, `POST

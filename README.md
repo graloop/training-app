@@ -37,7 +37,7 @@ Chrome** extension also works: it edits the page like you would.
   of recent connections), every account with its last login, and the tools
   to create an account, reset a password, rename an account (its owner stays
   logged in and logs in with the new name from then on; the accounts named
-  by `ADMIN_USERNAME` and `MCP_USERNAME` can't be renamed, nor can another
+  by `ADMIN_USERNAME` and `MCP_USERNAMES` can't be renamed, nor can another
   account take those names), set each account's **role** (athlete, coach or
   admin; every new account starts as an athlete, and you can't change your
   own) and delete an account (the dashboard lists what the account holds and asks
@@ -557,15 +557,18 @@ connector** and call it directly. It runs on your Claude subscription: no API
 key, no extra container. The connector lives at `https://APP_DOMAIN/mcp`,
 inside the same app.
 
-Only **one account** can be connected: the regular (non-admin) account named
-by `MCP_USERNAME`. Friends keep using the page as before and their data is
-never reachable through the connector.
+Only the accounts named by `MCP_USERNAMES` (comma-separated, never an admin)
+can connect. An athlete's connector works on their own training; a coach's
+works on the athletes linked to them (see "Coach mode" below). Everyone else
+keeps using the page as before, and their data is never reachable through
+the connector. `MCP_USERNAME`, the older one-account variable, still works.
 
 1. The app must be reachable from the internet (`APP_DOMAIN`, above): Claude
    calls in from Anthropic's servers, not from your computer.
-2. Add `MCP_ENABLED=true` and `MCP_USERNAME=<your username>` to the stack's
-   environment variables, then **Pull and redeploy**. The log says
-   `Claude connector on at /mcp for account '<your username>'`.
+2. Add `MCP_ENABLED=true` and `MCP_USERNAMES=<your username>` (several:
+   `julien-athlete,julien-coach`) to the stack's environment variables, then
+   **Pull and redeploy**. The log says
+   `Claude connector on at /mcp for athlete account '<your username>'`.
 3. In claude.ai: Settings → Connectors → **Add custom connector**, URL
    `https://APP_DOMAIN/mcp`, advanced fields empty. Click **Connect** and log
    in on the app's "Connect Claude" page with that account's password.
@@ -617,7 +620,7 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 | `CORS_ALLOW_ORIGINS`         | backend         | Empty = same-origin only (default); comma-separated origins, or `*`  |
 | `APP_DOMAIN`                 | backend         | The public name friends open (e.g. `training.example.com`); when set the app only answers on `https://` that name. Empty (default) = no check |
 | `MCP_ENABLED`                | backend         | `true` adds Claude's connector at `/mcp` with its login pages (default `false`). See [Connect Claude (MCP)](#connect-claude-mcp) |
-| `MCP_USERNAME`               | backend         | The one regular account that may connect Claude. Never an admin account. Required with `MCP_ENABLED` |
+| `MCP_USERNAMES`              | backend         | Comma-separated accounts that may connect Claude (athletes or coaches, never an admin). Required with `MCP_ENABLED`; `MCP_USERNAME`, the older one-name variable, still counts |
 | `MCP_TOKEN_DAYS`             | backend         | Days the connector stays connected without being used (default 30)  |
 | `COMPOSE_PROFILES`           | docker-compose  | `tunnel` starts the optional Cloudflare Tunnel container             |
 | `CLOUDFLARE_TUNNEL_TOKEN`    | docker-compose  | Token of the Cloudflare Tunnel, only with `COMPOSE_PROFILES=tunnel`  |
@@ -678,7 +681,7 @@ New nullable columns are added to existing databases on startup
 | `/api/auth/login`        | POST   | Username/password → JWT (429 after 5 failures for a username, or 20 from one address, in 15 min) |
 | `/api/auth/me`           | GET    | Who's logged in, admin flag, Garmin status, `avatar_url`      |
 | `/api/auth/password`     | POST   | Change your own password; returns a new token                 |
-| `/api/auth/username`     | POST   | `{new_username, current_password}`: change your own login name (409 if taken; the accounts `ADMIN_USERNAME` and `MCP_USERNAME` name are refused) |
+| `/api/auth/username`     | POST   | `{new_username, current_password}`: change your own login name (409 if taken; the accounts `ADMIN_USERNAME` and `MCP_USERNAMES` name are refused) |
 | `/api/auth/avatar`       | PUT/DELETE | Your profile photo: the JPEG or PNG itself as the body, at most 200 KB / remove it |
 | `/api/users/{id}/avatar` | GET    | A profile photo (yours; the admin sees all). The URL from `avatar_url` changes with the photo, so it is cached |
 | `/api/admin/users`       | GET/POST | Admin: list users / create a user                            |

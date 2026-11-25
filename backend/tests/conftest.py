@@ -28,9 +28,11 @@ os.environ["JWT_SECRET"] = "test-secret-" + "x" * 32
 os.environ["FERNET_KEY"] = "3m2Gd0b0x8l8ZLp9bXb1lVZ3n7rPq3QmY2V1n2r3c4s="
 os.environ["ADMIN_USERNAME"] = "admin"
 os.environ["ADMIN_PASSWORD"] = "admin-password"
-# Claude's connector (app/mcp/) is on, for the regular account the `auth` fixture creates.
+# Claude's connector (app/mcp/) is on, for the account the `auth` fixture creates
+# (through the older one-name variable) and for "coach", the coach of test_coaching.py.
 os.environ["MCP_ENABLED"] = "true"
 os.environ["MCP_USERNAME"] = "athlete"
+os.environ["MCP_USERNAMES"] = "coach"
 
 import pytest
 from fastapi.testclient import TestClient

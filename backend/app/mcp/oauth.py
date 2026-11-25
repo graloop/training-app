@@ -1,5 +1,5 @@
 """The login Claude goes through to use /mcp: a minimal OAuth 2.1 authorization
-server (PKCE, dynamic client registration), small because one account uses it.
+server (PKCE, dynamic client registration), small because a few accounts use it.
 
 What happens when the connector is added in claude.ai:
 
@@ -8,7 +8,7 @@ What happens when the connector is added in claude.ai:
 2. POST /oauth/register: Claude registers itself and gets a client_id. Only
    Claude's own callback addresses are accepted (ALLOWED_REDIRECT_URIS).
 3. GET /oauth/authorize: the browser shows this app's login form.
-   POST /oauth/authorize: MCP_USERNAME and its password -> back to Claude with
+   POST /oauth/authorize: an MCP_USERNAMES account and its password -> back to Claude with
    a one-time code (CODE_MINUTES).
 4. POST /oauth/token: Claude trades the code for an access token
    (ACCESS_MINUTES) and a refresh token (MCP_TOKEN_DAYS), and later each
@@ -276,7 +276,7 @@ def authorize(
     password_ok = verify_password(password, user.hashed_password if user else None)
     if not (password_ok and may_connect(user)):
         if password_ok:
-            log.warning("Account %r logged in on the connector page, but only MCP_USERNAME may connect", name)
+            log.warning("Account %r logged in on the connector page, but only MCP_USERNAMES may connect", name)
         accounts.record_failure(name, address)
         accounts.record_login(db, user, success=False)
         # One message for both cases, so the page doesn't tell which account the connector belongs to.

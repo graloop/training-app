@@ -92,16 +92,13 @@ def test_a_coach_cannot_be_coached(client, auth):
     assert client.get("/api/coach/athletes", headers=coach).json()["athletes"] == []
 
 
-def test_the_background_sync_and_the_connector_skip_coaches(client, auth):
+def test_the_background_sync_skips_coaches(client, auth):
     from app.garmin import autosync
-    from app.mcp import auth as mcp_auth
 
     athlete = _id("athlete")
     assert athlete in autosync.connected_accounts()
     _role(client, "athlete", "coach")  # the Garmin link stays stored, unused
     assert athlete not in autosync.connected_accounts()
-    with SessionLocal() as db:
-        assert not mcp_auth.may_connect(db.get(models.User, athlete))  # MCP_USERNAME is "athlete" in conftest
 
 
 def test_a_coach_plans_edits_and_deletes_on_the_athletes_calendar(client, auth):

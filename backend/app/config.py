@@ -67,16 +67,19 @@ class Settings(BaseSettings):
 
     # Claude as a custom connector (app/mcp/, README "Connect Claude (MCP)").
     # /mcp and the OAuth pages only exist with MCP_ENABLED=true, and only the
-    # one regular account named by MCP_USERNAME can authorize the connector.
+    # accounts named by MCP_USERNAMES (comma-separated) can authorize the
+    # connector. MCP_USERNAME, the older one-name variable, still counts.
     mcp_enabled: bool = False
+    mcp_usernames: str = ""
     mcp_username: str = ""
     # Days a connector stays authorized without being used (its refresh token).
     mcp_token_days: int = 30
 
-    @field_validator("mcp_username")
-    @classmethod
-    def _stored_form(cls, value: str) -> str:
-        return value.strip().lower()  # as accounts.normalize_username stores names
+    @property
+    def mcp_accounts(self) -> list[str]:
+        """Every name MCP_USERNAMES and MCP_USERNAME give, as accounts.normalize_username stores them."""
+        names = [n.strip().lower() for n in f"{self.mcp_usernames},{self.mcp_username}".split(",")]
+        return list(dict.fromkeys(n for n in names if n))
 
     @field_validator("app_domain")
     @classmethod

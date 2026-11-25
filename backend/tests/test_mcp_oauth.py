@@ -38,8 +38,8 @@ def _log_in(client, client_id, challenge, username="athlete", password=USER_PASS
     return client.post("/oauth/authorize", data=form, follow_redirects=False)
 
 
-def _code(client, client_id, challenge):
-    res = _log_in(client, client_id, challenge)
+def _code(client, client_id, challenge, username="athlete"):
+    res = _log_in(client, client_id, challenge, username)
     assert res.status_code == 302, res.text
     answer = parse_qs(urlparse(res.headers["location"]).query)
     assert res.headers["location"].startswith(CALLBACK + "?") and answer["state"] == ["xyz"]
@@ -52,11 +52,11 @@ def _trade(client, client_id, code, verifier, **changes):
     return client.post("/oauth/token", data=form)
 
 
-def connect(client):
-    """The whole flow for the account "athlete" (which must exist). Returns (client_id, tokens)."""
+def connect(client, username="athlete"):
+    """The whole flow for `username` (which must exist). Returns (client_id, tokens)."""
     client_id = _register(client).json()["client_id"]
     verifier, challenge = _pkce()
-    res = _trade(client, client_id, _code(client, client_id, challenge), verifier)
+    res = _trade(client, client_id, _code(client, client_id, challenge, username), verifier)
     assert res.status_code == 200, res.text
     return client_id, res.json()
 
@@ -177,6 +177,35 @@ def test_wrong_password_another_account_and_admin_are_refused(client, auth):
         assert "can&#x27;t use the connector" in res.text
     with SessionLocal() as db:
         assert db.query(models.McpAuthCode).count() == 0
+
+
+def test_every_account_mcp_usernames_names_can_connect(client, auth):
+    """conftest: MCP_USERNAME=athlete (the older variable) and MCP_USERNAMES=coach."""
+    make_user(client, "coach", garmin=False)
+    client.patch(f"/api/admin/users/{_user_id('coach')}", json={"role": "coach"}, headers=admin_auth(client))
+    for username in ("athlete", "coach"):
+        assert _mcp_status(client, connect(client, username)[1]) == 200, username
+
+
+def test_mcp_usernames_is_read_as_a_list():
+    from app.config import Settings
+
+    assert Settings(mcp_usernames=" Ana, julien-coach ,,", mcp_username="").mcp_accounts == ["ana", "julien-coach"]
+    assert Settings(mcp_usernames="", mcp_username="Julien").mcp_accounts == ["julien"]  # the older variable alone
+    assert Settings(mcp_usernames="ana,julien", mcp_username="julien").mcp_accounts == ["ana", "julien"]
+    assert Settings(mcp_usernames="", mcp_username="").mcp_accounts == []
+
+
+def test_an_admin_named_in_mcp_usernames_is_refused(client, auth):
+    make_user(client, "coach", garmin=False)
+    client.patch(f"/api/admin/users/{_user_id('coach')}", json={"role": "admin"}, headers=admin_auth(client))
+    client_id = _register(client).json()["client_id"]
+    assert _log_in(client, client_id, _pkce()[1], "coach").status_code == 401
+
+
+def _user_id(username):
+    with SessionLocal() as db:
+        return db.query(models.User).filter(models.User.username == username).one().id
 
 
 def test_login_page_locks_like_the_normal_login(client, auth):

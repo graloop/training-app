@@ -53,9 +53,11 @@ services:
       # people there. Leave empty to use the app on your own network only.
       APP_DOMAIN: ${APP_DOMAIN:-}
       # Claude as a custom connector at https://APP_DOMAIN/mcp (README,
-      # "Connect Claude (MCP)"). Off unless MCP_ENABLED=true; MCP_USERNAME is
-      # the one regular account that may connect, never an admin.
+      # "Connect Claude (MCP)"). Off unless MCP_ENABLED=true; MCP_USERNAMES
+      # lists the accounts that may connect (comma-separated, never an admin).
+      # MCP_USERNAME, the older one-name variable, still works.
       MCP_ENABLED: ${MCP_ENABLED:-false}
+      MCP_USERNAMES: ${MCP_USERNAMES:-}
       MCP_USERNAME: ${MCP_USERNAME:-}
       MCP_TOKEN_DAYS: ${MCP_TOKEN_DAYS:-30}
     ports:

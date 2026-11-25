@@ -184,7 +184,7 @@ app.include_router(users.router)
 app.include_router(coach.router)
 app.include_router(coaches.router)
 
-# Claude's connector, only with MCP_ENABLED and MCP_USERNAME (mcp/__init__.py).
+# Claude's connector, only with MCP_ENABLED and MCP_USERNAMES (mcp/__init__.py).
 # Two plain routes rather than a mount, so /mcp answers without a redirect to /mcp/.
 if mcp_auth.is_configured():
     app.include_router(mcp_oauth.router)

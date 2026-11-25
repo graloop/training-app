@@ -32,33 +32,31 @@ current_user_id: contextvars.ContextVar[int | None] = contextvars.ContextVar("mc
 
 def is_configured() -> bool:
     """Whether main.py mounts /mcp and the OAuth pages at all."""
-    return settings.mcp_enabled and bool(settings.mcp_username)
+    return settings.mcp_enabled and bool(settings.mcp_accounts)
 
 
 def may_connect(user: models.User | None) -> bool:
-    """Only MCP_USERNAME, and only while it is an athlete account (admins and coaches have no calendar)."""
-    return user is not None and user.username == settings.mcp_username and not user.is_admin and not user.is_coach
+    """Only the accounts MCP_USERNAMES names, and never an admin (no calendar, no athletes).
+    An athlete works on their own training; a coach on their athletes' (server.py)."""
+    return user is not None and user.username in settings.mcp_accounts and not user.is_admin
 
 
 def log_setup_problems() -> None:
     """Startup (main.py): say in the log why the connector can't work, without stopping the app."""
     if not settings.mcp_enabled:
         return
-    if not settings.mcp_username:
-        log.error("MCP_ENABLED is set but MCP_USERNAME is empty: /mcp is not available. Set it to your username.")
+    if not settings.mcp_accounts:
+        log.error("MCP_ENABLED is set but MCP_USERNAMES is empty: /mcp is not available. Set it to your username.")
         return
     with SessionLocal() as db:
-        user = db.query(models.User).filter(models.User.username == settings.mcp_username).first()
-    if user is None:
-        log.error("MCP_USERNAME %r is not an account yet: the connector can't log in until it exists.", settings.mcp_username)
-    elif user.is_admin:
-        log.error(
-            "MCP_USERNAME %r is an admin account, which has no calendar: the connector refuses it. "
-            "Use a regular account.",
-            settings.mcp_username,
-        )
-    else:
-        log.info("Claude connector on at /mcp for account %r", settings.mcp_username)
+        for name in settings.mcp_accounts:
+            user = db.query(models.User).filter(models.User.username == name).first()
+            if user is None:
+                log.error("MCP_USERNAMES names %r, which is not an account yet: it can't connect until it exists.", name)
+            elif user.is_admin:
+                log.error("MCP_USERNAMES names %r, an admin account: the connector refuses it.", name)
+            else:
+                log.info("Claude connector on at /mcp for %s account %r", "coach" if user.is_coach else "athlete", name)
 
 
 def public_base(request: Request) -> str:

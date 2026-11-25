@@ -75,6 +75,8 @@ async def _run(work: Callable[[Session, models.User], str]) -> str:
     def in_thread() -> str:
         with SessionLocal() as db:
             user = db.get(models.User, current_user_id.get())
+            if user.is_coach:
+                return "This is a coach account: the connector can't plan for athletes yet."
             try:
                 return work(db, user)
             except ToolProblem as problem:

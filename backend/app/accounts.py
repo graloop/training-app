@@ -52,11 +52,12 @@ class RenameProblem(ValueError):
         self.taken = taken
 
 
-def _names_in_config() -> dict[str, str]:
+def _names_in_config() -> list[tuple[str, str]]:
     """Account names the app's settings point at, with the variable that names them."""
     settings = get_settings()
-    names = {"ADMIN_USERNAME": normalize_username(settings.admin_username), "MCP_USERNAME": settings.mcp_username}
-    return {variable: name for variable, name in names.items() if name}
+    names = [("ADMIN_USERNAME", normalize_username(settings.admin_username))]
+    names += [("MCP_USERNAMES", name) for name in settings.mcp_accounts]
+    return [(variable, name) for variable, name in names if name]
 
 
 def rename(db: Session, user: models.User, new_username: str) -> str:
@@ -64,14 +65,14 @@ def rename(db: Session, user: models.User, new_username: str) -> str:
     Returns the old name. The session token holds the account id, so nobody is
     logged out; the connection log keeps the old name on past attempts. The caller commits.
 
-    Accounts named by ADMIN_USERNAME or MCP_USERNAME are refused, both ways:
+    Accounts named by ADMIN_USERNAME or MCP_USERNAMES are refused, both ways:
     renaming one away would recreate an admin under the old name at the next
     start, or cut Claude's connector; renaming another account onto one would
     make it the admin, or the connector's account."""
     old, new = user.username, normalize_username(new_username)
     if new == old:
         return old
-    for variable, name in _names_in_config().items():
+    for variable, name in _names_in_config():
         if old == name:
             raise RenameProblem(f"{old} is the account {variable} names: change {variable} in the app's settings first.")
         if new == name:

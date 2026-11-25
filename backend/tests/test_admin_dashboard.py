@@ -293,9 +293,9 @@ def test_rename_refuses_a_taken_or_invalid_name(client):
 
 
 def test_rename_refuses_the_accounts_the_settings_name(client, auth):
-    """conftest: ADMIN_USERNAME=admin and MCP_USERNAME=athlete."""
+    """conftest: ADMIN_USERNAME=admin, MCP_USERNAME=athlete and MCP_USERNAMES=coach."""
     make_user(client, "friend", garmin=False)
-    for user, new in (("admin", "boss"), ("athlete", "runner"), ("friend", "admin"), ("friend", "athlete")):
+    for user, new in (("admin", "boss"), ("athlete", "runner"), ("friend", "admin"), ("friend", "athlete"), ("friend", "coach")):
         res = _rename(client, _user_id(user), new)
         assert res.status_code == 400, (user, new)
         assert "USERNAME" in res.json()["detail"]
