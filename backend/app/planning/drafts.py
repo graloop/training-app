@@ -14,8 +14,15 @@ to run on a timer and it works even after the server was off.
 
 Whose draft: the editing functions take the athlete whose calendar is planned
 and, for a coach planning for them, the coach (draft_of). Without a coach it is
-the athlete's own draft (User.plan_draft), the one their Plan tab and Claude's
-connector use. send_to_athlete copies a coach's draft into the athlete's own.
+the athlete's own draft (User.plan_draft), the one their Plan tab and the
+athlete's own Claude use. A coach's Claude writes the coach's draft
+(save(..., coach=, by="claude")). send_to_athlete copies a coach's draft into
+the athlete's own.
+
+Every change records who made it (PlanDraft.written_by: "claude" from the
+connector, else "coach" or "self" from the page) and clears confirmed_at and
+sent_at: a draft changed after it was pushed or sent shows as not pushed or
+not sent.
 
 A draft is plain text (PlanDraft.text) parsed again on every read: nothing
 parsed is stored until put_on_calendar() turns the sessions into
@@ -32,6 +39,7 @@ from .draft_parser import DraftSession, parse_draft
 
 DEFAULT_WEEKS = 4
 KEEP_PAST_DAYS = 21  # a past session stays in the draft for 3 weeks, for reference
+SUMMARY_MAX = 1500  # PlanDraft.summary
 
 
 class DraftProblem(ValueError):
@@ -136,6 +144,10 @@ def draft_out(db: Session, user: models.User, draft: models.PlanDraft | None, to
         existing_planned=existing,
         confirmed_at=draft.confirmed_at if draft else None,
         past_count=len(parsed.past),
+        written_by=draft.written_by if draft else None,
+        summary=draft.summary if draft else None,
+        updated_at=draft.updated_at if draft else None,
+        sent_at=draft.sent_at if draft else None,
     )
 
 
@@ -155,18 +167,24 @@ def put_on_calendar(
     return replaced
 
 
-def save(db: Session, user: models.User, payload: schemas.DraftIn) -> None:
-    """Keep the draft (one per account). Never touches the calendar. The caller commits."""
-    draft = user.plan_draft
+def save(
+    db: Session, user: models.User, payload: schemas.DraftIn, coach: models.User | None = None,
+    by: str | None = None, summary: str | None = None,
+) -> None:
+    """Replace the whole draft: `user`'s own, or `coach`'s draft for them. `by` is
+    who wrote it (_changed); `summary` replaces the reviewer's note when given.
+    Never touches the calendar, nor any other draft. The caller commits."""
+    draft = draft_of(db, user, coach)
     if draft is None:
-        draft = models.PlanDraft(user_id=user.id)
+        draft = models.PlanDraft(user_id=user.id, coach_id=coach.id if coach else None)
         db.add(draft)
-        user.plan_draft = draft  # so whoever reads user.plan_draft next sees it
+        if coach is None:
+            user.plan_draft = draft  # so whoever reads user.plan_draft next sees it
     draft.start_date = monday_of(payload.start_date)
     draft.weeks = payload.weeks
-    draft.text = payload.text
-    draft.confirmed_at = None
-    draft.updated_at = models.utcnow()  # even when nothing differs: saving again restarts the 24 h
+    _changed(draft, payload.text.splitlines(), by)
+    if summary is not None:
+        draft.summary = summary.strip() or None
 
 
 def confirm(
@@ -249,9 +267,13 @@ def _cover(draft: models.PlanDraft, day: datetime.date) -> None:
     draft.start_date, draft.weeks = start, weeks
 
 
-def _changed(draft: models.PlanDraft, lines: list[str]) -> None:
+def _changed(draft: models.PlanDraft, lines: list[str], by: str | None = None) -> None:
+    """New text, and who wrote it: `by`, or by default the page's user (the coach
+    for a coach's draft, else the athlete). Not pushed or sent any more."""
     draft.text = "\n".join(lines)
+    draft.written_by = by or ("coach" if draft.coach_id else "self")
     draft.confirmed_at = None
+    draft.sent_at = None
     draft.updated_at = models.utcnow()
 
 
@@ -329,18 +351,22 @@ def send_to_athlete(db: Session, coach: models.User, athlete: models.User, today
         raise DraftProblem("Your draft for them is empty.")
     if sessions_in(athlete.plan_draft, today) and not replace:
         raise AthleteHasADraft(f"{athlete.username} already has a draft on their Plan tab.")
-    replace_own(db, athlete, mine.start_date, mine.weeks, mine.text, today)
+    replace_own(db, athlete, mine.start_date, mine.weeks, mine.text, today, by="coach")
+    mine.sent_at = models.utcnow()
     return sessions_in(mine, today)
 
 
 def replace_own(
-    db: Session, user: models.User, start: datetime.date, weeks: int, text: str, today: datetime.date
+    db: Session, user: models.User, start: datetime.date, weeks: int, text: str, today: datetime.date,
+    by: str | None = None,
 ) -> None:
-    """Make this the account's own draft (an import, or what a coach sent),
-    restarting its 24 h. Its LEGACY block notes stay. The caller commits."""
+    """Make this the account's own draft (an import, or what a coach sent: `by`
+    "coach"). Its summary goes (it was about the old draft); its LEGACY block
+    notes stay. The caller commits."""
     draft = _draft_for(db, user, today)
     draft.start_date, draft.weeks = monday_of(start), weeks
-    _changed(draft, text.splitlines())
+    draft.summary = None
+    _changed(draft, text.splitlines(), by)
 
 
 def sessions_in(draft: models.PlanDraft | None, today: datetime.date) -> int:

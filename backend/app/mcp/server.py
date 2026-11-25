@@ -178,7 +178,10 @@ def _draft_state(db: Session, coach: models.User, athlete: models.User) -> str:
     if draft is None:
         return "no draft"
     count = drafts.sessions_in(draft, _today())
-    return f"draft {draft.weeks} week{'s' if draft.weeks != 1 else ''}, {count} session{'s' if count != 1 else ''}"
+    by = {"claude": "by Claude", "coach": "edited by the coach"}.get(draft.written_by or "", "")
+    sent = f"sent {fmt_day(draft.sent_at.date())}" if draft.sent_at else "not sent"
+    parts = [f"draft {draft.weeks} week{'s' if draft.weeks != 1 else ''}", f"{count} session{'s' if count != 1 else ''}"]
+    return ", ".join([*parts, by, sent] if by else [*parts, sent])
 
 
 def _own_account(user: models.User, athlete: str) -> models.User:
@@ -371,12 +374,19 @@ def build_server() -> FastMCP:
         return await _run(work)
 
     @server.tool(annotations=READ)
-    async def get_draft() -> str:
+    @_athlete_arg
+    async def get_draft(athlete: str = "") -> str:
         """The draft plan saved on the Plan tab: its weeks, the lines the app couldn't read and why, the
-        weekly totals, and what confirming it would replace on the calendar."""
+        weekly totals, your summary, who changed it last, and what confirming it would replace on the
+        calendar. For an athlete it is the coach's draft for them, with the coach's edits since you
+        saved it, and whether it was sent to the athlete."""
+
         def work(db: Session, user: models.User) -> str:
-            user = _target(db, user, "").user
-            return wording.draft_text(drafts.draft_out(db, user, user.plan_draft, _today()))
+            target = _target(db, user, athlete)
+            coach = user if target.link else None
+            draft = drafts.draft_of(db, target.user, coach)
+            out = drafts.draft_out(db, target.user, draft, _today())
+            return wording.draft_text(out, athlete=target.user.username if coach else None)
 
         return await _run(work)
 
@@ -448,15 +458,33 @@ def build_server() -> FastMCP:
         "It replaces the saved draft and never touches the calendar: confirm_draft does that. "
         "`text` has one session per line: date | sport | duration | details. "
         f"{FORMAT_HINT.removeprefix('Use: ')}. Rest days are left out. The answer lists the lines the app "
-        "couldn't read and why: fix them and save again. The details become the session's notes. " + WORKOUT_FORMAT,
+        "couldn't read and why: fix them and save again. The details become the session's notes. " + WORKOUT_FORMAT
+        + " A coach passes athlete=<username>: this writes the coach's draft for that athlete, which the "
+        "coach reviews and edits in the app, then sends to the athlete's Plan tab; the athlete's own draft "
+        "and calendar are never touched. To revise it, read it with get_draft first: it has the coach's "
+        f"edits. `summary` (at most {drafts.SUMMARY_MAX} characters) is a short note for the reviewer: the "
+        "block's aim, weekly hours, what changed from last time. It is never sent to the athlete and must "
+        "not repeat inside session details.",
     )
-    async def save_draft(start_date: str, weeks: int, text: str) -> str:
+    async def save_draft(start_date: str, weeks: int, text: str, athlete: str = "", summary: str = "") -> str:
         def work(db: Session, user: models.User) -> str:
-            user = _target(db, user, "").user
-            drafts.save(db, user, schemas.DraftIn(start_date=start_date, weeks=weeks, text=text))
+            target = _target(db, user, athlete)
+            coach = user if target.link else None
+            if len(summary.strip()) > drafts.SUMMARY_MAX:
+                raise ToolProblem(
+                    f"Not saved: the summary has {len(summary.strip())} characters, the limit is {drafts.SUMMARY_MAX}."
+                )
+            payload = schemas.DraftIn(start_date=start_date, weeks=weeks, text=text)
+            drafts.save(db, target.user, payload, coach=coach, by="claude", summary=summary)
             db.commit()
-            db.refresh(user)
-            return wording.draft_text(drafts.draft_out(db, user, user.plan_draft, _today()))
+            db.refresh(target.user)
+            out = drafts.draft_out(db, target.user, drafts.draft_of(db, target.user, coach), _today())
+            if coach:
+                log.info(
+                    "Coach %r saved a draft for athlete %r through Claude: %d sessions",
+                    user.username, target.user.username, out.sessions_count,
+                )
+            return wording.draft_text(out, athlete=target.user.username if coach else None)
 
         return await _run(work)
 

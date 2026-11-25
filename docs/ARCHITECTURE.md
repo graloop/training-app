@@ -190,7 +190,11 @@ an admin); the page's own session tokens don't open `/mcp`.
   each call, so removing it cuts Claude off. The tools that write an
   athlete's own calendar, rule set, objectives or notes go through
   `_own_account`, which refuses any `athlete` and any coach. Claude's notes
-  about an athlete are `CoachLink.claude_notes`.
+  about an athlete are `CoachLink.claude_notes`. For an athlete, Claude
+  writes only the coach's draft (`drafts.save(..., coach=, by="claude")`).
+  Every draft change goes through `drafts._changed`, which records who made
+  it (`PlanDraft.written_by`) and clears `confirmed_at` and `sent_at`, so
+  `get_draft` sees the coach's page edits and the page sees Claude's.
 - **The privacy filter.** `coaching.can_see_health` (the link's
   `share_health`, off by default) is the one place that decides. Off, the
   connector gets `build_overview(link=...)`, `build_log(private=True)` and

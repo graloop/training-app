@@ -15,19 +15,40 @@ def problems(exc: ValidationError) -> str:
     return "Not saved. " + "; ".join(parts)
 
 
-def draft_text(draft: schemas.DraftOut) -> str:
-    """The draft the way the Plan tab shows it: where it stands, the lines to fix, the weekly totals, the text."""
+WRITERS = {"claude": "you (Claude)", "coach": "the coach, on the page", "self": "the athlete, on the page"}
+
+
+def draft_text(draft: schemas.DraftOut, athlete: str | None = None) -> str:
+    """The draft the way the Plan tab shows it: where it stands, the lines to fix, the weekly totals, the text.
+    `athlete`: a coach's draft for that athlete."""
     if not draft.saved:
+        if athlete:
+            return f"No draft for {athlete} yet. Write one with save_draft(athlete=\"{athlete}\", ...)."
         return "No draft saved. Write one with save_draft."
-    state = "on the calendar since it was confirmed" if draft.confirmed_at else "saved, not on the calendar yet"
+    count = f"{draft.existing_planned} planned session{'s' if draft.existing_planned != 1 else ''}"
+    span = f"from {fmt_day(draft.replace_from)} to {fmt_day(draft.end_date)}"
+    if athlete:
+        if draft.sent_at:
+            state = f"the coach's draft for {athlete} · sent to their Plan tab {fmt_day(draft.sent_at.date())}"
+        elif draft.confirmed_at:
+            state = f"the coach's draft for {athlete} · pushed on their calendar"
+        else:
+            state = f"the coach's draft for {athlete} · not sent yet"
+        replaces = f"{athlete} has {count} on their calendar {span}: a push would replace them."
+    else:
+        state = "on the calendar since it was confirmed" if draft.confirmed_at else "saved, not on the calendar yet"
+        replaces = f"Confirming replaces the {count} on the calendar {span}."
     lines = [
         f"DRAFT · {fmt_day(draft.start_date)} to {fmt_day(draft.end_date)} "
         f"({draft.start_date.isoformat()}, {draft.weeks} week{'s' if draft.weeks != 1 else ''}) · {state}",
         f"{draft.sessions_count} session{'s' if draft.sessions_count != 1 else ''} read · "
         f"{len(draft.errors)} line{'s' if len(draft.errors) != 1 else ''} with a problem",
-        f"Confirming replaces the {draft.existing_planned} planned session{'s' if draft.existing_planned != 1 else ''} "
-        f"on the calendar from {fmt_day(draft.replace_from)} to {fmt_day(draft.end_date)}.",
+        replaces,
     ]
+    if draft.written_by:
+        lines.append(f"Last changed by {WRITERS.get(draft.written_by, draft.written_by)}.")
+    if draft.summary:
+        lines += ["", "SUMMARY (for the reviewer)", draft.summary]
     if draft.past_count:
         lines.append(
             f"{draft.past_count} session{'s' if draft.past_count != 1 else ''} on days already past: kept for reference, "

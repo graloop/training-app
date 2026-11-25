@@ -446,6 +446,10 @@ class DraftOut(BaseModel):
     existing_planned: int  # sessions currently on the calendar in that span
     confirmed_at: UtcDatetime | None
     past_count: int = 0  # sessions on days already past: shown, never pushed (drafts.KEEP_PAST_DAYS)
+    written_by: str | None = None  # the last change: "claude", "coach" or "self"
+    summary: str | None = None  # Claude's note for the reviewer (PlanDraft.summary)
+    updated_at: UtcDatetime | None = None
+    sent_at: UtcDatetime | None = None  # a coach's draft: last sent to the athlete's Plan tab
 
 
 class ConfirmResult(BaseModel):

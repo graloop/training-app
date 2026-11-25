@@ -267,3 +267,79 @@ def test_new_link_columns_can_be_added_to_an_existing_database():
     """Nullable: database.add_missing_columns() adds them on the next start."""
     for column in ("share_health", "claude_notes"):
         assert models.CoachLink.__table__.c[column].nullable
+
+
+# --- Claude writes the coach's draft (phase 3) ------------------------------------------------
+
+NEXT_MONDAY = TODAY - datetime.timedelta(days=TODAY.weekday()) + datetime.timedelta(days=7)
+
+
+def _plan_text():
+    return "\n".join([
+        f"{NEXT_MONDAY.isoformat()} | run | 0:45 | Easy run Z2",
+        f"{(NEXT_MONDAY + datetime.timedelta(days=2)).isoformat()} | bike | 1:30 | Endurance ride",
+    ])
+
+
+def test_save_draft_for_an_athlete_writes_only_the_coachs_draft(client, auth, coach_tool):
+    athlete = _id("athlete")
+    client.put("/api/plan/rules", json={"rules": "Mine"}, headers=auth)
+    own = client.post("/api/plan/draft/sessions", headers=auth, json={
+        "date": NEXT_MONDAY.isoformat(), "activity_type": "swimming", "minutes": 30, "details": "My own swim"})
+    assert own.status_code == 200
+    with SessionLocal() as db:
+        db.add(models.PlannedTraining(user_id=athlete, date=NEXT_MONDAY, activity_type="running",
+                                      planned_duration_minutes=60))
+        db.commit()
+
+    text = coach_tool("save_draft", athlete="athlete", start_date=NEXT_MONDAY.isoformat(), weeks=2,
+                      text=_plan_text(), summary="Base block: 2 h 15 a week, easy.")
+    assert "the coach's draft for athlete · not sent yet" in text
+    assert "2 sessions read" in text and "athlete has 1 planned session on their calendar" in text
+    assert "Last changed by you (Claude)." in text and "Base block: 2 h 15 a week, easy." in text
+
+    with SessionLocal() as db:
+        coach_draft = db.query(models.PlanDraft).filter_by(user_id=athlete, coach_id=_id("coach")).one()
+        assert (coach_draft.written_by, coach_draft.summary) == ("claude", "Base block: 2 h 15 a week, easy.")
+        assert db.query(models.PlannedTraining).filter_by(user_id=athlete).count() == 1  # the calendar is untouched
+    mine = client.get("/api/plan/draft", headers=auth).json()  # the athlete's own draft, unchanged
+    assert "My own swim" in mine["text"] and "Easy run" not in mine["text"] and mine["summary"] is None
+    assert coach_tool("confirm_draft", athlete="athlete") == mcp_server.FOR_ATHLETE_USE_DRAFT
+    assert "by Claude, not sent" in coach_tool("list_athletes")
+
+
+def test_the_coachs_page_edits_show_up_in_get_draft(client, coach_web, coach_tool):
+    athlete = _id("athlete")
+    coach_tool("save_draft", athlete="athlete", start_date=NEXT_MONDAY.isoformat(), weeks=2, text=_plan_text())
+    page = client.get(f"/api/plan/draft?athlete_id={athlete}", headers=coach_web).json()
+    assert page["written_by"] == "claude"
+    res = client.patch(f"/api/plan/draft/sessions/1?athlete_id={athlete}", headers=coach_web, json={
+        "date": NEXT_MONDAY.isoformat(), "activity_type": "running", "minutes": 30, "details": "Shorter, coach's call"})
+    assert res.status_code == 200 and res.json()["written_by"] == "coach"
+    text = coach_tool("get_draft", athlete="athlete")
+    assert "Shorter, coach's call" in text and "Last changed by the coach, on the page." in text
+    assert "edited by the coach" in coach_tool("list_athletes")
+
+
+def test_sending_marks_the_draft_sent_until_the_next_change(client, auth, coach_web, coach_tool):
+    athlete = _id("athlete")
+    coach_tool("save_draft", athlete="athlete", start_date=NEXT_MONDAY.isoformat(), weeks=2, text=_plan_text(),
+               summary="Only for the coach")
+    assert client.post(f"/api/plan/draft/send?athlete_id={athlete}", headers=coach_web).status_code == 200
+    assert "sent to their Plan tab" in coach_tool("get_draft", athlete="athlete")
+    mine = client.get("/api/plan/draft", headers=auth).json()
+    assert "Endurance ride" in mine["text"] and mine["summary"] is None and mine["written_by"] == "coach"
+    coach_tool("save_draft", athlete="athlete", start_date=NEXT_MONDAY.isoformat(), weeks=2, text=_plan_text())
+    assert "not sent yet" in coach_tool("get_draft", athlete="athlete")
+
+
+def test_a_draft_summary_is_capped(coach_tool):
+    answer = coach_tool("save_draft", athlete="athlete", start_date=NEXT_MONDAY.isoformat(), weeks=1, text="",
+                        summary="x" * 1501)
+    assert answer.startswith("Not saved: the summary has 1501 characters")
+    assert coach_tool("get_draft", athlete="athlete").startswith("No draft for athlete yet.")
+
+
+def test_new_draft_columns_can_be_added_to_an_existing_database():
+    for column in ("written_by", "summary", "sent_at"):
+        assert models.PlanDraft.__table__.c[column].nullable

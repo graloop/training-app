@@ -32,7 +32,7 @@ def get_rules(user: models.User = Depends(get_current_member)):
 def save_rules(
     payload: schemas.RuleSet,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_member),
 ):
     """The rule set every plan must follow (Athlete tab); Claude reads it through the connector."""
     user.rule_set = payload.rules.strip()  # "" (not None) = cleared: the older notes don't come back

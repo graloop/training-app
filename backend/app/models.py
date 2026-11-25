@@ -293,6 +293,13 @@ class PlanDraft(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     confirmed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Who made the last change (drafts.py, WRITERS): "claude" (the connector), "coach" or "self" (the page).
+    written_by: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Claude's note for whoever reviews the draft (the block's aim, weekly hours, what changed).
+    # Never sent to the athlete with the draft, never put in session notes.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A coach's draft: when it was last sent to the athlete's Plan tab; cleared by any later change.
+    sent_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(foreign_keys=[user_id], overlaps="plan_draft,drafts_as_athlete")
 

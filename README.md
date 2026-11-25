@@ -605,6 +605,13 @@ works on the coach's athletes, never on anyone else:
 - `list_athletes` lists them (next objective, this week's hours, last Garmin
   sync, whether they share sleep and recovery, the coach's draft for them).
   The read tools and `sync_garmin` take `athlete=<username>`.
+- `save_draft(athlete=..., summary=...)` writes **the coach's draft** for that
+  athlete, the one on the coach's Plan tab. The athlete's own draft and
+  calendar are never touched. The coach reviews and edits it on the Plan
+  tab, then sends it to the athlete's Plan tab (or pushes it). `get_draft
+  (athlete=...)` reads it back with the coach's edits, so "make week 2
+  lighter" builds on them. `summary` is a short note for the coach (the
+  block's aim, weekly hours, what changed), never sent to the athlete.
 - `set_athlete_notes(athlete, notes)` is Claude's memory about one athlete,
   kept on the coach's side (the athlete's own Claude notes are never touched).
 - Without the athlete's sharing switch, nothing about sleep, readiness, HRV,
@@ -676,6 +683,9 @@ Set in `.env` (loaded by both `npm start` and Docker Compose):
 - **PlanDraft** — the weeks being planned, the session lines as typed and the
   block notes. Not on the calendar until pushed. One per user of their own
   (`coach_id` empty) and one per coach and athlete (`coach_id` = the coach).
+  Who changed it last (`written_by`: `claude`, `coach` or `self`), Claude's
+  note for the reviewer (`summary`), and for a coach's draft when it was last
+  sent to the athlete (`sent_at`, cleared by the next change).
 - **CoachLink** — a coach and one of their athletes (`User.is_coach` marks
   coaches), whether the athlete shares sleep and recovery with that coach
   (`share_health`), and the notes the coach's Claude keeps about the athlete
