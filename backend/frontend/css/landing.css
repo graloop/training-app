@@ -1,5 +1,6 @@
 /* Landing page (what visitors see before logging in): hero photo, the tour of
-   the tabs with their mock-ups, swim/bike/run photos, how it works, contact. */
+   the tabs with their mock-ups, Claude and coaches, swim/bike/run photos, how
+   it works, contact. */
 
 #auth-view.landing { max-width: none; padding: 0; }
 .landing { --landing-width: 1160px; overflow-x: clip; }
@@ -173,6 +174,8 @@
 .mock-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
 .mock-day { min-height: 128px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; }
 .mock-day-head { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-bottom: 6px; }
+.mock-day-stats { display: flex; flex-wrap: wrap; gap: 3px 6px; }
+.mock-day-stats .sleep-badge, .mock-day-stats .rhr-badge { font-size: 0.66rem; }
 .mock-day-head .day-date { margin: 0; font-size: 0.72rem; }
 .mock-day .entry { flex-direction: column; align-items: flex-start; gap: 2px; padding: 4px 5px; font-size: 0.72rem; transition: background 0.4s, border-color 0.4s; }
 .mock-day .entry-notes { font-size: 0.66rem; }
@@ -185,35 +188,25 @@
 /* Plan */
 .mock-claude { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 4px 12px; border-radius: 999px; background: var(--fair-bg); color: var(--fair-fg); font-weight: 600; }
 .mock-claude::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s infinite alternate; }
-.mock-claude.done { background: var(--good-bg); color: var(--good-fg); }
+.mock-claude.done { background: var(--planned); color: var(--accent-hover); }
 .mock-claude.done::before { animation: none; }
 @keyframes pulse { to { opacity: 0.25; } }
-.mock-draft {
-  min-height: 112px;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--nav-bg);
-  color: #c7d2fe;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-.mock-draft-line { display: block; }
-.mock-draft-line:last-child::after { content: "▍"; color: #fff; animation: pulse 0.6s infinite alternate; }
-.mock-preview-row { display: grid; grid-template-columns: 2.6rem auto minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--border); animation: rise 0.35s both; }
-.mock-preview-day { color: var(--muted); font-weight: 600; }
-.mock-preview-details { color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mock-week-plan .mock-day { min-height: 104px; }
+.mock-pop { animation: rise 0.35s both; }
+.mock-day .entry.pushed { border-style: solid; box-shadow: 0 0 0 2px var(--accent) inset; }
 .mock-split { display: grid; gap: 6px; margin-top: 12px; }
 .mock-split-row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 3rem; align-items: center; gap: 10px; }
 .mock-split-row strong { text-align: right; font-variant-numeric: tabular-nums; }
 .mock-split-track { height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
-.mock-split-fill { width: 0; height: 100%; border-radius: 4px; transition: width 0.8s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.mock-split-fill { width: 0; height: 100%; border-radius: 4px; transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1); }
 .mock-split-row.swim .mock-split-fill { background: #0ea5e9; }
 .mock-split-row.bike .mock-split-fill { background: #8b5cf6; }
 .mock-split-row.run .mock-split-fill { background: #f97316; }
 .mock-split-total { text-align: right; font-weight: 700; }
+.mock-plan-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
+.mock-push { padding: 6px 14px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; transition: transform 0.15s, filter 0.15s; }
+.mock-push.pressed { transform: scale(0.95); filter: brightness(0.9); }
+.mock-push-status { color: var(--ok-text); font-weight: 600; }
 
 /* Athlete */
 .mock-objectives { display: grid; gap: 10px; }
@@ -227,13 +220,42 @@
 .mock-number { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
 .mock-number span { color: var(--muted); font-size: 0.72rem; }
 .mock-number strong { font-size: 1.05rem; }
+.mock-rules { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+.mock-rules-title { font-weight: 700; }
+.mock-rule { color: var(--muted); }
+.mock-rule::before { content: "· "; }
+
+/* Claude: a chat, its tool calls to the app, its answer */
+.mock-chat { display: flex; flex-direction: column; gap: 10px; }
+.chat-bubble { max-width: 88%; padding: 10px 14px; border-radius: 14px; line-height: 1.5; animation: rise 0.35s both; }
+.chat-bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.chat-bubble.claude { align-self: flex-start; background: var(--bg); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.chat-bubble p { margin: 0; }
+.chat-bubble ul { margin: 6px 0; padding-left: 18px; font-weight: 600; }
+.chat-tool { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); animation: rise 0.3s both; }
+.chat-tool code { padding: 2px 8px; border-radius: 6px; background: var(--nav-bg); color: #c7d2fe; font-size: 0.72rem; }
+.chat-tool::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn-text); animation: pulse 0.6s infinite alternate; }
+.chat-tool.done::before { background: var(--ok-text); animation: none; }
+
+/* Coaches: the athlete list */
+.mock-athletes { display: flex; flex-direction: column; gap: 8px; }
+.mock-athlete { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.mock-person { display: flex; align-items: center; gap: 10px; }
+.mock-avatar { display: grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--planned); color: var(--accent-hover); font-weight: 700; }
+.mock-person-text { display: flex; flex-direction: column; min-width: 0; }
+.mock-person-text .warn { color: var(--warn-text); }
+.mock-person-text .shared-badge { color: var(--ok-text); }
+.mock-draft-state { margin-left: 38px; color: var(--accent-text); transition: color 0.3s; }
+.mock-draft-state.new { font-weight: 700; }
+.mock-draft-state.sent { color: var(--ok-text); font-weight: 700; animation: rise 0.35s both; }
+.mock-draft-state.was-sent { color: var(--ok-text); }
 
 /* --- Narrow screens: one column, the calendar mock-up scrolls sideways --- */
 
 @media (max-width: 860px) {
   .feature { grid-template-columns: 1fr; gap: 28px; margin-bottom: 72px; }
   .feature-flip .feature-text { order: 0; }
-  .mock[data-mock="calendar"] { overflow-x: auto; }
+  .mock[data-mock="calendar"], .mock[data-mock="plan"] { overflow-x: auto; }
   .mock-week { min-width: 560px; }
   .landing-section { padding-top: 72px; }
 }

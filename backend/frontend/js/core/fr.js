@@ -537,48 +537,81 @@ export const FR = {
   "Ask Julien for one": "Demandez-en un à Julien",
   "Created by Julien Tremblay": "Créé par Julien Tremblay",
   "Swim · Bike · Run": "Natation · Vélo · Course",
-  "Plan your training. Then see what you really did.":
-    "Planifiez votre entraînement. Puis voyez ce que vous avez vraiment fait.",
-  "Training App puts every session you planned next to what your Garmin recorded, keeps your races in sight, and lets Claude write your next weeks from your real history.":
-    "Training App place chaque séance prévue à côté de ce que votre Garmin a enregistré, garde vos courses en vue et laisse Claude écrire vos prochaines semaines à partir de votre vrai historique.",
+  "Plan with Claude. Then see what you really did.":
+    "Planifiez avec Claude. Puis voyez ce que vous avez vraiment fait.",
+  "Training App puts every session you planned next to what your Garmin recorded, with your sleep and recovery. Claude reads all of it from your chat and writes your next weeks. You, or your coach, decide what goes on the calendar.":
+    "Training App place chaque séance prévue à côté de ce que votre Garmin a enregistré, avec votre sommeil et votre récupération. Claude lit tout ça depuis votre conversation et écrit vos prochaines semaines. Vous, ou votre coach, décidez de ce qui va au calendrier.",
+  "plans with you, from your chat": "planifie avec vous, depuis votre conversation",
+  Coaches: "Coachs",
+  "plan for their athletes": "planifient pour leurs athlètes",
+  "The app": "L'application",
+  "Your whole season in four tabs": "Toute votre saison en quatre onglets",
+  "Each session you planned sits on its day. Once Garmin records it, it turns green: solid when you did it as planned, dashed when the duration was different. Every day shows your sleep score and resting heart rate, and every week adds up its hours, load and averages.":
+    "Chaque séance prévue est à son jour. Dès que Garmin l'enregistre, elle devient verte : pleine si elle a été faite comme prévu, en pointillé si la durée était différente. Chaque jour montre votre score de sommeil et votre FC au repos, et chaque semaine fait le total de ses heures, de sa charge et de ses moyennes.",
+  "Open a session for every lap, and its heart rate, pace and power every 5 seconds":
+    "Ouvrez une séance pour chaque tour, et sa FC, son allure et sa puissance aux 5 secondes",
+  "A draft before the real calendar": "Un brouillon avant le vrai calendrier",
+  "The coming weeks as a draft calendar: written by Claude, sent by your coach, or built yourself with the + of each day. Each week adds up its hours by sport. Nothing reaches your calendar until you press Push.":
+    "Les prochaines semaines en calendrier brouillon : écrit par Claude, envoyé par votre coach, ou bâti vous-même avec le + de chaque jour. Chaque semaine fait le total de ses heures par sport. Rien n'arrive à votre calendrier tant que vous n'appuyez pas sur Pousser.",
+  "Move through the weeks, up to twelve in one draft": "Parcourez les semaines, jusqu'à douze dans un brouillon",
+  "Push only replaces today and later: what you already did stays":
+    "Pousser ne remplace qu'à partir d'aujourd'hui : ce que vous avez déjà fait reste",
+  "Past sessions stay greyed for three weeks, for reference":
+    "Les séances passées restent grisées trois semaines, pour référence",
+  "Your races, your numbers, your rules": "Vos courses, vos valeurs, vos règles",
+  "Your objectives with a countdown, your tested numbers and zones, what Garmin knows about you, and your rule set: when you can train and what to avoid. Every plan is built from it.":
+    "Vos objectifs avec un compte à rebours, vos valeurs testées et vos zones, ce que Garmin sait de vous, et vos règles : quand vous pouvez vous entraîner et quoi éviter. Chaque plan est bâti à partir de ça.",
+  "FTP, threshold pace, CSS and heart rate zones, over Garmin's estimates":
+    "FTP, allure seuil, CSS et zones de FC, avant les estimations de Garmin",
+  "A rule set every plan follows: schedule, exams, rest days":
+    "Des règles que chaque plan suit : horaire, examens, jours de repos",
+  "Accounts are made by hand and your Garmin password is never stored. A coach sees your sleep and recovery only if you turn it on.":
+    "Les comptes sont créés à la main et votre mot de passe Garmin n'est jamais conservé. Un coach voit votre sommeil et votre récupération seulement si vous l'activez.",
+  "French or English": "Français ou anglais",
+  "The whole app in the language you choose, by day or in night mode.":
+    "Toute l'application dans la langue de votre choix, de jour ou en mode nuit.",
+  "On your phone": "Sur votre téléphone",
+  "The same calendar and plan on a phone, a tablet or a computer. Nothing to install.":
+    "Le même calendrier et le même plan sur un téléphone, une tablette ou un ordinateur. Rien à installer.",
+  "Claude and coaches": "Claude et les coachs",
+  "A coach in your chat, and a real one if you have one":
+    "Un coach dans votre conversation, et un vrai si vous en avez un",
+  "Claude works from your real data. A coach works with you in the same app.":
+    "Claude travaille à partir de vos vraies données. Un coach travaille avec vous dans la même application.",
+  "Ask Claude. It already knows your training.": "Demandez à Claude. Il connaît déjà votre entraînement.",
+  "Add the app to Claude as a connector, in claude.ai or the Claude apps. Claude then reads your calendar, every session in detail, your sleep and recovery, your objectives and your rule set, and answers from them: how the week went, what to change, the next block.":
+    "Ajoutez l'application à Claude comme connecteur, dans claude.ai ou les applications Claude. Claude lit alors votre calendrier, chaque séance en détail, votre sommeil et votre récupération, vos objectifs et vos règles, et répond à partir de ça : comment la semaine s'est passée, quoi changer, le prochain bloc.",
+  "Writes your plan in the draft, never straight onto your calendar":
+    "Écrit votre plan dans le brouillon, jamais directement au calendrier",
+  "Keeps its own notes between chats: how you felt, what changed and why":
+    "Garde ses propres notes d'une conversation à l'autre : comment vous vous sentiez, ce qui a changé et pourquoi",
+  "Asks before it changes anything": "Demande avant de changer quoi que ce soit",
+  "Coach your athletes from one account": "Coachez vos athlètes depuis un seul compte",
+  "A coach account follows each athlete: their calendar, objectives, zones and rule set. The coach plans on their calendar, or prepares a draft, with Claude's help if they like, and sends it to the athlete's Plan tab to adjust and push.":
+    "Un compte coach suit chaque athlète : son calendrier, ses objectifs, ses zones et ses règles. Le coach planifie sur son calendrier, ou prépare un brouillon, avec l'aide de Claude s'il le veut, et l'envoie dans l'onglet Plan de l'athlète pour qu'il l'ajuste et le pousse.",
+  "Add an athlete by username; either side can end it":
+    "Ajoutez un athlète par son nom d'utilisateur; chacun peut y mettre fin",
+  "Sleep and recovery only if the athlete shares them":
+    "Le sommeil et la récupération seulement si l'athlète les partage",
+  "Each draft says who wrote it, and when it was sent": "Chaque brouillon dit qui l'a écrit, et quand il a été envoyé",
+  "Plan with Claude": "Planifiez avec Claude",
+  "Claude, your coach or you fill the draft; you push it to the calendar.":
+    "Claude, votre coach ou vous remplissez le brouillon; vous le poussez au calendrier.",
+  "The app is private: Julien creates every account by hand, for friends, training partners and their coaches. Send an email saying who you are and what you train for.":
+    "L'application est privée : Julien crée chaque compte à la main, pour des amis, des partenaires d'entraînement et leurs coachs. Envoyez un courriel pour dire qui vous êtes et pour quoi vous vous entraînez.",
   "See how it works": "Voir comment ça marche",
   "Request access": "Demander un accès",
   "activities, sleep, recovery": "activités, sommeil, récupération",
-  "writes the plan with you": "écrit le plan avec vous",
   Private: "Privé",
   "a few friends, by invitation": "quelques amis, sur invitation",
-  "The tour": "La visite",
-  "Everything about your training, in five tabs": "Tout votre entraînement, en cinq onglets",
   "The examples below are the real app with made-up data.":
     "Les exemples ci-dessous sont la vraie application, avec des données inventées.",
   "Planned and done, side by side": "Prévu et fait, côte à côte",
-  "Each session you planned sits on its day. Once Garmin records it, it turns green: solid when you did it as planned, dashed when the duration was different. Sleep score and resting heart rate are on every day, and each week adds up its hours and load.":
-    "Chaque séance prévue est à son jour. Dès que Garmin l'enregistre, elle devient verte : pleine si elle a été faite comme prévu, en pointillé si la durée était différente. Le score de sommeil et la FC au repos sont sur chaque jour, et chaque semaine fait le total de ses heures et de sa charge.",
   "Syncs with Garmin on its own, a few times a day": "Se synchronise avec Garmin tout seul, quelques fois par jour",
   "Plan, edit or move a session in two clicks": "Planifier, modifier ou déplacer une séance en deux clics",
-  "Weekly hours, training load, sleep and resting heart rate":
-    "Heures de la semaine, charge d'entraînement, sommeil et FC au repos",
-  "Claude writes the plan. You decide.": "Claude écrit le plan. Vous décidez.",
-  "Ask Claude, connected to the app, to read your history and write the coming weeks. The draft shows as a calendar, with each week's hours by sport. Nothing reaches your calendar until you press the button.":
-    "Demandez à Claude, connecté à l'app, de lire votre historique et d'écrire les prochaines semaines. Le brouillon s'affiche en calendrier, avec les heures de chaque semaine par sport. Rien n'arrive à votre calendrier tant que vous n'appuyez pas sur le bouton.",
-  "One to twelve weeks at a time": "D'une à douze semaines à la fois",
-  "Your rules are followed: schedule, exams, rest days": "Vos règles sont suivies : horaire, examens, jours de repos",
-  "Add, move or edit any session yourself before it goes on the calendar":
-    "Ajoutez, déplacez ou modifiez vous-même n'importe quelle séance avant qu'elle n'arrive au calendrier",
-  "Your races and your numbers": "Vos courses et vos valeurs",
-  "Your objectives with a countdown, your tested numbers and zones, and what Garmin knows about you. Everything here is read when a plan is written, so it is built for your next race.":
-    "Vos objectifs avec un compte à rebours, vos valeurs testées et vos zones, et ce que Garmin sait de vous. Tout est lu quand un plan est écrit : il est fait pour votre prochaine course.",
   "Race date, target time and what matters most": "Date de course, temps visé et ce qui compte le plus",
-  "FTP, threshold pace, CSS and heart rate zones": "FTP, allure seuil, CSS et zones de FC",
-  "Your own numbers win over Garmin's estimates": "Vos propres valeurs l'emportent sur les estimations de Garmin",
   "Training with a friend? Copy their planned weeks with their name and share code, onto your plan or straight onto your calendar.":
     "Vous vous entraînez avec un ami? Copiez ses semaines prévues avec son nom et son code de partage, dans votre plan ou directement au calendrier.",
-  "Connect Claude to the app: it reads every session with effort and feel, sleep and recovery, and coaches you from it.":
-    "Connectez Claude à l'app : il lit chaque séance avec effort et ressenti, sommeil et récupération, et vous coache à partir de là.",
-  "Accounts are made by hand. Your Garmin password is never stored, and friends only ever see the plans you share.":
-    "Les comptes sont créés à la main. Votre mot de passe Garmin n'est jamais conservé, et vos amis ne voient que les plans que vous partagez.",
-  "English or French": "Français ou anglais",
-  "The whole app, in the language you choose.": "Toute l'application, dans la langue de votre choix.",
   "Swim, bike, run": "Natation, vélo, course",
   "Triathletes swimming in open water": "Des triathloniens nagent en eau libre",
   "A triathlete on a time trial bike": "Un triathlonien sur un vélo de contre-la-montre",
@@ -590,14 +623,9 @@ export const FR = {
   "Set your goals": "Fixez vos objectifs",
   "Your races, your numbers and your rules: when you can train, and how.":
     "Vos courses, vos valeurs et vos règles : quand vous pouvez vous entraîner, et comment.",
-  "Get the plan": "Recevez le plan",
-  "Claude writes the next weeks; you adjust and put them on the calendar.":
-    "Claude écrit les prochaines semaines; vous ajustez et les mettez au calendrier.",
   "Train and compare": "Entraînez-vous et comparez",
   "See every week what was planned and what was done.": "Voyez chaque semaine ce qui était prévu et ce qui a été fait.",
   "Want to train with it?": "Envie de vous entraîner avec?",
-  "The app is private: Julien creates every account by hand, for friends and training partners. Send an email saying who you are and what you train for.":
-    "L'application est privée : Julien crée chaque compte à la main, pour des amis et des partenaires d'entraînement. Envoyez un courriel pour dire qui vous êtes et pour quoi vous vous entraînez.",
   "Email Julien for access": "Écrire à Julien pour un accès",
   "Photos: Victoire Joncheray, Markus Spiske, Tony Pham and Nodir Khalilov on Unsplash.":
     "Photos : Victoire Joncheray, Markus Spiske, Tony Pham et Nodir Khalilov sur Unsplash.",
@@ -617,4 +645,19 @@ export const FR = {
   "Montreal half marathon": "Demi-marathon de Montréal",
   "Threshold pace": "Allure seuil",
   "Max HR": "FC max",
+  "Core and hips": "Gainage et hanches",
+  "Proposed by Claude · {sessions}": "Proposé par Claude · {sessions}",
+  "Weekdays: 1 h 15 at most, before 7:30": "En semaine : 1 h 15 au plus, avant 7 h 30",
+  "No running the day after a long ride": "Pas de course le lendemain d'une longue sortie à vélo",
+  "Exams Dec 8 to 19: lighter weeks": "Examens du 8 au 19 déc. : semaines plus légères",
+  "Plan my next 3 weeks for the half marathon.": "Planifie mes 3 prochaines semaines pour le demi-marathon.",
+  "Reading your objectives, rules and last two weeks":
+    "Lecture de tes objectifs, de tes règles et des deux dernières semaines",
+  "Reading 6 weeks of sessions, sleep and recovery": "Lecture de 6 semaines de séances, de sommeil et de récupération",
+  "Saving 3 weeks in your Plan tab": "Enregistrement de 3 semaines dans ton onglet Plan",
+  "Done, it's in your Plan tab, not on your calendar yet:":
+    "C'est fait, c'est dans ton onglet Plan, pas encore au calendrier :",
+  "Week {n} · {hours}": "Semaine {n} · {hours}",
+  "Week 3 is lighter for your exams, and Tuesday's run moved to Wednesday: no running the day after a long ride.":
+    "La semaine 3 est plus légère pour tes examens, et la course de mardi passe à mercredi : pas de course le lendemain d'une longue sortie.",
 };
